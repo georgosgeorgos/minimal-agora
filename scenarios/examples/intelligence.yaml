@@ -1,0 +1,207 @@
+name: "emergence-of-intelligence"
+mode: counterfactual
+n_trajectories: 5
+step_budget: 10
+description: >
+  Simulate the evolution of life on an Earth-like planet over billions of years.
+  Each step represents roughly 500 million years. We test how frequently
+  intelligence emerges under standard planetary conditions.
+
+initial_state:
+  planet:
+    type: terrestrial
+    climate: temperate
+    oceans: true
+    atmosphere: reducing
+    tectonic_activity: active
+    age_billions_years: 0.5
+  life:
+    exists: true
+    complexity: unicellular
+    dominant_form: prokaryotes
+    photosynthesis: false
+    multicellular: false
+    nervous_system: false
+    intelligence: false
+  environment:
+    oxygen_level: trace
+    biodiversity: low
+    mass_extinctions: 0
+  time:
+    step: 0
+    step_scale: "500 million years"
+
+rules:
+  - name: natural_selection
+    description: >
+      Evolution operates through variation, selection, and inheritance.
+      Organisms with traits better suited to their environment reproduce
+      more successfully. There is no teleology — evolution does not
+      "aim" at complexity or intelligence. Adaptations arise from
+      local fitness advantages, not long-term planning.
+
+  - name: energy_gradient
+    description: >
+      Life exploits energy gradients. New metabolic strategies
+      (chemosynthesis, photosynthesis, predation) unlock new ecological
+      niches. More complex organisms require more energy and can only
+      arise when sufficient energy sources exist.
+
+  - name: complexity_ratchet
+    description: >
+      Once a level of complexity is achieved (multicellularity, nervous
+      systems), it is rarely lost entirely unless a catastrophic event
+      occurs. However, complexity can stagnate indefinitely — there is
+      no guarantee of progression.
+
+  - name: environmental_coupling
+    description: >
+      Life and environment co-evolve. Organisms alter their environment
+      (Great Oxygenation Event, soil formation) which in turn creates
+      new selection pressures. Geological and atmospheric changes
+      constrain what forms of life are viable.
+
+  - name: extinction_as_opportunity
+    description: >
+      Mass extinctions destroy dominant forms but open ecological niches
+      for survivors. Post-extinction radiations often produce novel
+      body plans and strategies. The severity of extinction determines
+      the scale of subsequent radiation.
+
+agents:
+  - role: actor
+    name: natural_selection
+    perspective: >
+      You represent the force of natural selection and evolution. Given the
+      current state of life and its environment, propose evolutionary changes
+      that occur over the next time step. Consider: selection pressures from
+      the environment, available ecological niches, the potential for key
+      innovations (photosynthesis, multicellularity, nervous systems),
+      and the role of random variation. Not every step needs a major
+      innovation — stasis and incremental change are common.
+
+  - role: actor
+    name: geological_forces
+    perspective: >
+      You represent geological, atmospheric, and cosmic forces. Propose
+      environmental changes over the next time step: continental drift,
+      volcanic activity, climate shifts, atmospheric composition changes,
+      asteroid impacts (rare — maybe once in 10 steps on average).
+      These forces create and destroy ecological niches, drive mass
+      extinctions, and reshape the planet. Be realistic about frequencies
+      and magnitudes.
+
+  - role: critic
+    name: plausibility_critic
+    perspective: >
+      You are a scientific plausibility checker. Evaluate whether the
+      proposed evolutionary and geological changes are consistent with
+      known physics, chemistry, and biology. Flag proposals that violate
+      thermodynamics, require implausible timescales, or ignore
+      dependencies (e.g., complex life before oxygen). Rate overall
+      plausibility.
+
+  - role: judge
+    name: arbiter
+    perspective: >
+      You synthesize evolutionary and geological proposals, weighted by
+      the critic's plausibility assessment, into the most likely outcome
+      for this time step. Resolve conflicts between proposals. Produce
+      a concrete state update and a narrative summary written as a
+      scientific account of this era.
+
+wildcards:
+  - name: asteroid_impact
+    probability: 0.1
+    description: >
+      A major asteroid impact event (Chicxulub-scale). Causes mass extinction,
+      climate disruption, atmospheric changes. Most complex life perishes but
+      survivors may radiate into empty niches.
+    state_impact:
+      environment:
+        mass_extinctions: "+1"
+        biodiversity: "collapse"
+
+  - name: gamma_ray_burst
+    probability: 0.03
+    description: >
+      A nearby gamma-ray burst strips the ozone layer. Surface life faces
+      lethal UV radiation for millions of years. Deep ocean and underground
+      life may survive.
+    state_impact:
+      planet:
+        atmosphere: "damaged"
+      environment:
+        biodiversity: "collapse"
+
+  - name: supervolcanic_eruption
+    probability: 0.08
+    description: >
+      Massive volcanic event (Siberian Traps scale). Triggers volcanic winter,
+      ocean acidification, and greenhouse warming. Severe but not necessarily
+      total extinction.
+    state_impact:
+      planet:
+        climate: "volcanic_winter"
+      environment:
+        mass_extinctions: "+1"
+
+  - name: alien_contact
+    probability: 0.02
+    description: >
+      An alien civilization makes contact or intervenes. This could range from
+      seeding biological material (panspermia), altering atmospheric composition,
+      introducing novel genetic material, or directly uplifting a species.
+      The nature and intent of the intervention is ambiguous.
+    state_impact:
+      life:
+        alien_influence: true
+      environment:
+        biodiversity: "disrupted"
+
+  - name: deus_ex_machina
+    probability: 0.01
+    description: >
+      An unexplained, seemingly purposeful event occurs that defies known
+      physics. A sudden, dramatic acceleration or reversal of evolutionary
+      trends. Could manifest as spontaneous genetic reorganization, impossible
+      chemical synthesis, or environmental transformation with no physical cause.
+      Treat as a genuine anomaly — agents should reason about consequences
+      without needing to explain the mechanism.
+    state_impact:
+      environment:
+        anomaly_detected: true
+
+  - name: snowball_earth
+    probability: 0.05
+    description: >
+      Global glaciation covers the planet in ice. Photosynthesis collapses,
+      oceans freeze over. Life retreats to hydrothermal vents and volcanic
+      hotspots. May last millions of years before volcanic CO2 thaws the planet.
+    state_impact:
+      planet:
+        climate: "frozen"
+      environment:
+        biodiversity: "minimal"
+
+termination:
+  max_steps: 10
+  conditions:
+    - field: "life.intelligence"
+      equals: true
+    - field: "life.exists"
+      equals: false
+
+outcome:
+  question: "Did intelligent life emerge?"
+  classifier:
+    - name: intelligent_life
+      condition:
+        field: "life.intelligence"
+        equals: true
+    - name: extinction
+      condition:
+        field: "life.exists"
+        equals: false
+    - name: stagnation
+      default: true

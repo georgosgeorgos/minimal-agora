@@ -1,0 +1,268 @@
+name: "mediterranean-powers"
+mode: open_ended
+step_budget: 20
+description: >
+  Simulate the rise and interaction of Mediterranean civilizations.
+  Each step represents roughly 50 years. Populations compete for
+  resources, trade, wage war, and exchange culture. External forces
+  (nature, disease) shape the environment they operate in.
+
+initial_state:
+  world:
+    era: "classical_antiquity"
+    trade_routes: ["aegean", "adriatic"]
+    dominant_religion: "polytheism"
+    resources:
+      grain: abundant
+      metals: moderate
+      timber: abundant
+  geography:
+    mediterranean_control: "contested"
+    climate: temperate
+    plague_active: false
+  time:
+    step: 0
+    step_scale: "50 years"
+    year: -500
+
+entities:
+  - name: rome
+    type: population
+    state_prefix: "populations.rome"
+    initial_state:
+      territory: "italian_peninsula"
+      government: "republic"
+      military_strength: 60
+      economy: 50
+      culture: 40
+      technology: 45
+      population_millions: 1.5
+      alliances: []
+      at_war_with: []
+    agents:
+      - role: actor
+        name: roman_senate
+        perspective: >
+          You represent Roman strategic decision-making. You pursue
+          territorial expansion, military dominance, and infrastructure.
+          Roman values: discipline, law, engineering, pragmatic adoption
+          of useful foreign practices. Consider internal politics
+          (patricians vs plebeians, Senate vs populists) as well as
+          external ambitions.
+    can_interact_with: ["greece", "persia"]
+    interaction:
+      mode: always
+
+  - name: greece
+    type: population
+    state_prefix: "populations.greece"
+    initial_state:
+      territory: "greek_peninsula"
+      government: "city_states"
+      military_strength: 45
+      economy: 55
+      culture: 80
+      technology: 60
+      population_millions: 2.0
+      alliances: []
+      at_war_with: []
+    agents:
+      - role: actor
+        name: greek_council
+        perspective: >
+          You represent the collective Greek city-states (Athens, Sparta,
+          Thebes, Corinth, etc.). Greek strengths: philosophy, art,
+          democracy, naval power, trade. Weaknesses: internal rivalry
+          between city-states, difficulty unifying. You value cultural
+          achievement and intellectual advancement but are frequently
+          divided by inter-city politics.
+    can_interact_with: ["rome", "persia"]
+    interaction:
+      mode: always
+
+  - name: persia
+    type: population
+    state_prefix: "populations.persia"
+    initial_state:
+      territory: "near_east"
+      government: "empire"
+      military_strength: 70
+      economy: 65
+      culture: 55
+      technology: 50
+      population_millions: 15.0
+      alliances: []
+      at_war_with: []
+    agents:
+      - role: actor
+        name: persian_court
+        perspective: >
+          You represent the Persian Empire's royal court. Persia is vast,
+          wealthy, and culturally diverse. Strengths: massive armies,
+          road networks, tolerance of local customs, administrative
+          sophistication. Weaknesses: overextension, satrap rebellions,
+          succession crises. You seek to maintain and expand the empire
+          while managing its internal diversity.
+    can_interact_with: ["rome", "greece"]
+    interaction:
+      mode: always
+
+  - name: nature
+    type: force
+    agents:
+      - role: actor
+        name: environmental_forces
+        perspective: >
+          You represent natural and environmental forces affecting the
+          Mediterranean world: climate shifts, droughts, floods, earthquakes,
+          volcanic eruptions, soil depletion, deforestation. These forces
+          are indifferent to civilization — they affect all populations
+          based on geography. A drought in North Africa cuts Rome's grain
+          supply. An earthquake can destroy a Greek city.
+
+  - name: disease_and_migration
+    type: force
+    agents:
+      - role: actor
+        name: demographic_forces
+        perspective: >
+          You represent demographic forces: plague, famine, migration waves,
+          population growth/decline. Disease does not respect borders.
+          Migration can bring new peoples into contact. Population pressure
+          drives expansion. Famine weakens armies and causes social unrest.
+          The Antonine Plague, migrations from the steppes, and population
+          booms from agricultural advances are all in your domain.
+
+  - name: historian
+    type: critic
+    agents:
+      - role: critic
+        name: historical_critic
+        perspective: >
+          You are a historian evaluating plausibility. Check whether proposed
+          changes are consistent with known historical dynamics: logistics
+          of ancient warfare, speed of communication, agricultural
+          productivity limits, technological prerequisites. A city-state
+          cannot field a million-man army. Naval invasion requires shipbuilding
+          capacity. Cultural diffusion takes generations, not years.
+
+  - name: thucydides
+    type: evaluator
+    agents:
+      - role: judge
+        name: thucydides_judge
+        perspective: >
+          You are Thucydides, historian and judge. You synthesize all
+          proposals and critiques into the most plausible outcome. You
+          understand that nations act from self-interest, that power
+          dynamics drive conflict, and that fortune plays a role. When
+          resolving interactions between populations (trade, war, diplomacy),
+          consider relative military strength, economic incentives, cultural
+          influence, and geographic factors. Produce a resolution that
+          updates all affected population states and the shared world state.
+          Score each population on: military power, economic prosperity,
+          cultural influence, and territorial extent.
+
+rules:
+  - name: resource_competition
+    description: >
+      Populations compete for finite resources (grain, metals, trade routes).
+      When two populations claim the same resource or trade route, conflict
+      or negotiation must occur. Resource scarcity drives expansion.
+
+  - name: cultural_influence
+    description: >
+      Higher-culture populations exert soft power on neighbors. Cultural
+      influence spreads through trade, conquest, and proximity. A conquered
+      population may culturally dominate its conqueror (Greece/Rome).
+    applies_to: ["population"]
+
+  - name: military_logistics
+    description: >
+      Military campaigns require supply lines, seasonal timing, and
+      manpower proportional to territory. Overextension weakens armies.
+      Naval power requires coastal territory and shipbuilding.
+    applies_to: ["population", "critic"]
+
+  - name: power_vacuum
+    description: >
+      When a major power collapses or weakens significantly, neighboring
+      powers expand to fill the vacuum. No territory stays unclaimed
+      for long. Internal collapse invites external invasion.
+
+  - name: economic_incentives
+    description: >
+      Trade is mutually beneficial but creates dependencies. Populations
+      prefer trade over war when profitable. Economic sanctions and
+      blockades are tools of statecraft. Wealth enables military and
+      cultural investment.
+
+wildcards:
+  - name: plague
+    probability: 0.08
+    description: >
+      A major epidemic sweeps the Mediterranean. All populations lose
+      population and economic capacity. Densely populated and
+      trade-connected regions are hit hardest.
+    state_impact:
+      geography:
+        plague_active: true
+
+  - name: barbarian_invasion
+    probability: 0.06
+    description: >
+      A major migration or invasion from outside the Mediterranean world
+      (Gauls, Germanic tribes, steppe peoples). The most exposed
+      population faces military pressure on a new front.
+    state_impact:
+      world:
+        external_threat: true
+
+  - name: earthquake
+    probability: 0.1
+    description: >
+      A major earthquake strikes the eastern Mediterranean. Coastal
+      cities suffer destruction. Naval capacity may be temporarily
+      reduced. Rebuilding diverts economic resources.
+    state_impact:
+      geography:
+        seismic_event: true
+
+  - name: divine_omen
+    probability: 0.02
+    description: >
+      A widely observed celestial event (eclipse, comet, unusual weather)
+      is interpreted as a divine sign. Religious and political consequences
+      vary by culture. May trigger religious reforms, military campaigns
+      launched "under divine favor," or social upheaval.
+    state_impact:
+      world:
+        divine_omen: true
+
+termination:
+  max_steps: 20
+  conditions:
+    - field: "populations.rome.military_strength"
+      less_than: 5
+    - field: "populations.greece.military_strength"
+      less_than: 5
+    - field: "populations.persia.military_strength"
+      less_than: 5
+
+outcome:
+  question: "Which civilization dominated the Mediterranean?"
+  classifier:
+    - name: roman_dominance
+      condition:
+        field: "populations.rome.military_strength"
+        greater_than: 80
+    - name: greek_dominance
+      condition:
+        field: "populations.greece.military_strength"
+        greater_than: 80
+    - name: persian_dominance
+      condition:
+        field: "populations.persia.military_strength"
+        greater_than: 80
+    - name: balance_of_power
+      default: true
