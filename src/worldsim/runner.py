@@ -29,10 +29,16 @@ async def run_batch(
     tasks = [run_one(i) for i in range(n)]
     completed = await asyncio.gather(*tasks, return_exceptions=True)
 
+    skipped = 0
     for i, result in enumerate(completed):
         if isinstance(result, Exception):
             print(f"[batch] trajectory {i} failed: {result}")
         else:
             results.append(result)
+            if result.outcome and result.metadata.get("resumed"):
+                skipped += 1
+
+    if skipped:
+        print(f"[batch] {skipped}/{n} trajectories resumed from checkpoint")
 
     return results

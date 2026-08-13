@@ -13,7 +13,9 @@ from worldsim.models import (
     InteractionMode,
     Proposal,
     Resolution,
+    Scenario,
     SimMode,
+    Step,
     Trajectory,
     TrajectoryOutcome,
     TrajectoryType,
@@ -426,6 +428,61 @@ def test_diversity_prompt_absent_without_trajectory_id():
     agent = AgentConfig(role=AgentRole.ACTOR, name="test", perspective="test")
     p = build_actor_prompt(agent, step=0)
     assert "Exploration lens" not in p
+
+
+def test_resume_detection_empty():
+    from worldsim.loop import _detect_resume_point
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        workspace = Path(tmpdir)
+        assert _detect_resume_point(workspace) == 0
+
+
+def test_resume_detection_with_history():
+    from worldsim.loop import _detect_resume_point
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        workspace = Path(tmpdir)
+        history = workspace / "history"
+        history.mkdir()
+        for i in range(3):
+            step = Step(step_number=i, state_before={}, state_after={"x": i})
+            with open(history / f"step_{i:03d}_full.json", "w") as f:
+                f.write(step.model_dump_json())
+        assert _detect_resume_point(workspace) == 3
+
+
+def test_skip_completed_trajectory():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        workspace = Path(tmpdir)
+        (workspace / "board").mkdir(parents=True)
+        (workspace / "history").mkdir()
+        (workspace / "proposals").mkdir()
+        (workspace / "critiques").mkdir()
+        (workspace / "resolutions").mkdir()
+        with open(workspace / "board" / "state.json", "w") as f:
+            json.dump({"x": 1}, f)
+
+        t = Trajectory(
+            scenario_name="test", trajectory_id=0,
+            steps=[Step(step_number=0, state_before={}, state_after={"x": 1})],
+            outcome=TrajectoryOutcome(classification="done", final_step=0, final_state={"x": 1}),
+        )
+        with open(workspace / "trajectory.json", "w") as f:
+            f.write(t.model_dump_json())
+
+        import asyncio
+
+        from worldsim.loop import run_trajectory
+
+        scenario = Scenario(
+            name="test", mode=SimMode.COUNTERFACTUAL,
+            initial_state={"x": 0}, step_budget=5,
+            termination={"max_steps": 5},
+        )
+        result = asyncio.run(run_trajectory(scenario, workspace, 0))
+        assert result.outcome is not None
+        assert result.outcome.classification == "done"
 
 
 def test_convergence_detection():

@@ -45,6 +45,38 @@ async def _invoke_with_retry(
                 logger.error("Agent %s failed after %d attempts: %s", agent.name, attempt + 1, e)
 
 
+def _detect_resume_point(workspace: Path) -> int:
+    history_dir = workspace / "history"
+    if not history_dir.exists():
+        return 0
+    completed = sorted(history_dir.glob("step_*_full.json"))
+    return len(completed)
+
+
+def _load_completed_trajectory(workspace: Path) -> Trajectory | None:
+    path = workspace / "trajectory.json"
+    if not path.exists():
+        return None
+    with open(path) as f:
+        t = Trajectory.model_validate_json(f.read())
+    return t if t.outcome is not None else None
+
+
+def _restore_checkpoint(workspace: Path, resume_from: int, board: Board) -> list[Step]:
+    steps = []
+    for i in range(resume_from):
+        step_file = workspace / "history" / f"step_{i:03d}_full.json"
+        if step_file.exists():
+            with open(step_file) as f:
+                steps.append(Step.model_validate_json(f.read()))
+    state_file = workspace / "history" / f"step_{resume_from:03d}_state.json"
+    if state_file.exists():
+        import json
+        with open(state_file) as f:
+            board.write_state(json.load(f))
+    return steps
+
+
 async def run_trajectory(
     scenario: Scenario,
     workspace: Path,
@@ -52,10 +84,21 @@ async def run_trajectory(
     agent_timeout: int = 300,
 ) -> Trajectory:
     board = Board(workspace)
+
+    existing = _load_completed_trajectory(workspace)
+    if existing is not None:
+        print(f"  [trajectory {trajectory_id}] already complete, skipping")
+        return existing
+
+    resume_from = _detect_resume_point(workspace)
     trajectory = Trajectory(
         scenario_name=scenario.name,
         trajectory_id=trajectory_id,
     )
+
+    if resume_from > 0:
+        print(f"  [trajectory {trajectory_id}] resuming from step {resume_from}")
+        trajectory.steps = _restore_checkpoint(workspace, resume_from, board)
 
     max_steps = scenario.termination.get("max_steps", scenario.step_budget)
     conditions = scenario.termination.get("conditions", [])
@@ -63,7 +106,7 @@ async def run_trajectory(
     plateau_window = scenario.termination.get("plateau_window", 5)
     plateau_threshold = scenario.termination.get("plateau_threshold", 0.01)
 
-    for step_num in range(max_steps):
+    for step_num in range(resume_from, max_steps):
         wildcard = _roll_wildcard(scenario.wildcards)
         if wildcard:
             print(f"  [trajectory {trajectory_id}] step {step_num}/{max_steps} — WILDCARD: {wildcard.name}")
