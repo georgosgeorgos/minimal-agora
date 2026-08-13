@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import random
 from copy import deepcopy
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 from worldsim.agents import (
     build_prompt,
@@ -23,6 +26,20 @@ from worldsim.models import (
     TrajectoryType,
     WildcardEvent,
 )
+
+
+async def _invoke_with_retry(
+    agent, workspace: Path, step_num: int, prompt: str, timeout: int, max_retries: int = 1,
+) -> None:
+    for attempt in range(1 + max_retries):
+        try:
+            await invoke_agent(agent, workspace, step_num, prompt, timeout)
+            return
+        except (OSError, RuntimeError, TimeoutError) as e:
+            if attempt < max_retries:
+                logger.warning("Agent %s failed (attempt %d), retrying: %s", agent.name, attempt + 1, e)
+            else:
+                logger.error("Agent %s failed after %d attempts: %s", agent.name, attempt + 1, e)
 
 
 async def run_trajectory(
@@ -100,7 +117,7 @@ async def _run_flat_step(
 
     rules = scenario.rules
     actor_tasks = [
-        invoke_agent(a, board.workspace, step_num, build_prompt(a, step_num, rules), timeout)
+        _invoke_with_retry(a, board.workspace, step_num, build_prompt(a, step_num, rules), timeout)
         for a in actors
     ]
     await asyncio.gather(*actor_tasks, return_exceptions=True)
@@ -115,7 +132,7 @@ async def _run_flat_step(
     critiques = []
     if critics:
         critic_tasks = [
-            invoke_agent(c, board.workspace, step_num, build_prompt(c, step_num, rules), timeout)
+            _invoke_with_retry(c, board.workspace, step_num, build_prompt(c, step_num, rules), timeout)
             for c in critics
         ]
         await asyncio.gather(*critic_tasks, return_exceptions=True)
@@ -129,7 +146,7 @@ async def _run_flat_step(
     resolution = None
     if judges:
         judge = judges[0]
-        await invoke_agent(judge, board.workspace, step_num, build_prompt(judge, step_num, rules), timeout)
+        await _invoke_with_retry(judge, board.workspace, step_num, build_prompt(judge, step_num, rules), timeout)
         resolution = parse_resolution(board.workspace, step_num)
 
     if resolution is None:
@@ -170,7 +187,7 @@ async def _run_entity_step(
     force_agents = [a for e in force_entities for a in e.agents]
     if force_agents:
         force_tasks = [
-            invoke_agent(a, board.workspace, step_num, build_prompt(a, step_num, rules), timeout)
+            _invoke_with_retry(a, board.workspace, step_num, build_prompt(a, step_num, rules), timeout)
             for a in force_agents
         ]
         await asyncio.gather(*force_tasks, return_exceptions=True)
@@ -184,7 +201,7 @@ async def _run_entity_step(
     pop_agents = [a for e in pop_entities for a in e.agents]
     if pop_agents:
         pop_tasks = [
-            invoke_agent(a, board.workspace, step_num, build_prompt(a, step_num, rules), timeout)
+            _invoke_with_retry(a, board.workspace, step_num, build_prompt(a, step_num, rules), timeout)
             for a in pop_agents
         ]
         await asyncio.gather(*pop_tasks, return_exceptions=True)
@@ -198,7 +215,7 @@ async def _run_entity_step(
     critic_agents = [a for e in critic_entities for a in e.agents]
     if critic_agents:
         critic_tasks = [
-            invoke_agent(c, board.workspace, step_num, build_prompt(c, step_num, rules), timeout)
+            _invoke_with_retry(c, board.workspace, step_num, build_prompt(c, step_num, rules), timeout)
             for c in critic_agents
         ]
         await asyncio.gather(*critic_tasks, return_exceptions=True)
@@ -213,7 +230,7 @@ async def _run_entity_step(
     eval_agents = [a for e in eval_entities for a in e.agents if a.role == AgentRole.JUDGE]
     if eval_agents:
         judge = eval_agents[0]
-        await invoke_agent(judge, board.workspace, step_num, build_prompt(judge, step_num, rules), timeout)
+        await _invoke_with_retry(judge, board.workspace, step_num, build_prompt(judge, step_num, rules), timeout)
         resolution = parse_resolution(board.workspace, step_num)
 
     if resolution is None:

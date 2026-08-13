@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 from worldsim.models import AgentConfig, AgentRole, Critique, Proposal, Resolution, SimRule
 
@@ -186,22 +189,37 @@ def build_prompt(agent: AgentConfig, step: int, rules: list[SimRule] | None = No
 def parse_proposal(workspace: Path, agent_name: str, step: int) -> Proposal | None:
     path = workspace / "proposals" / f"step_{step:03d}_{agent_name}.json"
     if not path.exists():
+        logger.warning("Proposal file missing: %s", path)
         return None
-    with open(path) as f:
-        return Proposal.model_validate_json(f.read())
+    try:
+        with open(path) as f:
+            return Proposal.model_validate_json(f.read())
+    except (ValueError, OSError, KeyError) as e:
+        logger.warning("Failed to parse proposal %s: %s", path.name, e)
+        return None
 
 
 def parse_critique(workspace: Path, agent_name: str, step: int) -> Critique | None:
     path = workspace / "critiques" / f"step_{step:03d}_{agent_name}.json"
     if not path.exists():
+        logger.warning("Critique file missing: %s", path)
         return None
-    with open(path) as f:
-        return Critique.model_validate_json(f.read())
+    try:
+        with open(path) as f:
+            return Critique.model_validate_json(f.read())
+    except (ValueError, OSError, KeyError) as e:
+        logger.warning("Failed to parse critique %s: %s", path.name, e)
+        return None
 
 
 def parse_resolution(workspace: Path, step: int) -> Resolution | None:
     path = workspace / "resolutions" / f"step_{step:03d}_resolution.json"
     if not path.exists():
+        logger.warning("Resolution file missing: %s", path)
         return None
-    with open(path) as f:
-        return Resolution.model_validate_json(f.read())
+    try:
+        with open(path) as f:
+            return Resolution.model_validate_json(f.read())
+    except (ValueError, OSError, KeyError) as e:
+        logger.warning("Failed to parse resolution %s: %s", path.name, e)
+        return None

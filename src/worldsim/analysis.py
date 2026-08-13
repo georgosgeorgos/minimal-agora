@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import math
 from collections import defaultdict
 from pathlib import Path
 
@@ -36,6 +38,42 @@ def aggregate_outcomes(trajectories: list[Trajectory], question: str = "") -> Ag
     )
 
 
+def extract_field_timelines(
+    trajectories: list[Trajectory], fields: list[str],
+) -> dict[str, dict[int, list]]:
+    timelines: dict[str, dict[int, list]] = {f: defaultdict(list) for f in fields}
+    for t in trajectories:
+        for step in t.steps:
+            for field in fields:
+                val = _get_nested(step.state_after, field)
+                if val is not None:
+                    timelines[field][step.step_number].append(val)
+    return timelines
+
+
+def compute_statistics(values: list[float | int]) -> dict[str, float]:
+    if not values:
+        return {}
+    n = len(values)
+    mean = sum(values) / n
+    if n > 1:
+        variance = sum((x - mean) ** 2 for x in values) / (n - 1)
+        std = math.sqrt(variance)
+    else:
+        variance = 0.0
+        std = 0.0
+    sorted_vals = sorted(values)
+    median = sorted_vals[n // 2] if n % 2 else (sorted_vals[n // 2 - 1] + sorted_vals[n // 2]) / 2
+    return {
+        "mean": mean,
+        "std": std,
+        "min": min(values),
+        "max": max(values),
+        "median": median,
+        "n": n,
+    }
+
+
 def format_report(result: AggregateResult) -> str:
     lines = [
         f"=== {result.scenario_name} ===",
@@ -55,6 +93,8 @@ def format_report(result: AggregateResult) -> str:
 
 
 def save_report(result: AggregateResult, output_dir: Path) -> Path:
+    output_dir.mkdir(parents=True, exist_ok=True)
+
     path = output_dir / "report.json"
     with open(path, "w") as f:
         f.write(result.model_dump_json(indent=2))
@@ -66,6 +106,39 @@ def save_report(result: AggregateResult, output_dir: Path) -> Path:
     return path
 
 
+def save_artifacts(trajectories: list[Trajectory], output_dir: Path) -> Path:
+    artifacts_dir = output_dir / "artifacts"
+    artifacts_dir.mkdir(parents=True, exist_ok=True)
+
+    summary = {
+        "scenario": trajectories[0].scenario_name if trajectories else "unknown",
+        "n_trajectories": len(trajectories),
+        "trajectories": [],
+    }
+
+    for t in trajectories:
+        traj_summary = {
+            "id": t.trajectory_id,
+            "n_steps": len(t.steps),
+            "outcome": t.outcome.classification if t.outcome else "unclassified",
+            "final_step": t.outcome.final_step if t.outcome else len(t.steps) - 1,
+        }
+        summary["trajectories"].append(traj_summary)
+
+    with open(artifacts_dir / "summary.json", "w") as f:
+        json.dump(summary, f, indent=2)
+
+    all_final_states = {}
+    for t in trajectories:
+        if t.outcome and t.outcome.final_state:
+            all_final_states[f"trajectory_{t.trajectory_id:03d}"] = t.outcome.final_state
+
+    with open(artifacts_dir / "final_states.json", "w") as f:
+        json.dump(all_final_states, f, indent=2)
+
+    return artifacts_dir
+
+
 def load_trajectories(output_dir: Path) -> list[Trajectory]:
     trajectories = []
     for traj_dir in sorted(output_dir.glob("trajectory_*")):
@@ -74,3 +147,13 @@ def load_trajectories(output_dir: Path) -> list[Trajectory]:
             with open(traj_file) as f:
                 trajectories.append(Trajectory.model_validate_json(f.read()))
     return trajectories
+
+
+def _get_nested(d: dict, path: str):
+    keys = path.split(".")
+    current = d
+    for key in keys:
+        if not isinstance(current, dict) or key not in current:
+            return None
+        current = current[key]
+    return current

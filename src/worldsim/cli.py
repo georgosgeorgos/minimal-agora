@@ -5,7 +5,13 @@ import asyncio
 import sys
 from pathlib import Path
 
-from worldsim.analysis import aggregate_outcomes, format_report, load_trajectories, save_report
+from worldsim.analysis import (
+    aggregate_outcomes,
+    format_report,
+    load_trajectories,
+    save_artifacts,
+    save_report,
+)
 from worldsim.runner import run_batch
 from worldsim.scenario import load_scenario
 
@@ -26,12 +32,20 @@ def main() -> int:
     report_parser = subparsers.add_parser("report", help="Generate report from completed run")
     report_parser.add_argument("run_dir", type=Path, help="Path to run output directory")
 
+    viz_parser = subparsers.add_parser("visualize", help="Generate plots from completed run")
+    viz_parser.add_argument("run_dir", type=Path, help="Path to run output directory")
+    viz_parser.add_argument("--fields", nargs="+", default=None, help="State fields to plot over time")
+    viz_parser.add_argument("--populations", nargs="+", default=None, help="Population names for score plots")
+    viz_parser.add_argument("--scores", nargs="+", default=None, help="Score fields for population plots")
+
     args = parser.parse_args()
 
     if args.command == "run":
         return cmd_run(args)
     elif args.command == "report":
         return cmd_report(args)
+    elif args.command == "visualize":
+        return cmd_visualize(args)
     else:
         parser.print_help()
         return 1
@@ -74,6 +88,7 @@ def cmd_run(args) -> int:
     question = scenario.outcome.question if scenario.outcome else ""
     result = aggregate_outcomes(trajectories, question)
     save_report(result, output_dir)
+    save_artifacts(trajectories, output_dir)
 
     print()
     print(format_report(result))
@@ -88,6 +103,22 @@ def cmd_report(args) -> int:
 
     result = aggregate_outcomes(trajectories)
     print(format_report(result))
+    return 0
+
+
+def cmd_visualize(args) -> int:
+    from worldsim.visualize import generate_all_plots
+
+    print(f"Generating plots from: {args.run_dir}")
+    paths = generate_all_plots(
+        args.run_dir,
+        fields=args.fields,
+        populations=args.populations,
+        score_fields=args.scores,
+    )
+
+    if paths:
+        print(f"\nGenerated {len(paths)} plots in {args.run_dir / 'plots'}")
     return 0
 
 
