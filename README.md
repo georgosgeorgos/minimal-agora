@@ -1,4 +1,4 @@
-# worldsim
+# minimal-agora
 
 A world simulation engine where LLM agents debate and interact to explore
 counterfactual hypotheses and population dynamics. Agents propose state
@@ -26,7 +26,7 @@ out₁    out₂    out₃        outₙ        → statistics
 ```
 
 ```bash
-worldsim run scenarios/examples/intelligence.yaml -n 30 -m counterfactual
+minimal-agora run scenarios/examples/intelligence.yaml -n 30 -m counterfactual
 ```
 
 ### `population`
@@ -60,7 +60,7 @@ Entity types:
 | `evaluator` | Judge, historian, scorer | nothing | scores/rewards | everything post-resolution |
 
 ```bash
-worldsim run scenarios/examples/mediterranean.yaml -n 10 -m population
+minimal-agora run scenarios/examples/mediterranean.yaml -n 10 -m population
 ```
 
 ### `open_ended`
@@ -153,7 +153,7 @@ outcome:
 
 ```bash
 # Run a scenario
-worldsim run scenario.yaml [options]
+minimal-agora run scenario.yaml [options]
   -n, --n-trajectories N    Override number of trajectories
   -m, --mode MODE           Override mode (counterfactual/population/open_ended)
   -c, --concurrency N       Max parallel trajectories (default: 2)
@@ -162,12 +162,12 @@ worldsim run scenario.yaml [options]
   -o, --output DIR          Output directory (default: runs/)
 
 # Generate report from completed run
-worldsim report runs/my-scenario/
+minimal-agora report runs/my-scenario/
 
 # Examples
-worldsim run scenarios/examples/intelligence.yaml -n 5
-worldsim run scenarios/examples/mediterranean.yaml -n 3 -m population
-worldsim run scenarios/examples/intelligence.yaml -n 30 --steps 15
+minimal-agora run scenarios/examples/intelligence.yaml -n 5
+minimal-agora run scenarios/examples/mediterranean.yaml -n 3 -m population
+minimal-agora run scenarios/examples/intelligence.yaml -n 30 --steps 15
 ```
 
 ## Example Scenarios
@@ -188,5 +188,5 @@ worldsim run scenarios/examples/intelligence.yaml -n 30 --steps 15
 
 ```bash
 uv sync
-uv run worldsim run scenarios/examples/intelligence.yaml -n 3
+uv run minimal-agora run scenarios/examples/intelligence.yaml -n 3
 ```

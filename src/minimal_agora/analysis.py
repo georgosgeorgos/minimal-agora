@@ -5,7 +5,7 @@ import math
 from collections import defaultdict
 from pathlib import Path
 
-from worldsim.models import AggregateResult, Trajectory
+from minimal_agora.models import AggregateResult, Trajectory
 
 
 def aggregate_outcomes(trajectories: list[Trajectory], question: str = "") -> AggregateResult:

@@ -1,12 +1,12 @@
 import tempfile
 from pathlib import Path
 
-from worldsim.analysis import (
+from minimal_agora.analysis import (
     compute_statistics,
     extract_field_timelines,
     save_artifacts,
 )
-from worldsim.models import (
+from minimal_agora.models import (
     Step,
     Trajectory,
     TrajectoryOutcome,

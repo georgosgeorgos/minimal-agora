@@ -2,9 +2,9 @@ import json
 import tempfile
 from pathlib import Path
 
-from worldsim.analysis import aggregate_outcomes, format_report
-from worldsim.board import Board, _deep_merge
-from worldsim.models import (
+from minimal_agora.analysis import aggregate_outcomes, format_report
+from minimal_agora.board import Board, _deep_merge
+from minimal_agora.models import (
     AgentConfig,
     AgentRole,
     AggregateResult,
@@ -21,7 +21,7 @@ from worldsim.models import (
     TrajectoryType,
     WildcardEvent,
 )
-from worldsim.scenario import load_scenario, setup_workspace
+from minimal_agora.scenario import load_scenario, setup_workspace
 
 EXAMPLES_DIR = Path(__file__).parent.parent / "scenarios" / "examples"
 
@@ -155,8 +155,8 @@ def test_rules_loaded():
 
 
 def test_rules_in_prompt():
-    from worldsim.agents import build_actor_prompt
-    from worldsim.models import SimRule
+    from minimal_agora.agents import build_actor_prompt
+    from minimal_agora.models import SimRule
 
     agent = AgentConfig(role=AgentRole.ACTOR, name="test", perspective="test perspective")
     rules = [
@@ -171,7 +171,7 @@ def test_rules_in_prompt():
 
 
 def test_fallback_resolution_deep_merges():
-    from worldsim.loop import _fallback_resolution
+    from minimal_agora.loop import _fallback_resolution
 
     p1 = Proposal(
         agent="agent_a", role=AgentRole.ACTOR,
@@ -221,7 +221,7 @@ def test_wildcard_board_write():
 def test_roll_wildcard():
     import random
 
-    from worldsim.loop import _roll_wildcard
+    from minimal_agora.loop import _roll_wildcard
 
     events = [WildcardEvent(name="test", probability=1.0)]
     random.seed(42)
@@ -232,7 +232,7 @@ def test_roll_wildcard():
 
 
 def test_wildcard_state_impact_applied():
-    from worldsim.board import _deep_merge
+    from minimal_agora.board import _deep_merge
 
     scenario = load_scenario(EXAMPLES_DIR / "intelligence.yaml")
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -299,7 +299,7 @@ def _sample_state():
 
 
 def test_interaction_context_always():
-    from worldsim.agents import build_interaction_context
+    from minimal_agora.agents import build_interaction_context
 
     entities = _make_entities()
     rome = entities[0]
@@ -311,7 +311,7 @@ def test_interaction_context_always():
 
 
 def test_interaction_context_never():
-    from worldsim.agents import build_interaction_context
+    from minimal_agora.agents import build_interaction_context
 
     entities = _make_entities()
     persia = entities[2]
@@ -320,7 +320,7 @@ def test_interaction_context_never():
 
 
 def test_interaction_context_scheduled():
-    from worldsim.agents import build_interaction_context
+    from minimal_agora.agents import build_interaction_context
 
     entities = _make_entities()
     rome = entities[0]
@@ -334,7 +334,7 @@ def test_interaction_context_scheduled():
 
 
 def test_interaction_context_in_prompt():
-    from worldsim.agents import build_actor_prompt, build_interaction_context
+    from minimal_agora.agents import build_actor_prompt, build_interaction_context
 
     entities = _make_entities()
     rome = entities[0]
@@ -347,7 +347,7 @@ def test_interaction_context_in_prompt():
 
 
 def test_can_interact_with_filters():
-    from worldsim.agents import build_interaction_context
+    from minimal_agora.agents import build_interaction_context
 
     entities = _make_entities()
     rome = entities[0]
@@ -368,8 +368,8 @@ def test_load_complexity_scenario():
 
 
 def test_evaluate_fitness():
-    from worldsim.loop import _evaluate_fitness
-    from worldsim.models import FitnessConfig
+    from minimal_agora.loop import _evaluate_fitness
+    from minimal_agora.models import FitnessConfig
 
     fitness = FitnessConfig(metric="life.complexity", direction="maximize")
     assert _evaluate_fitness({"life": {"complexity": 10.0}}, fitness) == 10.0
@@ -379,7 +379,7 @@ def test_evaluate_fitness():
 
 
 def test_check_plateau():
-    from worldsim.loop import _check_plateau
+    from minimal_agora.loop import _check_plateau
 
     assert _check_plateau([1.0, 1.0, 1.0, 1.0, 1.0], window=5, threshold=0.01) is True
     assert _check_plateau([1.0, 2.0, 3.0, 4.0, 5.0], window=5, threshold=0.01) is False
@@ -389,8 +389,8 @@ def test_check_plateau():
 
 
 def test_fitness_recorded_in_metadata():
-    from worldsim.loop import _evaluate_fitness
-    from worldsim.models import FitnessConfig
+    from minimal_agora.loop import _evaluate_fitness
+    from minimal_agora.models import FitnessConfig
 
     fitness = FitnessConfig(metric="life.complexity")
     states = [
@@ -408,7 +408,7 @@ def test_fitness_recorded_in_metadata():
 
 
 def test_diversity_prompt_varies_by_trajectory():
-    from worldsim.agents import build_actor_prompt
+    from minimal_agora.agents import build_actor_prompt
 
     agent = AgentConfig(role=AgentRole.ACTOR, name="test", perspective="test")
     p0 = build_actor_prompt(agent, step=0, trajectory_id=0)
@@ -423,7 +423,7 @@ def test_diversity_prompt_varies_by_trajectory():
 
 
 def test_diversity_prompt_absent_without_trajectory_id():
-    from worldsim.agents import build_actor_prompt
+    from minimal_agora.agents import build_actor_prompt
 
     agent = AgentConfig(role=AgentRole.ACTOR, name="test", perspective="test")
     p = build_actor_prompt(agent, step=0)
@@ -431,7 +431,7 @@ def test_diversity_prompt_absent_without_trajectory_id():
 
 
 def test_resume_detection_empty():
-    from worldsim.loop import _detect_resume_point
+    from minimal_agora.loop import _detect_resume_point
 
     with tempfile.TemporaryDirectory() as tmpdir:
         workspace = Path(tmpdir)
@@ -439,7 +439,7 @@ def test_resume_detection_empty():
 
 
 def test_resume_detection_with_history():
-    from worldsim.loop import _detect_resume_point
+    from minimal_agora.loop import _detect_resume_point
 
     with tempfile.TemporaryDirectory() as tmpdir:
         workspace = Path(tmpdir)
@@ -473,7 +473,7 @@ def test_skip_completed_trajectory():
 
         import asyncio
 
-        from worldsim.loop import run_trajectory
+        from minimal_agora.loop import run_trajectory
 
         scenario = Scenario(
             name="test", mode=SimMode.COUNTERFACTUAL,
@@ -511,7 +511,7 @@ def test_load_market_scenario():
 
 
 def test_convergence_detection():
-    from worldsim.analysis import detect_convergence
+    from minimal_agora.analysis import detect_convergence
 
     converged = [
         Trajectory(

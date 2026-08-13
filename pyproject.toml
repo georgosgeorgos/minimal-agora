@@ -1,5 +1,5 @@
 [project]
-name = "worldsim"
+name = "minimal-agora"
 version = "0.1.0"
 description = "Counterfactual world simulation engine using LLM agent debate"
 requires-python = ">=3.12"
@@ -25,7 +25,10 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/worldsim"]
+packages = ["src/minimal_agora"]
+
+[project.scripts]
+minimal-agora = "minimal_agora.cli:main"
 
 [tool.ruff]
 line-length = 100

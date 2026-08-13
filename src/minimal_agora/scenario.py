@@ -6,8 +6,8 @@ from pathlib import Path
 
 import yaml
 
-from worldsim.board import _deep_merge
-from worldsim.models import Scenario
+from minimal_agora.board import _deep_merge
+from minimal_agora.models import Scenario
 
 
 def load_scenario(path: str | Path) -> Scenario:

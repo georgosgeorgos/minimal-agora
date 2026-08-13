@@ -1,5 +1,5 @@
 {
-    "project": "worldsim",
+    "project": "minimal-agora",
     "last_updated": "2026-08-13",
     "rules": {
         "single_active_feature": true,

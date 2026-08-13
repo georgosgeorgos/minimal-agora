@@ -1,12 +1,12 @@
 import tempfile
 from pathlib import Path
 
-from worldsim.models import (
+from minimal_agora.models import (
     Step,
     Trajectory,
     TrajectoryOutcome,
 )
-from worldsim.visualize import (
+from minimal_agora.visualize import (
     plot_field_timelines,
     plot_outcome_distribution,
     plot_population_scores,
@@ -160,7 +160,7 @@ def test_generate_all_plots_with_synthetic_data():
             with open(traj_dir / "trajectory.json", "w") as f:
                 f.write(t.model_dump_json(indent=2))
 
-        from worldsim.visualize import generate_all_plots
+        from minimal_agora.visualize import generate_all_plots
         paths = generate_all_plots(
             output_dir,
             fields=["life.complexity", "environment.oxygen_level"],

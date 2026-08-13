@@ -6,7 +6,7 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-from worldsim.models import (
+from minimal_agora.models import (
     AgentConfig,
     AgentRole,
     Critique,
@@ -73,7 +73,7 @@ def build_interaction_context(
     state: dict,
     step: int,
 ) -> str:
-    from worldsim.models import InteractionMode, TrajectoryType
+    from minimal_agora.models import InteractionMode, TrajectoryType
 
     if entity.interaction.mode == InteractionMode.NEVER:
         return ""

@@ -3,9 +3,9 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 
-from worldsim.loop import run_trajectory
-from worldsim.models import Scenario, Trajectory
-from worldsim.scenario import setup_workspace
+from minimal_agora.loop import run_trajectory
+from minimal_agora.models import Scenario, Trajectory
+from minimal_agora.scenario import setup_workspace
 
 
 async def run_batch(

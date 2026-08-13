@@ -22,7 +22,7 @@
 ### Session 002
 
 - Date: 2026-08-13
-- Goal: Design and implement worldsim engine
+- Goal: Design and implement minimal-agora engine
 - Completed:
   - Core engine: models, board, agents, loop, runner, analysis, CLI
   - Example scenarios: intelligence.yaml, mediterranean.yaml

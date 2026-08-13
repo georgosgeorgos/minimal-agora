@@ -6,7 +6,7 @@ from functools import partial
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
 
-from worldsim.analysis import compute_statistics, extract_field_timelines, load_trajectories
+from minimal_agora.analysis import compute_statistics, extract_field_timelines, load_trajectories
 
 
 class DashboardHandler(SimpleHTTPRequestHandler):
@@ -201,7 +201,7 @@ def _build_html() -> str:
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>worldsim dashboard</title>
+<title>minimal-agora dashboard</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -260,7 +260,7 @@ def _build_html() -> str:
 </head>
 <body class="colors">
 <div style="display:flex; align-items:center; gap:12px; margin-bottom:4px;">
-  <h1 id="title">worldsim dashboard</h1>
+  <h1 id="title">minimal-agora dashboard</h1>
   <span class="status live" id="status">connecting...</span>
 </div>
 <p class="subtitle" id="subtitle"></p>
@@ -537,7 +537,7 @@ document.getElementById('event-filter').addEventListener('click', (e) => {
 });
 
 function render(data) {
-  document.getElementById('title').textContent = data.scenario || 'worldsim dashboard';
+  document.getElementById('title').textContent = data.scenario || 'minimal-agora dashboard';
   document.getElementById('subtitle').textContent = `${data.n_trajectories || 0} trajectories`;
   renderStats(data);
   renderOutcomes(data);

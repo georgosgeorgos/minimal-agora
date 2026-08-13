@@ -5,7 +5,7 @@ import asyncio
 import sys
 from pathlib import Path
 
-from worldsim.analysis import (
+from minimal_agora.analysis import (
     aggregate_outcomes,
     detect_convergence,
     format_report,
@@ -13,12 +13,12 @@ from worldsim.analysis import (
     save_artifacts,
     save_report,
 )
-from worldsim.runner import run_batch
-from worldsim.scenario import load_scenario
+from minimal_agora.runner import run_batch
+from minimal_agora.scenario import load_scenario
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="worldsim — counterfactual world simulation")
+    parser = argparse.ArgumentParser(description="minimal-agora — counterfactual world simulation")
     subparsers = parser.add_subparsers(dest="command")
 
     run_parser = subparsers.add_parser("run", help="Run a simulation scenario")
@@ -62,7 +62,7 @@ def main() -> int:
 
 
 def cmd_run(args) -> int:
-    from worldsim.models import SimMode
+    from minimal_agora.models import SimMode
 
     scenario = load_scenario(args.scenario)
 
@@ -122,7 +122,7 @@ def cmd_report(args) -> int:
 
 
 def cmd_visualize(args) -> int:
-    from worldsim.visualize import generate_all_plots
+    from minimal_agora.visualize import generate_all_plots
 
     print(f"Generating plots from: {args.run_dir}")
     paths = generate_all_plots(
@@ -138,7 +138,7 @@ def cmd_visualize(args) -> int:
 
 
 def cmd_dashboard(args) -> int:
-    from worldsim.dashboard import start_dashboard
+    from minimal_agora.dashboard import start_dashboard
 
     start_dashboard(
         args.run_dir,

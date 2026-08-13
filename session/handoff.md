@@ -14,7 +14,7 @@
 ## Changed This Session
 
 - Code or behavior added:
-  - Full worldsim engine (8 Python modules in src/worldsim/)
+  - Full minimal-agora engine (8 Python modules in src/minimal-agora/)
   - Three simulation modes: counterfactual, population, open_ended
   - Entity type system: population, force, critic, evaluator
   - Domain rules with applies_to filtering
@@ -22,7 +22,7 @@
   - Phased entity execution in population mode (forces → populations → critics → evaluator)
   - CLI with -n, -m, --steps overrides
 - Infrastructure or harness changes:
-  - All harness files updated for worldsim (AGENTS.md, init.sh, features.json, progress.md, quality.md, checklist.md, handoff.md, rubric.md)
+  - All harness files updated for minimal-agora (AGENTS.md, init.sh, features.json, progress.md, quality.md, checklist.md, handoff.md, rubric.md)
   - .gitignore updated with __pycache__/, *.pyc, .pytest_cache/, runs/
   - README.md added
 

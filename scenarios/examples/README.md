@@ -22,7 +22,7 @@ contact, deus ex machina) inject catastrophic disruptions. Five domain rules
 govern evolutionary dynamics.
 
 ```bash
-uv run worldsim run scenarios/examples/intelligence.yaml -n 10
+uv run minimal-agora run scenarios/examples/intelligence.yaml -n 10
 ```
 
 ### mediterranean.yaml — Mediterranean Powers
@@ -42,7 +42,7 @@ resource competition, cultural influence, military logistics, power vacuums,
 and economic incentives.
 
 ```bash
-uv run worldsim run scenarios/examples/mediterranean.yaml -n 5
+uv run minimal-agora run scenarios/examples/mediterranean.yaml -n 5
 ```
 
 ### complexity.yaml — Complexity Maximizer
@@ -60,7 +60,7 @@ Rules enforce stepwise evolutionary transitions — no skipping from
 bacteria to intelligence. Extinction resets complexity but opens niches.
 
 ```bash
-uv run worldsim run scenarios/examples/complexity.yaml
+uv run minimal-agora run scenarios/examples/complexity.yaml
 ```
 
 ### pandemic.yaml — Pandemic Spread
@@ -78,7 +78,7 @@ cohesion, and vaccine progress. Wildcards include super-spreader events,
 mutations, and misinformation waves.
 
 ```bash
-uv run worldsim run scenarios/examples/pandemic.yaml -n 10
+uv run minimal-agora run scenarios/examples/pandemic.yaml -n 10
 ```
 
 ### market.yaml — Market Competition
@@ -96,7 +96,7 @@ Rules include capitalistic incentives, network effects, innovation dynamics,
 and resource competition. Wildcards: paradigm shift, recession, data breach.
 
 ```bash
-uv run worldsim run scenarios/examples/market.yaml -n 5
+uv run minimal-agora run scenarios/examples/market.yaml -n 5
 ```
 
 ## How Agents Work

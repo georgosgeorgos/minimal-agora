@@ -7,12 +7,12 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-from worldsim.analysis import (
+from minimal_agora.analysis import (
     compute_statistics,
     extract_field_timelines,
     load_trajectories,
 )
-from worldsim.models import Trajectory
+from minimal_agora.models import Trajectory
 
 COLORS = [
     "#2196F3", "#F44336", "#4CAF50", "#FF9800", "#9C27B0",

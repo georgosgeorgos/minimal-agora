@@ -8,7 +8,7 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-from worldsim.agents import (
+from minimal_agora.agents import (
     build_interaction_context,
     build_prompt,
     invoke_agent,
@@ -16,8 +16,8 @@ from worldsim.agents import (
     parse_proposal,
     parse_resolution,
 )
-from worldsim.board import Board, _deep_merge
-from worldsim.models import (
+from minimal_agora.board import Board, _deep_merge
+from minimal_agora.models import (
     AgentRole,
     FitnessConfig,
     Resolution,

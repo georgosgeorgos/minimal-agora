@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from worldsim.models import Critique, Proposal, Resolution, Step, WildcardEvent
+from minimal_agora.models import Critique, Proposal, Resolution, Step, WildcardEvent
 
 
 class Board:

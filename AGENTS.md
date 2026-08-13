@@ -1,6 +1,6 @@
 # AGENTS.md
 
-This repository implements **worldsim**, a world simulation engine where LLM
+This repository implements **minimal-agora**, a world simulation engine where LLM
 agents debate and interact to explore counterfactual hypotheses and population
 dynamics. The goal is not to maximize raw code output. The goal is to leave the
 repo in a state where the next session can continue without guessing.
@@ -21,7 +21,7 @@ repo in a state where the next session can continue without guessing.
 | `session/checklist.md` | Session checklist |
 | `session/handoff.md` | Session handoff notes |
 | `verification/rubric.md` | Evaluator rubric for acceptance review |
-| `src/worldsim/` | Core engine: models, board, agents, loop, runner, analysis, CLI |
+| `src/minimal_agora/` | Core engine: models, board, agents, loop, runner, analysis, CLI |
 | `scenarios/examples/` | Example scenario YAML files |
 | `tests/` | Pytest test suite |
 | `_references/` | Related project references |
@@ -42,7 +42,7 @@ repo in a state where the next session can continue without guessing.
 uv sync --group dev          # Install all dependencies
 uv run pytest tests/ -v      # Run test suite
 uv run ruff check src/ tests/  # Lint check
-uv run worldsim run scenarios/examples/intelligence.yaml -n 3  # Run simulation
+uv run minimal-agora run scenarios/examples/intelligence.yaml -n 3  # Run simulation
 ```
 
 ## Startup Workflow

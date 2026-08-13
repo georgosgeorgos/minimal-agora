@@ -27,5 +27,5 @@ fi
 echo "==> Baseline verification complete"
 echo ""
 echo "To run a simulation:"
-echo "  uv run worldsim run scenarios/examples/intelligence.yaml -n 3"
-echo "  uv run worldsim run scenarios/examples/mediterranean.yaml -n 3 -m population"
+echo "  uv run minimal-agora run scenarios/examples/intelligence.yaml -n 3"
+echo "  uv run minimal-agora run scenarios/examples/mediterranean.yaml -n 3 -m population"
