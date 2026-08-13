@@ -5,29 +5,27 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT_DIR"
 
-# Replace these commands with the correct commands for your repository.
-INSTALL_CMD=(npm install)
-VERIFY_CMD=(npm test)
-START_CMD=(npm run dev)
-
 echo "==> Working directory: $PWD"
 
-echo "==> Installing skills (mattpocock/skills)"
-npx skills@latest add mattpocock/skills || echo "    Skill install failed — continuing."
-
 echo "==> Syncing dependencies"
-"${INSTALL_CMD[@]}"
+uv sync --group dev
 
-echo "==> Running baseline verification"
-"${VERIFY_CMD[@]}"
+echo "==> Running lint check"
+uv run ruff check src/ tests/
 
-echo "==> Startup command"
-printf '    %q' "${START_CMD[@]}"
-printf '\n'
+echo "==> Running test suite"
+uv run pytest tests/ -v
 
-if [ "${RUN_START_COMMAND:-0}" = "1" ]; then
-  echo "==> Starting the app"
-  exec "${START_CMD[@]}"
+echo "==> Checking claude CLI availability"
+if command -v claude &> /dev/null; then
+  echo "    claude CLI found: $(command -v claude)"
+else
+  echo "    WARNING: claude CLI not found — agent invocation will fail"
+  echo "    Install Claude Code: https://docs.anthropic.com/en/docs/claude-code"
 fi
 
-echo "Set RUN_START_COMMAND=1 if you want init.sh to launch the app directly."
+echo "==> Baseline verification complete"
+echo ""
+echo "To run a simulation:"
+echo "  uv run worldsim run scenarios/examples/intelligence.yaml -n 3"
+echo "  uv run worldsim run scenarios/examples/mediterranean.yaml -n 3 -m population"

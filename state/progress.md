@@ -1,48 +1,56 @@
 # Progress Log
 
-<!--
-This filename is kept for compatibility with the course examples. The file is
-agent-agnostic: Codex, Claude Code, OpenHands, and other coding agents can use
-it. Read it at session startup and update it before handoff through the
-repository's agent instructions; no agent updates it automatically.
--->
-
-This is a generic repository-local session progress log. The
-`progress.md` filename is a historical course convention, not a
-Claude Code requirement. Any coding agent can use it when the repository's
-instructions tell it to read the file at startup and update it before handoff;
-agents do not update it automatically.
-
 ## Current Verified State
 
-- Repository root:
-- Standard startup path:
-- Standard verification path:
-- Current highest-priority unfinished feature:
-- Current blocker:
+- Repository root: `/Users/ggiannon/minimal-harness`
+- Standard startup path: `./init.sh` (runs `uv sync`, `ruff check`, `pytest`)
+- Standard verification path: `uv run pytest tests/ -v && uv run ruff check src/ tests/`
+- Current highest-priority unfinished feature: fix-001 (fix _fallback_resolution deep merge)
+- Current blocker: None
 
 ## Session Log
 
 ### Session 001
 
-- Date:
-- Goal:
-- Completed:
-- Verification run:
-- Evidence captured:
-- Commits:
-- Files or artifacts updated:
-- Known risk or unresolved issue:
-- Next best step:
+- Date: 2026-08-13
+- Goal: Set up repo harness (AGENTS.md, .gitignore, symlinks)
+- Completed: CLAUDE.md symlink, AGENTS.md cleanup, .gitignore, untracked .claude/.agents/
+- Verification run: N/A (harness-only changes)
+- Evidence captured: git commits
+- Commits: f256c6b, 718c1e3
+- Files or artifacts updated: AGENTS.md, CLAUDE.md, .gitignore
+- Known risk or unresolved issue: None
+- Next best step: Design worldsim architecture
 
 ### Session 002
 
-- Date:
-- Goal:
+- Date: 2026-08-13
+- Goal: Design and implement worldsim engine
 - Completed:
-- Verification run:
-- Evidence captured:
-- Commits:
+  - Core engine: models, board, agents, loop, runner, analysis, CLI
+  - Example scenarios: intelligence.yaml (evolution), mediterranean.yaml (populations)
+  - Domain rules system with applies_to filtering
+  - Wildcard catastrophic events (6 types including alien/deus ex machina)
+  - Entity/population model (population, force, critic, evaluator types)
+  - Population mode with phased entity execution
+  - CLI with mode/trajectory/step overrides
+  - README documenting all modes and usage
+  - 14 passing tests, clean ruff lint
+  - Related projects reference list
+- Verification run: `uv run pytest tests/ -v` — 14 passed, `ruff check` — 0 errors
+- Evidence captured: Test output in session, commits on main
+- Commits: cd330e2, e9747c2, 540335b, dd2d93d, a72b885
 - Files or artifacts updated:
+  - src/worldsim/*.py (8 modules)
+  - scenarios/examples/intelligence.yaml, mediterranean.yaml
+  - tests/test_models.py (14 tests)
+  - pyproject.toml, uv.lock, README.md
+  - All harness files updated to reflect worldsim specifics
 - Known risk or unresolved issue:
-- Next best step:
+  - _fallback_resolution uses dict.update() instead of deep merge (bug)
+  - Wildcard state_impact is advisory only, not auto-applied
+  - Entity interaction (can_interact_with) declared but not implemented
+  - No e2e test with real Claude CLI subprocess
+  - No visualization support yet
+  - No fitness tracking for open_ended mode
+- Next best step: Fix _fallback_resolution (fix-001), then auto-apply wildcard state_impact (fix-002)

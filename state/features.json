@@ -1,6 +1,6 @@
 {
-    "project": "replace-with-project-name",
-    "last_updated": "YYYY-MM-DD",
+    "project": "worldsim",
+    "last_updated": "2026-08-13",
     "rules": {
         "single_active_feature": true,
         "passing_requires_evidence": true,
@@ -14,51 +14,159 @@
     },
     "features": [
         {
-            "id": "chat-001",
+            "id": "core-001",
             "priority": 1,
-            "area": "chat",
-            "title": "Create a new conversation",
-            "user_visible_behavior": "A user can click New Chat and see a fresh empty conversation.",
-            "status": "not_started",
+            "area": "core",
+            "title": "Models, scenario loading, board management",
+            "user_visible_behavior": "Pydantic models validate scenario YAML. Workspace directories are created with correct state, narrative, and history files.",
+            "status": "passing",
             "verification": [
-                "Open the app.",
-                "Click New Chat.",
-                "Verify a new conversation appears in the sidebar.",
-                "Verify the main panel shows an empty conversation state."
+                "uv run pytest tests/test_models.py::test_load_intelligence_scenario -v",
+                "uv run pytest tests/test_models.py::test_setup_workspace -v",
+                "uv run pytest tests/test_models.py::test_deep_merge -v",
+                "uv run pytest tests/test_models.py::test_board_apply_resolution -v"
             ],
-            "evidence": [],
+            "evidence": ["14 tests passing as of 2026-08-13"],
             "notes": ""
         },
         {
-            "id": "chat-002",
+            "id": "core-002",
             "priority": 2,
-            "area": "chat",
-            "title": "Send a message in the current conversation",
-            "user_visible_behavior": "A user can submit a message and see it appear in the active thread.",
+            "area": "core",
+            "title": "Domain rules in agent prompts",
+            "user_visible_behavior": "Scenario rules are injected into agent prompts, filtered by applies_to. Rules appear in the Governing Rules section of each prompt.",
+            "status": "passing",
+            "verification": [
+                "uv run pytest tests/test_models.py::test_rules_loaded -v",
+                "uv run pytest tests/test_models.py::test_rules_in_prompt -v"
+            ],
+            "evidence": ["test_rules_loaded and test_rules_in_prompt passing as of 2026-08-13"],
+            "notes": ""
+        },
+        {
+            "id": "core-003",
+            "priority": 3,
+            "area": "core",
+            "title": "Wildcard catastrophic events",
+            "user_visible_behavior": "Wildcard events fire stochastically per step. Event file is written to board for agents to read. Includes asteroid, gamma ray, volcano, snowball, alien, deus ex machina.",
+            "status": "passing",
+            "verification": [
+                "uv run pytest tests/test_models.py::test_wildcards_loaded -v",
+                "uv run pytest tests/test_models.py::test_wildcard_board_write -v",
+                "uv run pytest tests/test_models.py::test_roll_wildcard -v"
+            ],
+            "evidence": ["3 wildcard tests passing as of 2026-08-13"],
+            "notes": "state_impact is advisory only — not auto-applied to state. Known gap."
+        },
+        {
+            "id": "core-004",
+            "priority": 4,
+            "area": "core",
+            "title": "Entity/population model and workspace setup",
+            "user_visible_behavior": "Scenarios with entities merge per-entity initial_state into the shared world state. Entity types: population, force, critic, evaluator.",
+            "status": "passing",
+            "verification": [
+                "uv run pytest tests/test_models.py::test_load_mediterranean_scenario -v",
+                "uv run pytest tests/test_models.py::test_entity_state_merged_into_workspace -v"
+            ],
+            "evidence": ["2 entity tests passing as of 2026-08-13"],
+            "notes": "Interaction logic (can_interact_with, InteractionConfig) declared in model but NOT implemented in loop."
+        },
+        {
+            "id": "core-005",
+            "priority": 5,
+            "area": "core",
+            "title": "Analysis and outcome aggregation",
+            "user_visible_behavior": "Trajectories are classified post-hoc, outcomes counted, rates computed, text report generated.",
+            "status": "passing",
+            "verification": [
+                "uv run pytest tests/test_models.py::test_aggregate_outcomes -v",
+                "uv run pytest tests/test_models.py::test_format_report -v"
+            ],
+            "evidence": ["2 analysis tests passing as of 2026-08-13"],
+            "notes": ""
+        },
+        {
+            "id": "fix-001",
+            "priority": 6,
+            "area": "bugfix",
+            "title": "Fix _fallback_resolution to use deep merge",
+            "user_visible_behavior": "When no judge is available, fallback resolution deep-merges proposals instead of overwriting.",
             "status": "not_started",
             "verification": [
-                "Open an existing conversation.",
-                "Type a message into the input.",
-                "Submit the message.",
-                "Verify the new message appears in the thread."
+                "Add test: two proposals with overlapping nested keys both survive in fallback resolution."
+            ],
+            "evidence": [],
+            "notes": "Currently uses dict.update() which silently drops earlier proposals' keys."
+        },
+        {
+            "id": "fix-002",
+            "priority": 7,
+            "area": "bugfix",
+            "title": "Auto-apply wildcard state_impact to board state",
+            "user_visible_behavior": "When a wildcard fires, its state_impact is directly applied to state.json in addition to being written as a file for agents.",
+            "status": "not_started",
+            "verification": [
+                "Add test: wildcard with state_impact modifies state.json when applied."
+            ],
+            "evidence": [],
+            "notes": "Currently state_impact is advisory — agents may ignore it."
+        },
+        {
+            "id": "feat-001",
+            "priority": 8,
+            "area": "reliability",
+            "title": "Agent output retry and validation",
+            "user_visible_behavior": "If an agent writes malformed JSON or fails to write a file, the system retries once before proceeding with None.",
+            "status": "not_started",
+            "verification": [
+                "Add test: malformed JSON file is handled gracefully.",
+                "Add test: missing output file triggers retry."
             ],
             "evidence": [],
             "notes": ""
         },
         {
-            "id": "chat-003",
-            "priority": 3,
-            "area": "chat",
-            "title": "Persist the active conversation list",
-            "user_visible_behavior": "A user sees previously created conversations after restarting the app.",
+            "id": "feat-002",
+            "priority": 9,
+            "area": "population",
+            "title": "Implement entity interaction logic",
+            "user_visible_behavior": "Population entities can see each other's proposals. can_interact_with and InteractionConfig are respected in the loop.",
             "status": "not_started",
             "verification": [
-                "Create two conversations.",
-                "Restart the app.",
-                "Verify both conversations still appear in the sidebar."
+                "Add test: population agent prompt includes visible neighbor state.",
+                "Add test: InteractionMode.NEVER prevents cross-entity visibility."
             ],
             "evidence": [],
-            "notes": ""
+            "notes": "Schema exists but no runtime implementation."
+        },
+        {
+            "id": "feat-003",
+            "priority": 10,
+            "area": "visualization",
+            "title": "Trajectory visualization",
+            "user_visible_behavior": "CLI subcommand generates plots: state field timelines, outcome distributions, wildcard event markers.",
+            "status": "not_started",
+            "verification": [
+                "Run worldsim visualize on a completed run directory.",
+                "Verify plots are generated as PNG files."
+            ],
+            "evidence": [],
+            "notes": "User explicitly requested visualization of evolution/changes."
+        },
+        {
+            "id": "feat-004",
+            "priority": 11,
+            "area": "core",
+            "title": "End-to-end test with Claude CLI",
+            "user_visible_behavior": "A minimal scenario completes a full loop with real Claude CLI subprocess calls.",
+            "status": "not_started",
+            "verification": [
+                "Run a 1-trajectory, 2-step scenario end-to-end.",
+                "Verify trajectory.json is written with valid outcome."
+            ],
+            "evidence": [],
+            "notes": "Requires claude CLI to be installed and authenticated."
         }
     ]
 }
