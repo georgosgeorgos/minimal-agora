@@ -485,6 +485,31 @@ def test_skip_completed_trajectory():
         assert result.outcome.classification == "done"
 
 
+def test_load_pandemic_scenario():
+    scenario = load_scenario(EXAMPLES_DIR / "pandemic.yaml")
+    assert scenario.name == "pandemic-spread"
+    assert scenario.mode == SimMode.COUNTERFACTUAL
+    assert scenario.n_trajectories == 10
+    assert len(scenario.agents) == 5
+    assert len(scenario.rules) == 4
+    assert len(scenario.wildcards) == 3
+    assert scenario.initial_state["disease"]["transmissibility"] == 0.7
+    assert "east_asia" in scenario.initial_state["regions"]
+
+
+def test_load_market_scenario():
+    scenario = load_scenario(EXAMPLES_DIR / "market.yaml")
+    assert scenario.name == "market-competition"
+    assert scenario.mode == SimMode.POPULATION
+    assert len(scenario.entities) == 7
+    populations = [e for e in scenario.entities if e.type.value == "population"]
+    assert len(populations) == 3
+    assert populations[0].can_interact_with == ["beta_inc", "gamma_labs"]
+    assert len(scenario.rules) == 4
+    cap_rule = next(r for r in scenario.rules if r.name == "capitalistic_incentives")
+    assert "population" in cap_rule.applies_to
+
+
 def test_convergence_detection():
     from worldsim.analysis import detect_convergence
 

@@ -1,0 +1,242 @@
+name: "market-competition"
+mode: population
+n_trajectories: 5
+step_budget: 15
+description: >
+  Simulate market competition between three tech companies in a
+  regulated environment. Each step represents one fiscal quarter.
+  Companies compete for market share, talent, and innovation while
+  navigating regulatory pressure and market forces.
+
+initial_state:
+  market:
+    total_size_billions: 500
+    growth_rate: 0.05
+    regulation_level: moderate
+    antitrust_pressure: low
+    consumer_sentiment: neutral
+  technology:
+    current_paradigm: "cloud_computing"
+    disruption_probability: 0.1
+    open_source_momentum: growing
+  economy:
+    interest_rate: 0.04
+    inflation: 0.03
+    recession_risk: low
+  time:
+    quarter: 1
+    year: 2025
+    step_scale: "1 quarter"
+
+entities:
+  - name: alpha_corp
+    type: population
+    state_prefix: "companies.alpha_corp"
+    initial_state:
+      market_share: 0.40
+      revenue_billions: 200
+      r_and_d_spend: 30
+      talent_score: 85
+      innovation_index: 70
+      public_trust: 65
+      cash_reserves: 150
+      products: ["cloud", "search", "ai"]
+    agents:
+      - role: actor
+        name: alpha_strategy
+        perspective: >
+          You are Alpha Corp's strategy team. You are the market leader
+          with the largest cash reserves and talent pool. Your advantage
+          is scale and data. Your risk is regulatory scrutiny and
+          complacency. You can acquire competitors, invest in R&D,
+          launch new products, or lobby regulators. Consider competitive
+          dynamics: cutting prices hurts margins but may prevent rival
+          growth.
+    can_interact_with: ["beta_inc", "gamma_labs"]
+    interaction:
+      mode: always
+
+  - name: beta_inc
+    type: population
+    state_prefix: "companies.beta_inc"
+    initial_state:
+      market_share: 0.25
+      revenue_billions: 125
+      r_and_d_spend: 20
+      talent_score: 75
+      innovation_index: 80
+      public_trust: 70
+      cash_reserves: 80
+      products: ["enterprise", "cloud", "hardware"]
+    agents:
+      - role: actor
+        name: beta_strategy
+        perspective: >
+          You are Beta Inc's strategy team. You are the challenger with
+          strong innovation but smaller scale. Your advantage is agility
+          and enterprise relationships. Consider: do you compete head-on
+          with Alpha or find uncontested markets? Partnership vs.
+          competition? When to invest in moonshots vs. core business?
+    can_interact_with: ["alpha_corp", "gamma_labs"]
+    interaction:
+      mode: always
+
+  - name: gamma_labs
+    type: population
+    state_prefix: "companies.gamma_labs"
+    initial_state:
+      market_share: 0.10
+      revenue_billions: 50
+      r_and_d_spend: 15
+      talent_score: 90
+      innovation_index: 95
+      public_trust: 80
+      cash_reserves: 30
+      products: ["ai", "research_tools"]
+    agents:
+      - role: actor
+        name: gamma_strategy
+        perspective: >
+          You are Gamma Labs' strategy team. You are the disruptor with
+          the highest innovation and talent but limited resources. Your
+          advantage is cutting-edge AI research. Your risk is running
+          out of capital before achieving scale. Consider: when to
+          monetize research, whether to accept acquisition offers, how
+          to attract and retain top talent against richer rivals.
+    can_interact_with: ["alpha_corp", "beta_inc"]
+    interaction:
+      mode: always
+
+  - name: market_forces
+    type: force
+    agents:
+      - role: actor
+        name: market_dynamics
+        perspective: >
+          You represent market forces: consumer demand shifts, talent
+          mobility, capital market sentiment, supply chain disruptions.
+          Markets reward innovation and punish stagnation. Network effects
+          amplify market leaders. But disruption can rapidly shift
+          market share. Talent flows toward companies with high
+          innovation index and public trust.
+
+  - name: regulator
+    type: force
+    agents:
+      - role: actor
+        name: regulatory_body
+        perspective: >
+          You represent regulatory and antitrust authorities. You monitor
+          market concentration, anti-competitive practices, data privacy,
+          and AI safety. When market_share exceeds 0.5 for any company,
+          antitrust pressure increases. You can impose fines, mandate
+          data sharing, block acquisitions, or require safety standards.
+          Regulation is slow but consequential.
+
+  - name: analyst
+    type: critic
+    agents:
+      - role: critic
+        name: market_analyst
+        perspective: >
+          You evaluate whether proposed market changes are realistic.
+          Market share shifts of more than 5% per quarter are unusual.
+          R&D spending must come from revenue or reserves. Talent scores
+          reflect hiring, culture, and compensation — they change slowly.
+          Innovation requires sustained investment, not instant results.
+
+  - name: board_of_directors
+    type: evaluator
+    agents:
+      - role: judge
+        name: market_judge
+        perspective: >
+          You are an impartial market judge. Resolve competitive actions
+          into quarterly outcomes. When companies compete for the same
+          market segment, the one with better product-market fit and
+          larger investment wins incrementally. Consider: is an acquisition
+          blocked by regulators? Does a price war erode all margins?
+          Does a talent war drive up costs for everyone? Score each
+          company on: market position, financial health, innovation
+          pipeline, and strategic positioning.
+
+rules:
+  - name: resource_competition
+    description: >
+      R&D spending comes from revenue or cash reserves. Companies
+      cannot spend more than they have. Talent competition is
+      zero-sum — one company's gain is another's loss.
+
+  - name: capitalistic_incentives
+    description: >
+      Companies are profit-maximizing entities. They invest where
+      expected returns are highest. Market share translates to
+      pricing power. Scale advantages compound. But excessive
+      monopoly power triggers regulatory intervention.
+    applies_to: ["population"]
+
+  - name: innovation_dynamics
+    description: >
+      Innovation requires sustained R&D investment (minimum 3 quarters
+      for incremental, 6+ for breakthrough). Higher innovation_index
+      increases probability of breakthrough products. Innovation
+      can be acquired through M&A but integration takes time.
+
+  - name: network_effects
+    description: >
+      Products with network effects (cloud, AI platforms) become more
+      valuable as they gain users. Market leaders in networked markets
+      are hard to displace without a paradigm shift.
+
+wildcards:
+  - name: paradigm_shift
+    probability: 0.05
+    description: >
+      A technological paradigm shift (quantum computing breakthrough,
+      new computing architecture) disrupts the market. Companies
+      heavily invested in the old paradigm lose value; agile
+      innovators gain.
+    state_impact:
+      technology:
+        disruption_probability: 0.5
+
+  - name: recession
+    probability: 0.08
+    description: >
+      Economic downturn reduces market spending, tightens capital
+      markets, and forces cost-cutting. Companies with low cash
+      reserves are most vulnerable.
+    state_impact:
+      economy:
+        recession_risk: high
+
+  - name: data_breach
+    probability: 0.06
+    description: >
+      A major data breach at one of the companies erodes public
+      trust and triggers regulatory scrutiny.
+    state_impact:
+      market:
+        consumer_sentiment: negative
+
+termination:
+  max_steps: 15
+  conditions:
+    - field: "companies.alpha_corp.market_share"
+      greater_than: 0.7
+    - field: "companies.gamma_labs.cash_reserves"
+      less_than: 0
+
+outcome:
+  question: "Which competitive dynamic prevailed?"
+  classifier:
+    - name: monopoly
+      condition:
+        field: "companies.alpha_corp.market_share"
+        greater_than: 0.6
+    - name: disruption
+      condition:
+        field: "companies.gamma_labs.market_share"
+        greater_than: 0.3
+    - name: oligopoly
+      default: true

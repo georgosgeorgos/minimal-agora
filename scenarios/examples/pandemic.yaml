@@ -1,0 +1,167 @@
+name: "pandemic-spread"
+mode: counterfactual
+n_trajectories: 10
+step_budget: 15
+description: >
+  Simulate a novel pandemic spreading across three connected regions.
+  Each step represents one month. Tracks disease spread, public health
+  response, economic impact, and social cohesion. The question: does
+  coordinated response prevent collapse?
+
+initial_state:
+  disease:
+    name: "Novel Pathogen X"
+    transmissibility: 0.7
+    mortality_rate: 0.03
+    incubation_days: 5
+    detected: false
+    mutations: 0
+  regions:
+    east_asia:
+      population_millions: 500
+      infected_pct: 0.001
+      healthcare_capacity: 0.8
+      containment_measures: none
+      economy: 100
+      social_cohesion: 75
+    europe:
+      population_millions: 450
+      infected_pct: 0.0
+      healthcare_capacity: 0.7
+      containment_measures: none
+      economy: 100
+      social_cohesion: 70
+    americas:
+      population_millions: 600
+      infected_pct: 0.0
+      healthcare_capacity: 0.6
+      containment_measures: none
+      economy: 100
+      social_cohesion: 60
+  global:
+    travel_restrictions: false
+    vaccine_progress: 0.0
+    information_quality: high
+    cooperation_level: moderate
+  time:
+    month: 1
+    step_scale: "1 month"
+
+agents:
+  - role: actor
+    name: epidemiological_dynamics
+    perspective: >
+      You model disease spread dynamics. Consider transmissibility,
+      population density, healthcare capacity, and containment measures.
+      The disease spreads between regions via travel. Overwhelmed healthcare
+      increases mortality. Containment measures reduce spread but have
+      economic costs. The pathogen may mutate, changing its properties.
+
+  - role: actor
+    name: policy_response
+    perspective: >
+      You represent government policy responses across regions. Governments
+      react to visible cases with varying speed and effectiveness. Options:
+      travel restrictions, lockdowns, testing programs, vaccine development
+      funding, public communication. Responses are constrained by political
+      will, economic pressure, and information quality. Regions may or may
+      not coordinate.
+
+  - role: actor
+    name: social_dynamics
+    perspective: >
+      You model social responses: public compliance, misinformation,
+      panic buying, healthcare worker burnout, community mutual aid,
+      anti-lockdown movements. Social cohesion affects compliance with
+      measures. Economic hardship erodes compliance. Trust in institutions
+      matters. Information quality shapes behavior.
+
+  - role: critic
+    name: epidemiologist_critic
+    perspective: >
+      You evaluate whether disease spread rates, policy timelines, and
+      social responses are realistic. Flag unrealistic recovery rates,
+      impossible containment without measures, or policies that couldn't
+      be implemented in the stated timeframe. Ground truth: real pandemic
+      dynamics from historical examples (1918 flu, COVID-19, Ebola).
+
+  - role: judge
+    name: pandemic_judge
+    perspective: >
+      Synthesize all proposals into the most realistic month-by-month
+      outcome. Balance disease dynamics, policy responses, and social
+      factors. Regions with overwhelmed healthcare see higher mortality.
+      Economic damage compounds over time. Vaccine development follows
+      a realistic timeline (12-18 months minimum).
+
+rules:
+  - name: healthcare_collapse
+    description: >
+      When infected_pct exceeds healthcare_capacity, mortality rate
+      doubles and social cohesion drops by 10 per step.
+
+  - name: economic_feedback
+    description: >
+      Containment measures (lockdowns, travel restrictions) reduce
+      economy by 5-15 per step depending on severity. Economic
+      decline below 70 reduces social cohesion by 5 per step.
+
+  - name: travel_transmission
+    description: >
+      Without travel restrictions, disease spreads between regions
+      at 10-30% of the source region's infected rate per month.
+      Travel restrictions reduce inter-region spread by 80%.
+
+  - name: vaccine_timeline
+    description: >
+      Vaccine development starts at 0 and progresses 5-8% per month
+      with funding. Vaccine available at progress >= 100. Distribution
+      takes 3-6 months to reach meaningful coverage.
+
+wildcards:
+  - name: super_spreader_event
+    probability: 0.1
+    description: >
+      A large gathering (religious event, sporting event, political rally)
+      causes a massive spike in cases in one region.
+    state_impact:
+      disease:
+        transmissibility: 0.85
+
+  - name: mutation
+    probability: 0.05
+    description: >
+      The pathogen mutates. Could become more transmissible, more lethal,
+      or partially evade prior immunity/vaccines.
+    state_impact:
+      disease:
+        mutations: 1
+
+  - name: misinformation_wave
+    probability: 0.08
+    description: >
+      A major misinformation campaign undermines public health messaging.
+      Compliance with measures drops across all regions.
+    state_impact:
+      global:
+        information_quality: degraded
+
+termination:
+  max_steps: 15
+  conditions:
+    - field: "global.vaccine_progress"
+      greater_than: 100
+
+outcome:
+  question: "Did coordinated response prevent societal collapse?"
+  classifier:
+    - name: controlled
+      condition:
+        field: "regions.europe.infected_pct"
+        less_than: 0.05
+    - name: collapse
+      condition:
+        field: "regions.americas.social_cohesion"
+        less_than: 20
+    - name: managed_crisis
+      default: true
