@@ -54,3 +54,23 @@
   - No visualization support yet
   - No fitness tracking for open_ended mode
 - Next best step: Fix _fallback_resolution (fix-001), then auto-apply wildcard state_impact (fix-002)
+
+## Roadmap (priority order)
+
+| ID | Area | Title | Status | Effort |
+|----|------|-------|--------|--------|
+| core-001 | core | Models, scenario loading, board | passing | done |
+| core-002 | core | Domain rules in prompts | passing | done |
+| core-003 | core | Wildcard catastrophic events | passing | done |
+| core-004 | core | Entity/population model | passing | done |
+| core-005 | core | Analysis and aggregation | passing | done |
+| fix-001 | bugfix | Fix fallback resolution deep merge | not_started | 5 min |
+| fix-002 | bugfix | Auto-apply wildcard state_impact | not_started | 10 min |
+| feat-001 | reliability | Agent output retry/validation | not_started | 30 min |
+| feat-002 | population | Entity interaction logic | not_started | 1-2 hrs |
+| feat-003 | visualization | Trajectory visualization | not_started | 1-2 hrs |
+| feat-004 | core | End-to-end test with Claude CLI | not_started | 30 min |
+| feat-005 | core | Fitness tracking (open_ended mode) | not_started | 1 hr |
+| feat-006 | reliability | Mode collapse mitigation | not_started | 1 hr |
+| feat-007 | reliability | Checkpoint and resume | not_started | 1 hr |
+| feat-008 | scenarios | Additional example scenarios | not_started | 1 hr |
