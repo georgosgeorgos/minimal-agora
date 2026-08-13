@@ -8,11 +8,15 @@ from worldsim.models import (
     AgentConfig,
     AgentRole,
     AggregateResult,
+    EntityConfig,
+    InteractionConfig,
+    InteractionMode,
     Proposal,
     Resolution,
     SimMode,
     Trajectory,
     TrajectoryOutcome,
+    TrajectoryType,
     WildcardEvent,
 )
 from worldsim.scenario import load_scenario, setup_workspace
@@ -255,3 +259,97 @@ def test_proposal_roundtrip():
     p2 = Proposal.model_validate_json(data)
     assert p2.agent == "test_agent"
     assert p2.proposed_changes["life"]["complexity"] == "multicellular"
+
+
+def _make_entities():
+    rome = EntityConfig(
+        name="rome", type=TrajectoryType.POPULATION,
+        state_prefix="populations.rome",
+        agents=[AgentConfig(role=AgentRole.ACTOR, name="roman_senate", perspective="Rome")],
+        can_interact_with=["greece"],
+        interaction=InteractionConfig(mode=InteractionMode.ALWAYS),
+    )
+    greece = EntityConfig(
+        name="greece", type=TrajectoryType.POPULATION,
+        state_prefix="populations.greece",
+        agents=[AgentConfig(role=AgentRole.ACTOR, name="greek_council", perspective="Greece")],
+        can_interact_with=["rome"],
+        interaction=InteractionConfig(mode=InteractionMode.ALWAYS),
+    )
+    persia = EntityConfig(
+        name="persia", type=TrajectoryType.POPULATION,
+        state_prefix="populations.persia",
+        agents=[AgentConfig(role=AgentRole.ACTOR, name="persian_court", perspective="Persia")],
+        can_interact_with=[],
+        interaction=InteractionConfig(mode=InteractionMode.NEVER),
+    )
+    return [rome, greece, persia]
+
+
+def _sample_state():
+    return {
+        "populations": {
+            "rome": {"military_strength": 60, "economy": 50},
+            "greece": {"military_strength": 45, "economy": 55},
+            "persia": {"military_strength": 70, "economy": 65},
+        },
+    }
+
+
+def test_interaction_context_always():
+    from worldsim.agents import build_interaction_context
+
+    entities = _make_entities()
+    rome = entities[0]
+    ctx = build_interaction_context(rome, entities, _sample_state(), step=0)
+    assert "Greece" in ctx
+    assert "military_strength" in ctx
+    assert "45" in ctx
+    assert "Persia" not in ctx
+
+
+def test_interaction_context_never():
+    from worldsim.agents import build_interaction_context
+
+    entities = _make_entities()
+    persia = entities[2]
+    ctx = build_interaction_context(persia, entities, _sample_state(), step=0)
+    assert ctx == ""
+
+
+def test_interaction_context_scheduled():
+    from worldsim.agents import build_interaction_context
+
+    entities = _make_entities()
+    rome = entities[0]
+    rome.interaction = InteractionConfig(mode=InteractionMode.SCHEDULED, every_n_steps=3)
+    ctx_step0 = build_interaction_context(rome, entities, _sample_state(), step=0)
+    assert "Greece" in ctx_step0
+    ctx_step1 = build_interaction_context(rome, entities, _sample_state(), step=1)
+    assert ctx_step1 == ""
+    ctx_step3 = build_interaction_context(rome, entities, _sample_state(), step=3)
+    assert "Greece" in ctx_step3
+
+
+def test_interaction_context_in_prompt():
+    from worldsim.agents import build_actor_prompt, build_interaction_context
+
+    entities = _make_entities()
+    rome = entities[0]
+    ctx = build_interaction_context(rome, entities, _sample_state(), step=0)
+    agent = rome.agents[0]
+    prompt = build_actor_prompt(agent, step=0, interaction_context=ctx)
+    assert "Neighboring Populations" in prompt
+    assert "Greece" in prompt
+    assert "military_strength" in prompt
+
+
+def test_can_interact_with_filters():
+    from worldsim.agents import build_interaction_context
+
+    entities = _make_entities()
+    rome = entities[0]
+    rome.can_interact_with = ["persia"]
+    ctx = build_interaction_context(rome, entities, _sample_state(), step=0)
+    assert "Persia" in ctx
+    assert "Greece" not in ctx

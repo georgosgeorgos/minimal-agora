@@ -6,7 +6,15 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-from worldsim.models import AgentConfig, AgentRole, Critique, Proposal, Resolution, SimRule
+from worldsim.models import (
+    AgentConfig,
+    AgentRole,
+    Critique,
+    EntityConfig,
+    Proposal,
+    Resolution,
+    SimRule,
+)
 
 
 async def invoke_agent(
@@ -59,15 +67,63 @@ def _format_rules(rules: list[SimRule], agent_name: str, agent_role: str) -> str
     return "\n".join(lines)
 
 
-def build_actor_prompt(agent: AgentConfig, step: int, rules: list[SimRule] | None = None) -> str:
+def build_interaction_context(
+    entity: EntityConfig,
+    all_entities: list[EntityConfig],
+    state: dict,
+    step: int,
+) -> str:
+    from worldsim.models import InteractionMode, TrajectoryType
+
+    if entity.interaction.mode == InteractionMode.NEVER:
+        return ""
+
+    if entity.interaction.mode == InteractionMode.SCHEDULED and step % entity.interaction.every_n_steps != 0:
+        return ""
+
+    visible = entity.can_interact_with
+    if not visible:
+        return ""
+
+    neighbors = [
+        e for e in all_entities
+        if e.name in visible and e.type == TrajectoryType.POPULATION
+    ]
+    if not neighbors:
+        return ""
+
+    lines = [
+        "## Neighboring Populations",
+        "You can observe the following civilizations. Consider their state",
+        "when making your proposals — you may trade, ally, compete, or wage war.",
+        "",
+    ]
+
+    populations = state.get("populations", {})
+    for n in neighbors:
+        n_state = populations.get(n.name, {})
+        if n_state:
+            lines.append(f"### {n.name.title()}")
+            for k, v in n_state.items():
+                lines.append(f"- **{k}**: {v}")
+            lines.append("")
+        else:
+            lines.append(f"### {n.name.title()}")
+            lines.append("- No observable state")
+            lines.append("")
+
+    return "\n".join(lines)
+
+
+def build_actor_prompt(agent: AgentConfig, step: int, rules: list[SimRule] | None = None, interaction_context: str = "") -> str:
     rules_block = _format_rules(rules or [], agent.name, agent.role.value)
+    interaction_block = f"\n{interaction_context}\n" if interaction_context else ""
     return f"""You are **{agent.name}**, an actor agent in a world simulation.
 
 ## Your Perspective
 {agent.perspective}
 
-{rules_block}
-## Instructions
+{rules_block}{interaction_block}## Instructions
 1. Read the current world state from `board/state.json`
 2. Read the narrative history from `board/narrative.md`
 3. Read the scenario description from `board/scenario.md`
@@ -176,9 +232,9 @@ not a technical description.
 """
 
 
-def build_prompt(agent: AgentConfig, step: int, rules: list[SimRule] | None = None) -> str:
+def build_prompt(agent: AgentConfig, step: int, rules: list[SimRule] | None = None, interaction_context: str = "") -> str:
     if agent.role == AgentRole.ACTOR:
-        return build_actor_prompt(agent, step, rules)
+        return build_actor_prompt(agent, step, rules, interaction_context)
     elif agent.role == AgentRole.CRITIC:
         return build_critic_prompt(agent, step, rules)
     elif agent.role == AgentRole.JUDGE:

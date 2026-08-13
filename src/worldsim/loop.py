@@ -9,6 +9,7 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 from worldsim.agents import (
+    build_interaction_context,
     build_prompt,
     invoke_agent,
     parse_critique,
@@ -198,10 +199,22 @@ async def _run_entity_step(
                 board.save_proposal(p, step_num)
 
     # Phase 2: Populations propose their changes (in parallel)
+    # Build interaction context per entity so agents see neighbor state
+    current_state = board.read_state()
+    entity_interaction: dict[str, str] = {}
+    for entity in pop_entities:
+        ctx = build_interaction_context(entity, scenario.entities, current_state, step_num)
+        for a in entity.agents:
+            entity_interaction[a.name] = ctx
+
     pop_agents = [a for e in pop_entities for a in e.agents]
     if pop_agents:
         pop_tasks = [
-            _invoke_with_retry(a, board.workspace, step_num, build_prompt(a, step_num, rules), timeout)
+            _invoke_with_retry(
+                a, board.workspace, step_num,
+                build_prompt(a, step_num, rules, entity_interaction.get(a.name, "")),
+                timeout,
+            )
             for a in pop_agents
         ]
         await asyncio.gather(*pop_tasks, return_exceptions=True)
