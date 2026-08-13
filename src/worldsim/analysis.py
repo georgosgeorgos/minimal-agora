@@ -149,6 +149,32 @@ def load_trajectories(output_dir: Path) -> list[Trajectory]:
     return trajectories
 
 
+def detect_convergence(
+    trajectories: list[Trajectory], threshold: float = 0.8,
+) -> list[str]:
+    if len(trajectories) < 3:
+        return []
+
+    warnings = []
+    counts: dict[str, int] = defaultdict(int)
+    n = len(trajectories)
+
+    for t in trajectories:
+        cls = t.outcome.classification if t.outcome else "unclassified"
+        counts[cls] += 1
+
+    for outcome, count in counts.items():
+        rate = count / n
+        if rate >= threshold:
+            warnings.append(
+                f"Possible mode collapse: {count}/{n} ({rate:.0%}) trajectories "
+                f"classified as '{outcome}'. Consider increasing prompt diversity "
+                f"or adding wildcard events."
+            )
+
+    return warnings
+
+
 def _get_nested(d: dict, path: str):
     keys = path.split(".")
     current = d

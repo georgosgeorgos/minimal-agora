@@ -403,3 +403,52 @@ def test_fitness_recorded_in_metadata():
         metadata={"fitness_history": history},
     )
     assert t.metadata["fitness_history"] == [1.0, 5.0, 10.0]
+
+
+def test_diversity_prompt_varies_by_trajectory():
+    from worldsim.agents import build_actor_prompt
+
+    agent = AgentConfig(role=AgentRole.ACTOR, name="test", perspective="test")
+    p0 = build_actor_prompt(agent, step=0, trajectory_id=0)
+    p1 = build_actor_prompt(agent, step=0, trajectory_id=1)
+    p5 = build_actor_prompt(agent, step=0, trajectory_id=5)
+    assert "trajectory 0" in p0
+    assert "trajectory 1" in p1
+    assert "trajectory 5" in p5
+    assert "most probable" in p0
+    assert "unlikely but plausible" in p1
+    assert "competition and conflict" in p5
+
+
+def test_diversity_prompt_absent_without_trajectory_id():
+    from worldsim.agents import build_actor_prompt
+
+    agent = AgentConfig(role=AgentRole.ACTOR, name="test", perspective="test")
+    p = build_actor_prompt(agent, step=0)
+    assert "Exploration lens" not in p
+
+
+def test_convergence_detection():
+    from worldsim.analysis import detect_convergence
+
+    converged = [
+        Trajectory(
+            scenario_name="test", trajectory_id=i,
+            outcome=TrajectoryOutcome(classification="same", final_step=10, final_state={}),
+        )
+        for i in range(10)
+    ]
+    warnings = detect_convergence(converged)
+    assert len(warnings) == 1
+    assert "mode collapse" in warnings[0].lower()
+
+    diverse = [
+        Trajectory(
+            scenario_name="test", trajectory_id=i,
+            outcome=TrajectoryOutcome(
+                classification=["A", "B", "C", "D"][i % 4], final_step=10, final_state={},
+            ),
+        )
+        for i in range(12)
+    ]
+    assert detect_convergence(diverse) == []

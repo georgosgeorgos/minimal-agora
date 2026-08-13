@@ -7,6 +7,7 @@ from pathlib import Path
 
 from worldsim.analysis import (
     aggregate_outcomes,
+    detect_convergence,
     format_report,
     load_trajectories,
     save_artifacts,
@@ -92,6 +93,11 @@ def cmd_run(args) -> int:
 
     print()
     print(format_report(result))
+
+    warnings = detect_convergence(trajectories)
+    for w in warnings:
+        print(f"\n⚠ {w}")
+
     return 0
 
 

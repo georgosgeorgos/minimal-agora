@@ -115,11 +115,31 @@ def build_interaction_context(
     return "\n".join(lines)
 
 
-def build_actor_prompt(agent: AgentConfig, step: int, rules: list[SimRule] | None = None, interaction_context: str = "") -> str:
+DIVERSITY_LENSES = [
+    "Focus on the most probable outcome given current conditions.",
+    "Explore unlikely but plausible outcomes — what if a low-probability event shapes this step?",
+    "Emphasize long-term consequences over short-term effects.",
+    "Consider second-order effects: how do changes in one domain cascade to others?",
+    "Prioritize stability and equilibrium — what resists change?",
+    "Focus on competition and conflict as drivers of change.",
+    "Emphasize cooperation, trade, and mutual benefit as drivers.",
+    "Consider environmental and resource constraints as primary shapers.",
+    "Explore the role of random variation and contingency.",
+    "Focus on internal dynamics: how do divisions within a system drive change?",
+]
+
+
+def _diversity_prefix(trajectory_id: int) -> str:
+    lens = DIVERSITY_LENSES[trajectory_id % len(DIVERSITY_LENSES)]
+    return f"**Exploration lens (trajectory {trajectory_id})**: {lens}"
+
+
+def build_actor_prompt(agent: AgentConfig, step: int, rules: list[SimRule] | None = None, interaction_context: str = "", trajectory_id: int | None = None) -> str:
     rules_block = _format_rules(rules or [], agent.name, agent.role.value)
     interaction_block = f"\n{interaction_context}\n" if interaction_context else ""
+    diversity_block = f"\n{_diversity_prefix(trajectory_id)}\n" if trajectory_id is not None else ""
     return f"""You are **{agent.name}**, an actor agent in a world simulation.
-
+{diversity_block}
 ## Your Perspective
 {agent.perspective}
 
@@ -232,9 +252,9 @@ not a technical description.
 """
 
 
-def build_prompt(agent: AgentConfig, step: int, rules: list[SimRule] | None = None, interaction_context: str = "") -> str:
+def build_prompt(agent: AgentConfig, step: int, rules: list[SimRule] | None = None, interaction_context: str = "", trajectory_id: int | None = None) -> str:
     if agent.role == AgentRole.ACTOR:
-        return build_actor_prompt(agent, step, rules, interaction_context)
+        return build_actor_prompt(agent, step, rules, interaction_context, trajectory_id)
     elif agent.role == AgentRole.CRITIC:
         return build_critic_prompt(agent, step, rules)
     elif agent.role == AgentRole.JUDGE:

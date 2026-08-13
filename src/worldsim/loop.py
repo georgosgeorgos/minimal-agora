@@ -76,7 +76,7 @@ async def run_trajectory(
             print(f"  [trajectory {trajectory_id}] step {step_num}/{max_steps}")
             board.clear_wildcard(step_num)
 
-        step = await _run_step(scenario, board, step_num, agent_timeout)
+        step = await _run_step(scenario, board, step_num, agent_timeout, trajectory_id)
         trajectory.steps.append(step)
 
         if scenario.fitness:
@@ -119,12 +119,13 @@ async def _run_step(
     board: Board,
     step_num: int,
     timeout: int,
+    trajectory_id: int = 0,
 ) -> Step:
     state_before = deepcopy(board.read_state())
 
     if scenario.entities:
-        return await _run_entity_step(scenario, board, step_num, timeout, state_before)
-    return await _run_flat_step(scenario, board, step_num, timeout, state_before)
+        return await _run_entity_step(scenario, board, step_num, timeout, state_before, trajectory_id)
+    return await _run_flat_step(scenario, board, step_num, timeout, state_before, trajectory_id)
 
 
 async def _run_flat_step(
@@ -133,6 +134,7 @@ async def _run_flat_step(
     step_num: int,
     timeout: int,
     state_before: dict,
+    trajectory_id: int = 0,
 ) -> Step:
     actors = [a for a in scenario.agents if a.role == AgentRole.ACTOR]
     critics = [a for a in scenario.agents if a.role == AgentRole.CRITIC]
@@ -140,7 +142,11 @@ async def _run_flat_step(
 
     rules = scenario.rules
     actor_tasks = [
-        _invoke_with_retry(a, board.workspace, step_num, build_prompt(a, step_num, rules), timeout)
+        _invoke_with_retry(
+            a, board.workspace, step_num,
+            build_prompt(a, step_num, rules, trajectory_id=trajectory_id),
+            timeout,
+        )
         for a in actors
     ]
     await asyncio.gather(*actor_tasks, return_exceptions=True)
@@ -196,6 +202,7 @@ async def _run_entity_step(
     step_num: int,
     timeout: int,
     state_before: dict,
+    trajectory_id: int = 0,
 ) -> Step:
     rules = scenario.rules
     proposals = []
@@ -210,7 +217,11 @@ async def _run_entity_step(
     force_agents = [a for e in force_entities for a in e.agents]
     if force_agents:
         force_tasks = [
-            _invoke_with_retry(a, board.workspace, step_num, build_prompt(a, step_num, rules), timeout)
+            _invoke_with_retry(
+                a, board.workspace, step_num,
+                build_prompt(a, step_num, rules, trajectory_id=trajectory_id),
+                timeout,
+            )
             for a in force_agents
         ]
         await asyncio.gather(*force_tasks, return_exceptions=True)
@@ -234,7 +245,7 @@ async def _run_entity_step(
         pop_tasks = [
             _invoke_with_retry(
                 a, board.workspace, step_num,
-                build_prompt(a, step_num, rules, entity_interaction.get(a.name, "")),
+                build_prompt(a, step_num, rules, entity_interaction.get(a.name, ""), trajectory_id=trajectory_id),
                 timeout,
             )
             for a in pop_agents
