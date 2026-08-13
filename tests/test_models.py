@@ -164,6 +164,26 @@ def test_rules_in_prompt():
     assert "critic_only" not in prompt
 
 
+def test_fallback_resolution_deep_merges():
+    from worldsim.loop import _fallback_resolution
+
+    p1 = Proposal(
+        agent="agent_a", role=AgentRole.ACTOR,
+        proposed_changes={"life": {"complexity": "multicellular", "photosynthesis": True}},
+        reasoning="evolution",
+    )
+    p2 = Proposal(
+        agent="agent_b", role=AgentRole.ACTOR,
+        proposed_changes={"life": {"nervous_system": True}, "environment": {"oxygen": "high"}},
+        reasoning="geology",
+    )
+    resolution = _fallback_resolution([p1, p2])
+    assert resolution.state_delta["life"]["complexity"] == "multicellular"
+    assert resolution.state_delta["life"]["photosynthesis"] is True
+    assert resolution.state_delta["life"]["nervous_system"] is True
+    assert resolution.state_delta["environment"]["oxygen"] == "high"
+
+
 def test_wildcards_loaded():
     scenario = load_scenario(EXAMPLES_DIR / "intelligence.yaml")
     assert len(scenario.wildcards) == 6
@@ -203,6 +223,24 @@ def test_roll_wildcard():
 
     events = [WildcardEvent(name="test", probability=0.0)]
     assert _roll_wildcard(events) is None
+
+
+def test_wildcard_state_impact_applied():
+    from worldsim.board import _deep_merge
+
+    scenario = load_scenario(EXAMPLES_DIR / "intelligence.yaml")
+    with tempfile.TemporaryDirectory() as tmpdir:
+        workspace = setup_workspace(scenario, Path(tmpdir), trajectory_id=0)
+        board = Board(workspace)
+        state = board.read_state()
+        assert state["environment"]["biodiversity"] == "low"
+        asteroid = next(w for w in scenario.wildcards if w.name == "asteroid_impact")
+        board.write_wildcard(asteroid, step=0)
+        _deep_merge(state, asteroid.state_impact)
+        board.write_state(state)
+        updated = board.read_state()
+        assert updated["environment"]["biodiversity"] == "collapse"
+        assert updated["environment"]["mass_extinctions"] == "+1"
 
 
 def test_proposal_roundtrip():

@@ -12,7 +12,7 @@ from worldsim.agents import (
     parse_proposal,
     parse_resolution,
 )
-from worldsim.board import Board
+from worldsim.board import Board, _deep_merge
 from worldsim.models import (
     AgentRole,
     Resolution,
@@ -45,6 +45,10 @@ async def run_trajectory(
         if wildcard:
             print(f"  [trajectory {trajectory_id}] step {step_num}/{max_steps} — WILDCARD: {wildcard.name}")
             board.write_wildcard(wildcard, step_num)
+            if wildcard.state_impact:
+                state = board.read_state()
+                _deep_merge(state, wildcard.state_impact)
+                board.write_state(state)
         else:
             print(f"  [trajectory {trajectory_id}] step {step_num}/{max_steps}")
             board.clear_wildcard(step_num)
@@ -231,10 +235,10 @@ async def _run_entity_step(
 
 
 def _fallback_resolution(proposals: list) -> Resolution:
-    merged = {}
+    merged: dict = {}
     reasoning_parts = []
     for p in proposals:
-        merged.update(p.proposed_changes)
+        _deep_merge(merged, p.proposed_changes)
         reasoning_parts.append(f"{p.agent}: {p.reasoning}")
 
     return Resolution(
