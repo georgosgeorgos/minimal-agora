@@ -353,3 +353,53 @@ def test_can_interact_with_filters():
     ctx = build_interaction_context(rome, entities, _sample_state(), step=0)
     assert "Persia" in ctx
     assert "Greece" not in ctx
+
+
+def test_load_complexity_scenario():
+    scenario = load_scenario(EXAMPLES_DIR / "complexity.yaml")
+    assert scenario.name == "complexity-maximizer"
+    assert scenario.mode == SimMode.OPEN_ENDED
+    assert scenario.fitness is not None
+    assert scenario.fitness.metric == "life.complexity"
+    assert scenario.fitness.direction == "maximize"
+    assert len(scenario.agents) == 4
+
+
+def test_evaluate_fitness():
+    from worldsim.loop import _evaluate_fitness
+    from worldsim.models import FitnessConfig
+
+    fitness = FitnessConfig(metric="life.complexity", direction="maximize")
+    assert _evaluate_fitness({"life": {"complexity": 10.0}}, fitness) == 10.0
+    assert _evaluate_fitness({"life": {"complexity": 42}}, fitness) == 42.0
+    assert _evaluate_fitness({"life": {"complexity": "bacterial"}}, fitness) is None
+    assert _evaluate_fitness({"other": {}}, fitness) is None
+
+
+def test_check_plateau():
+    from worldsim.loop import _check_plateau
+
+    assert _check_plateau([1.0, 1.0, 1.0, 1.0, 1.0], window=5, threshold=0.01) is True
+    assert _check_plateau([1.0, 2.0, 3.0, 4.0, 5.0], window=5, threshold=0.01) is False
+    assert _check_plateau([1.0, 1.0, 1.0], window=5, threshold=0.01) is False
+    assert _check_plateau([5.0, 5.001, 5.002, 5.001, 5.003], window=5, threshold=0.01) is True
+    assert _check_plateau([None, None, 5.0, 5.0, 5.0, 5.0, 5.0], window=5, threshold=0.01) is True
+
+
+def test_fitness_recorded_in_metadata():
+    from worldsim.loop import _evaluate_fitness
+    from worldsim.models import FitnessConfig
+
+    fitness = FitnessConfig(metric="life.complexity")
+    states = [
+        {"life": {"complexity": 1.0}},
+        {"life": {"complexity": 5.0}},
+        {"life": {"complexity": 10.0}},
+    ]
+    history = [_evaluate_fitness(s, fitness) for s in states]
+    t = Trajectory(
+        scenario_name="test",
+        trajectory_id=0,
+        metadata={"fitness_history": history},
+    )
+    assert t.metadata["fitness_history"] == [1.0, 5.0, 10.0]

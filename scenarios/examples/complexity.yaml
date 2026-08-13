@@ -1,0 +1,121 @@
+name: "complexity-maximizer"
+mode: open_ended
+n_trajectories: 1
+step_budget: 30
+description: >
+  Open-ended simulation that maximizes complexity of life on Earth.
+  The simulation tracks a complexity metric and terminates when
+  complexity plateaus, suggesting the system has reached a local
+  maximum or equilibrium.
+
+initial_state:
+  planet:
+    type: terrestrial
+    climate: temperate
+    oceans: true
+  life:
+    exists: true
+    complexity: 1.0
+    dominant_form: bacteria
+    photosynthesis: false
+    multicellular: false
+    nervous_system: false
+    intelligence: false
+    social_structures: false
+  environment:
+    oxygen_level: 0.5
+    temperature_c: 25
+    biodiversity: low
+    geological_activity: moderate
+  time:
+    era: "Archean"
+    step_scale: "200 million years"
+
+agents:
+  - role: actor
+    name: evolutionary_pressure
+    perspective: >
+      You represent evolutionary forces: mutation, natural selection,
+      genetic drift, horizontal gene transfer. You drive increases in
+      biological complexity when environmental conditions allow. Each
+      step, propose incremental complexity increases that are
+      thermodynamically and biologically plausible. Major transitions
+      (prokaryote→eukaryote, unicellular→multicellular, water→land)
+      require specific preconditions.
+
+  - role: actor
+    name: planetary_dynamics
+    perspective: >
+      You represent geological and atmospheric processes: plate tectonics,
+      volcanism, atmospheric evolution, ocean chemistry. Your changes
+      create and destroy ecological niches. Oxygen accumulation enables
+      complex life. Ice ages drive adaptation. Continental drift isolates
+      and reconnects populations.
+
+  - role: critic
+    name: physical_constraints
+    perspective: >
+      You enforce physical, chemical, and thermodynamic constraints.
+      Biological complexity requires energy gradients. Multicellularity
+      requires oxygen. Nervous systems require multicellularity. Each
+      transition has prerequisites. Flag proposals that skip necessary
+      intermediate steps or violate known constraints.
+
+  - role: judge
+    name: synthesis_judge
+    perspective: >
+      Synthesize proposals into the most plausible outcome. Track the
+      complexity metric: assign a numeric score reflecting biological
+      complexity (bacteria=1, eukaryotes=5, multicellular=10,
+      animals=20, nervous systems=30, intelligence=50). Update
+      life.complexity with the appropriate score.
+
+fitness:
+  metric: "life.complexity"
+  direction: maximize
+
+rules:
+  - name: energy_prerequisite
+    description: >
+      Increasing biological complexity requires available energy.
+      Photosynthesis must exist before oxygen-dependent life.
+      Oxygen level must be >5 for multicellular life.
+      Oxygen level must be >15 for large animals.
+
+  - name: stepwise_transitions
+    description: >
+      Major evolutionary transitions must occur in order:
+      prokaryote → eukaryote → multicellular → nervous system →
+      complex brain → intelligence. No skipping steps.
+
+  - name: extinction_resets
+    description: >
+      Mass extinction events reduce complexity by 30-50% and reset
+      dominant_form to the most resilient surviving group. Recovery
+      takes 2-5 steps. But extinction opens new niches.
+
+termination:
+  max_steps: 30
+  plateau_window: 5
+  plateau_threshold: 0.5
+  conditions:
+    - field: "life.complexity"
+      greater_than: 50
+
+outcome:
+  question: "What level of complexity was achieved?"
+  classifier:
+    - name: intelligence
+      condition:
+        field: "life.complexity"
+        greater_than: 40
+    - name: complex_life
+      condition:
+        field: "life.complexity"
+        greater_than: 20
+    - name: simple_life
+      condition:
+        field: "life.complexity"
+        greater_than: 5
+    - name: minimal
+      default: true

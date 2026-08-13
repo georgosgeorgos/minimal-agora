@@ -19,8 +19,10 @@ from worldsim.agents import (
 from worldsim.board import Board, _deep_merge
 from worldsim.models import (
     AgentRole,
+    FitnessConfig,
     Resolution,
     Scenario,
+    SimMode,
     Step,
     Trajectory,
     TrajectoryOutcome,
@@ -57,6 +59,9 @@ async def run_trajectory(
 
     max_steps = scenario.termination.get("max_steps", scenario.step_budget)
     conditions = scenario.termination.get("conditions", [])
+    fitness_history: list[float | None] = []
+    plateau_window = scenario.termination.get("plateau_window", 5)
+    plateau_threshold = scenario.termination.get("plateau_threshold", 0.01)
 
     for step_num in range(max_steps):
         wildcard = _roll_wildcard(scenario.wildcards)
@@ -74,12 +79,28 @@ async def run_trajectory(
         step = await _run_step(scenario, board, step_num, agent_timeout)
         trajectory.steps.append(step)
 
+        if scenario.fitness:
+            score = _evaluate_fitness(step.state_after, scenario.fitness)
+            fitness_history.append(score)
+            if score is not None:
+                print(f"  [trajectory {trajectory_id}] fitness: {score:.4f}")
+
         if _check_termination(step.state_after, conditions):
             print(f"  [trajectory {trajectory_id}] terminated at step {step_num}")
             break
 
+        if scenario.mode == SimMode.OPEN_ENDED and scenario.fitness and _check_plateau(
+            fitness_history, plateau_window, plateau_threshold,
+        ):
+            print(f"  [trajectory {trajectory_id}] fitness plateau at step {step_num}")
+            break
+
     final_state = board.read_state()
     final_step = len(trajectory.steps) - 1
+
+    metadata: dict = {}
+    if fitness_history:
+        metadata["fitness_history"] = fitness_history
 
     classification = _classify_outcome(final_state, scenario)
     trajectory.outcome = TrajectoryOutcome(
@@ -87,6 +108,7 @@ async def run_trajectory(
         final_step=final_step,
         final_state=final_state,
     )
+    trajectory.metadata = metadata
 
     _save_trajectory(trajectory, workspace)
     return trajectory
@@ -334,6 +356,23 @@ def _get_nested(d: dict, path: str):
             return None
         current = current[key]
     return current
+
+
+def _evaluate_fitness(state: dict, fitness: FitnessConfig) -> float | None:
+    value = _get_nested(state, fitness.metric)
+    if isinstance(value, (int, float)):
+        return float(value)
+    return None
+
+
+def _check_plateau(
+    history: list[float | None], window: int, threshold: float,
+) -> bool:
+    valid = [v for v in history if v is not None]
+    if len(valid) < window:
+        return False
+    recent = valid[-window:]
+    return max(recent) - min(recent) < threshold
 
 
 def _save_trajectory(trajectory: Trajectory, workspace: Path) -> None:
