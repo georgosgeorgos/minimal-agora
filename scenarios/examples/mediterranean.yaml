@@ -1,5 +1,6 @@
 name: "mediterranean-powers"
-mode: open_ended
+mode: population
+n_trajectories: 5
 step_budget: 20
 description: >
   Simulate the rise and interaction of Mediterranean civilizations.

@@ -20,6 +20,7 @@ from worldsim.models import (
     Step,
     Trajectory,
     TrajectoryOutcome,
+    TrajectoryType,
     WildcardEvent,
 )
 
@@ -77,6 +78,18 @@ async def _run_step(
 ) -> Step:
     state_before = deepcopy(board.read_state())
 
+    if scenario.entities:
+        return await _run_entity_step(scenario, board, step_num, timeout, state_before)
+    return await _run_flat_step(scenario, board, step_num, timeout, state_before)
+
+
+async def _run_flat_step(
+    scenario: Scenario,
+    board: Board,
+    step_num: int,
+    timeout: int,
+    state_before: dict,
+) -> Step:
     actors = [a for a in scenario.agents if a.role == AgentRole.ACTOR]
     critics = [a for a in scenario.agents if a.role == AgentRole.CRITIC]
     judges = [a for a in scenario.agents if a.role == AgentRole.JUDGE]
@@ -112,6 +125,90 @@ async def _run_step(
     resolution = None
     if judges:
         judge = judges[0]
+        await invoke_agent(judge, board.workspace, step_num, build_prompt(judge, step_num, rules), timeout)
+        resolution = parse_resolution(board.workspace, step_num)
+
+    if resolution is None:
+        resolution = _fallback_resolution(proposals)
+
+    board.save_resolution(resolution, step_num)
+    state_after = board.apply_resolution(resolution, step_num)
+
+    step = Step(
+        step_number=step_num,
+        proposals=proposals,
+        critiques=critiques,
+        resolution=resolution,
+        state_before=state_before,
+        state_after=state_after,
+    )
+    board.save_step(step)
+    return step
+
+
+async def _run_entity_step(
+    scenario: Scenario,
+    board: Board,
+    step_num: int,
+    timeout: int,
+    state_before: dict,
+) -> Step:
+    rules = scenario.rules
+    proposals = []
+    critiques = []
+
+    force_entities = [e for e in scenario.entities if e.type == TrajectoryType.FORCE]
+    pop_entities = [e for e in scenario.entities if e.type == TrajectoryType.POPULATION]
+    critic_entities = [e for e in scenario.entities if e.type == TrajectoryType.CRITIC]
+    eval_entities = [e for e in scenario.entities if e.type == TrajectoryType.EVALUATOR]
+
+    # Phase 1: Forces propose world-level changes
+    force_agents = [a for e in force_entities for a in e.agents]
+    if force_agents:
+        force_tasks = [
+            invoke_agent(a, board.workspace, step_num, build_prompt(a, step_num, rules), timeout)
+            for a in force_agents
+        ]
+        await asyncio.gather(*force_tasks, return_exceptions=True)
+        for a in force_agents:
+            p = parse_proposal(board.workspace, a.name, step_num)
+            if p:
+                proposals.append(p)
+                board.save_proposal(p, step_num)
+
+    # Phase 2: Populations propose their changes (in parallel)
+    pop_agents = [a for e in pop_entities for a in e.agents]
+    if pop_agents:
+        pop_tasks = [
+            invoke_agent(a, board.workspace, step_num, build_prompt(a, step_num, rules), timeout)
+            for a in pop_agents
+        ]
+        await asyncio.gather(*pop_tasks, return_exceptions=True)
+        for a in pop_agents:
+            p = parse_proposal(board.workspace, a.name, step_num)
+            if p:
+                proposals.append(p)
+                board.save_proposal(p, step_num)
+
+    # Phase 3: Critics evaluate all proposals
+    critic_agents = [a for e in critic_entities for a in e.agents]
+    if critic_agents:
+        critic_tasks = [
+            invoke_agent(c, board.workspace, step_num, build_prompt(c, step_num, rules), timeout)
+            for c in critic_agents
+        ]
+        await asyncio.gather(*critic_tasks, return_exceptions=True)
+        for c in critic_agents:
+            cr = parse_critique(board.workspace, c.name, step_num)
+            if cr:
+                critiques.append(cr)
+                board.save_critique(cr, step_num)
+
+    # Phase 4: Evaluator resolves everything
+    resolution = None
+    eval_agents = [a for e in eval_entities for a in e.agents if a.role == AgentRole.JUDGE]
+    if eval_agents:
+        judge = eval_agents[0]
         await invoke_agent(judge, board.workspace, step_num, build_prompt(judge, step_num, rules), timeout)
         resolution = parse_resolution(board.workspace, step_num)
 

@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field
 class SimMode(str, Enum):
     COUNTERFACTUAL = "counterfactual"
     OPEN_ENDED = "open_ended"
+    POPULATION = "population"
 
 
 class AgentRole(str, Enum):

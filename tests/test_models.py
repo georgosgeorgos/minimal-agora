@@ -113,7 +113,7 @@ def test_format_report():
 def test_load_mediterranean_scenario():
     scenario = load_scenario(EXAMPLES_DIR / "mediterranean.yaml")
     assert scenario.name == "mediterranean-powers"
-    assert scenario.mode == SimMode.OPEN_ENDED
+    assert scenario.mode == SimMode.POPULATION
     assert len(scenario.entities) == 7
     populations = [e for e in scenario.entities if e.type.value == "population"]
     forces = [e for e in scenario.entities if e.type.value == "force"]
