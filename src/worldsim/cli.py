@@ -39,6 +39,13 @@ def main() -> int:
     viz_parser.add_argument("--populations", nargs="+", default=None, help="Population names for score plots")
     viz_parser.add_argument("--scores", nargs="+", default=None, help="Score fields for population plots")
 
+    dash_parser = subparsers.add_parser("dashboard", help="Launch live web dashboard")
+    dash_parser.add_argument("run_dir", type=Path, help="Path to run output directory")
+    dash_parser.add_argument("-p", "--port", type=int, default=8765, help="Server port")
+    dash_parser.add_argument("--fields", nargs="+", default=None, help="State fields to track")
+    dash_parser.add_argument("--populations", nargs="+", default=None, help="Population names")
+    dash_parser.add_argument("--scores", nargs="+", default=None, help="Score fields for populations")
+
     args = parser.parse_args()
 
     if args.command == "run":
@@ -47,6 +54,8 @@ def main() -> int:
         return cmd_report(args)
     elif args.command == "visualize":
         return cmd_visualize(args)
+    elif args.command == "dashboard":
+        return cmd_dashboard(args)
     else:
         parser.print_help()
         return 1
@@ -125,6 +134,19 @@ def cmd_visualize(args) -> int:
 
     if paths:
         print(f"\nGenerated {len(paths)} plots in {args.run_dir / 'plots'}")
+    return 0
+
+
+def cmd_dashboard(args) -> int:
+    from worldsim.dashboard import start_dashboard
+
+    start_dashboard(
+        args.run_dir,
+        port=args.port,
+        fields=args.fields,
+        populations=args.populations,
+        score_fields=args.scores,
+    )
     return 0
 
 
