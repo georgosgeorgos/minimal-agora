@@ -107,7 +107,7 @@ async def run_trajectory(
     plateau_threshold = scenario.termination.get("plateau_threshold", 0.01)
 
     for step_num in range(resume_from, max_steps):
-        wildcard = _roll_wildcard(scenario.wildcards)
+        wildcard = _roll_wildcard(scenario.wildcards, max_steps) if scenario.wildcards_enabled else None
         if wildcard:
             print(f"  [trajectory {trajectory_id}] step {step_num}/{max_steps} — WILDCARD: {wildcard.name}")
             board.write_wildcard(wildcard, step_num)
@@ -395,9 +395,10 @@ def _classify_outcome(state: dict, scenario: Scenario) -> str:
     return "unclassified"
 
 
-def _roll_wildcard(wildcards: list[WildcardEvent]) -> WildcardEvent | None:
+def _roll_wildcard(wildcards: list[WildcardEvent], max_steps: int = 1) -> WildcardEvent | None:
     for event in wildcards:
-        if random.random() < event.probability:
+        per_step = min(event.probability / max_steps, 1.0)
+        if random.random() < per_step:
             return event
     return None
 

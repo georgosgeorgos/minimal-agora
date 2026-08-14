@@ -1,7 +1,7 @@
 name: "complexity-maximizer"
 mode: open_ended
 n_trajectories: 1
-step_budget: 30
+step_budget: 500
 description: >
   Open-ended simulation that maximizes complexity of life on Earth.
   The simulation tracks a complexity metric and terminates when
@@ -95,7 +95,7 @@ rules:
       takes 2-5 steps. But extinction opens new niches.
 
 termination:
-  max_steps: 30
+  max_steps: 500
   plateau_window: 5
   plateau_threshold: 0.5
   conditions:

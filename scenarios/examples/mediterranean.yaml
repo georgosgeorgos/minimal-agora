@@ -1,10 +1,10 @@
 name: "mediterranean-powers"
 mode: population
 n_trajectories: 5
-step_budget: 20
+step_budget: 500
 description: >
   Simulate the rise and interaction of Mediterranean civilizations.
-  Each step represents roughly 50 years. Populations compete for
+  Each step represents roughly 2 years. Populations compete for
   resources, trade, wage war, and exchange culture. External forces
   (nature, disease) shape the environment they operate in.
 
@@ -23,7 +23,7 @@ initial_state:
     plague_active: false
   time:
     step: 0
-    step_scale: "50 years"
+    step_scale: "2 years"
     year: -500
 
 entities:
@@ -198,9 +198,11 @@ rules:
       blockades are tools of statecraft. Wealth enables military and
       cultural investment.
 
+wildcards_enabled: true
+
 wildcards:
   - name: plague
-    probability: 0.08
+    probability: 1.0
     description: >
       A major epidemic sweeps the Mediterranean. All populations lose
       population and economic capacity. Densely populated and
@@ -210,7 +212,7 @@ wildcards:
         plague_active: true
 
   - name: barbarian_invasion
-    probability: 0.06
+    probability: 1.0
     description: >
       A major migration or invasion from outside the Mediterranean world
       (Gauls, Germanic tribes, steppe peoples). The most exposed
@@ -220,7 +222,7 @@ wildcards:
         external_threat: true
 
   - name: earthquake
-    probability: 0.1
+    probability: 0.75
     description: >
       A major earthquake strikes the eastern Mediterranean. Coastal
       cities suffer destruction. Naval capacity may be temporarily
@@ -230,7 +232,7 @@ wildcards:
         seismic_event: true
 
   - name: divine_omen
-    probability: 0.02
+    probability: 0.25
     description: >
       A widely observed celestial event (eclipse, comet, unusual weather)
       is interpreted as a divine sign. Religious and political consequences
@@ -241,7 +243,7 @@ wildcards:
         divine_omen: true
 
 termination:
-  max_steps: 20
+  max_steps: 500
   conditions:
     - field: "populations.rome.military_strength"
       less_than: 5

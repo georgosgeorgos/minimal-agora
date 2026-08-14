@@ -67,6 +67,18 @@ def _format_rules(rules: list[SimRule], agent_name: str, agent_role: str) -> str
     return "\n".join(lines)
 
 
+def _get_entity_state(state: dict, entity: EntityConfig) -> dict:
+    if not entity.state_prefix:
+        return {}
+    keys = entity.state_prefix.split(".")
+    current = state
+    for key in keys:
+        if not isinstance(current, dict) or key not in current:
+            return {}
+        current = current[key]
+    return current if isinstance(current, dict) else {}
+
+
 def build_interaction_context(
     entity: EntityConfig,
     all_entities: list[EntityConfig],
@@ -93,15 +105,15 @@ def build_interaction_context(
         return ""
 
     lines = [
-        "## Neighboring Populations",
-        "You can observe the following civilizations. Consider their state",
-        "when making your proposals — you may trade, ally, compete, or wage war.",
+        "## Neighboring Entities",
+        "You can observe the following entities. Consider their state",
+        "when making your proposals — interactions may include competition,",
+        "cooperation, conflict, trade, or other dynamics.",
         "",
     ]
 
-    populations = state.get("populations", {})
     for n in neighbors:
-        n_state = populations.get(n.name, {})
+        n_state = _get_entity_state(state, n)
         if n_state:
             lines.append(f"### {n.name.title()}")
             for k, v in n_state.items():

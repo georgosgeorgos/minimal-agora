@@ -1,0 +1,251 @@
+name: "nuclear-war"
+mode: counterfactual
+n_trajectories: 20
+step_budget: 500
+description: >
+  Simulate geopolitical dynamics from 1945 to the present and beyond.
+  Each step represents roughly 1 month. We test how frequently nuclear
+  war occurs given realistic Cold War and post-Cold War dynamics.
+  Higher trajectory count to get stable statistics on a low-probability
+  catastrophic event.
+
+initial_state:
+  geopolitics:
+    era: "early_cold_war"
+    superpower_relations: "hostile"
+    nuclear_powers: ["usa"]
+    total_warheads: 2
+    arms_control_treaties: []
+    alliances: ["nato_forming"]
+    proxy_wars: []
+    detente_level: 0
+  usa:
+    nuclear_arsenal: 2
+    conventional_military: 90
+    economic_power: 100
+    political_stability: 85
+    public_war_support: 60
+    doctrine: "monopoly"
+  ussr:
+    nuclear_arsenal: 0
+    conventional_military: 80
+    economic_power: 50
+    political_stability: 70
+    public_war_support: 40
+    doctrine: "conventional"
+  crisis:
+    active_crisis: false
+    crisis_name: "none"
+    escalation_level: 0
+    defcon: 5
+    diplomatic_channels_open: true
+    misperception_risk: low
+  technology:
+    delivery_systems: "bomber"
+    early_warning: false
+    icbm: false
+    submarine_launched: false
+    mirv: false
+    missile_defense: false
+    launch_on_warning: false
+  nuclear_war:
+    occurred: false
+    exchange_type: "none"
+    casualties_millions: 0
+  time:
+    year: 1945
+    month: 8
+    step_scale: "1 month"
+
+agents:
+  - role: actor
+    name: us_strategy
+    perspective: >
+      You model US strategic decision-making. The US has nuclear weapons
+      first but the Soviet Union is racing to develop them. US strategy
+      evolves through phases: atomic monopoly, massive retaliation,
+      flexible response, MAD, detente, Reagan buildup, post-Cold War
+      unipolarity. Decision-makers are rational but operate under
+      uncertainty, domestic political pressure, and bureaucratic
+      politics. Nuclear use has an enormous threshold but is not
+      impossible — military planners prepared detailed war plans
+      throughout the Cold War.
+
+  - role: actor
+    name: soviet_strategy
+    perspective: >
+      You model Soviet/Russian strategic decision-making. The USSR
+      races to achieve nuclear parity, then superiority in warheads.
+      Soviet doctrine initially emphasized warfighting, later shifted
+      to deterrence. Decision-making involves Politburo politics,
+      military pressure, and ideological imperatives. The Soviet
+      system is more opaque and potentially more brittle under crisis.
+      After 1991, Russian nuclear posture reflects a weakened
+      conventional military and greater reliance on nuclear threats.
+
+  - role: actor
+    name: crisis_dynamics
+    perspective: >
+      You model how crises escalate or de-escalate. Nuclear crises
+      (Berlin 1948, Korea, Cuba 1962, Able Archer 1983) involve
+      signaling, miscommunication, organizational accidents, and
+      time pressure. Most crises de-escalate because both sides
+      prefer survival. But close calls were VERY close — Petrov 1983,
+      Cuban Missile Crisis back-channels. Each crisis has a small
+      but nonzero probability of catastrophic escalation through
+      accident, miscalculation, or unauthorized launch.
+
+  - role: actor
+    name: proliferation_and_technology
+    perspective: >
+      You model nuclear proliferation and weapons technology evolution.
+      New nuclear states change the strategic landscape. Technology
+      developments (ICBMs, SLBMs, MIRVs, early warning, missile defense)
+      alter stability. More weapons, more delivery systems, and more
+      actors increase overall risk even as bilateral deterrence works.
+      Arms control treaties (SALT, START, INF) can reduce risk but
+      require political will and verification.
+
+  - role: critic
+    name: strategic_analyst
+    perspective: >
+      You evaluate whether proposed strategic developments are
+      historically plausible. Nuclear arsenals grew at specific rates.
+      Crises had specific triggers and dynamics. Arms control followed
+      specific political conditions. Nuclear use has never occurred
+      since 1945 but this should not be treated as impossible — it
+      reflects a combination of deterrence, luck, and individual
+      decisions that could have gone differently.
+
+  - role: judge
+    name: geopolitical_arbiter
+    perspective: >
+      Synthesize proposals into the most plausible monthly outcome.
+      Most months are routine. Crises are rare but when they occur,
+      you must model escalation dynamics carefully. Nuclear war is
+      a low-probability, high-consequence event — it should almost
+      never happen, but when conditions align (crisis + miscalculation
+      + technical failure + political pressure), it can. Track the
+      escalation_level (0-10) carefully. Nuclear exchange occurs only
+      at escalation_level 10.
+
+rules:
+  - name: deterrence_stability
+    description: >
+      Mutual assured destruction (MAD) creates strong incentives against
+      first strike once both sides have survivable second-strike
+      capability. But deterrence can fail through: accidental launch,
+      misperception of attack, preemptive strike during crisis,
+      unauthorized use, or irrational actors. Stability requires
+      both sides believing deterrence works.
+
+  - name: escalation_ladder
+    description: >
+      Nuclear crises follow an escalation ladder: diplomatic tension →
+      military mobilization → conventional conflict → tactical nuclear
+      use → strategic exchange. Each rung has off-ramps. Most crises
+      never pass rung 2. The probability of climbing each successive
+      rung decreases sharply. Escalation_level tracks position on
+      this ladder (0-10).
+
+  - name: crisis_time_pressure
+    description: >
+      During active crises, decision time compresses. Early warning
+      systems give minutes to decide. Sleep deprivation, information
+      overload, and fog of war degrade decision quality. The longer
+      a crisis lasts at high intensity, the greater the risk of
+      accident or miscalculation.
+
+  - name: domestic_politics
+    description: >
+      Leaders face domestic political constraints. Looking weak is
+      politically costly. Hawks and doves compete for influence.
+      Election cycles affect risk tolerance. Public opinion constrains
+      but does not determine nuclear policy.
+
+  - name: proliferation_cascade
+    description: >
+      Each new nuclear state creates incentives for neighbors to
+      acquire weapons. More nuclear actors means more potential crisis
+      dyads and greater aggregate risk of use, even if each bilateral
+      relationship is stable.
+
+wildcards_enabled: true
+
+wildcards:
+  - name: false_alarm
+    probability: 1.5
+    description: >
+      Early warning systems generate a false alarm interpreted as
+      incoming nuclear attack. Decision-makers have minutes to
+      determine if it's real. Historical examples: 1979 NORAD
+      computer error, 1983 Petrov incident. Each false alarm has
+      a small chance of triggering launch.
+    state_impact:
+      crisis:
+        active_crisis: true
+        misperception_risk: "critical"
+
+  - name: regional_crisis
+    probability: 2.0
+    description: >
+      A regional conflict (Korea, Middle East, South Asia, Taiwan)
+      draws in nuclear powers. May escalate through alliance
+      commitments, miscalculation, or deliberate brinkmanship.
+    state_impact:
+      crisis:
+        active_crisis: true
+        escalation_level: 3
+
+  - name: leadership_change
+    probability: 1.5
+    description: >
+      A major leadership transition (death, coup, election of
+      hardliner) changes nuclear posture. Successors may be more
+      hawkish, less informed about agreements, or less constrained
+      by institutional norms.
+    state_impact:
+      geopolitics:
+        detente_level: -1
+
+  - name: rogue_actor
+    probability: 0.25
+    description: >
+      A non-state actor, rogue military commander, or unstable new
+      nuclear state takes actions that could trigger nuclear
+      escalation. Includes nuclear terrorism scenarios and
+      unauthorized launch attempts.
+    state_impact:
+      crisis:
+        active_crisis: true
+        escalation_level: 5
+
+  - name: arms_control_breakthrough
+    probability: 0.75
+    description: >
+      A major arms reduction agreement is reached, significantly
+      reducing arsenals and improving crisis communication.
+      Reduces but does not eliminate risk.
+    state_impact:
+      geopolitics:
+        detente_level: 3
+
+termination:
+  max_steps: 500
+  conditions:
+    - field: "nuclear_war.occurred"
+      equals: true
+
+outcome:
+  question: "Did nuclear war occur?"
+  classifier:
+    - name: nuclear_war
+      condition:
+        field: "nuclear_war.occurred"
+        equals: true
+    - name: near_miss
+      condition:
+        field: "crisis.escalation_level"
+        greater_than: 7
+    - name: stable_deterrence
+      default: true

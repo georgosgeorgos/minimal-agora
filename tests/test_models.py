@@ -199,8 +199,9 @@ def test_wildcards_loaded():
     assert "alien_contact" in names
     assert "deus_ex_machina" in names
     asteroid = next(w for w in scenario.wildcards if w.name == "asteroid_impact")
-    assert asteroid.probability == 0.1
+    assert asteroid.probability == 1.0
     assert "mass_extinctions" in asteroid.state_impact.get("environment", {})
+    assert scenario.wildcards_enabled is True
 
 
 def test_wildcard_board_write():
@@ -223,12 +224,12 @@ def test_roll_wildcard():
 
     from minimal_agora.loop import _roll_wildcard
 
-    events = [WildcardEvent(name="test", probability=1.0)]
+    events = [WildcardEvent(name="test", probability=10.0)]
     random.seed(42)
-    assert _roll_wildcard(events) is not None
+    assert _roll_wildcard(events, max_steps=10) is not None
 
     events = [WildcardEvent(name="test", probability=0.0)]
-    assert _roll_wildcard(events) is None
+    assert _roll_wildcard(events, max_steps=10) is None
 
 
 def test_wildcard_state_impact_applied():
@@ -341,7 +342,7 @@ def test_interaction_context_in_prompt():
     ctx = build_interaction_context(rome, entities, _sample_state(), step=0)
     agent = rome.agents[0]
     prompt = build_actor_prompt(agent, step=0, interaction_context=ctx)
-    assert "Neighboring Populations" in prompt
+    assert "Neighboring Entities" in prompt
     assert "Greece" in prompt
     assert "military_strength" in prompt
 

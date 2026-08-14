@@ -124,6 +124,7 @@ class Scenario(BaseModel):
     outcome: OutcomeConfig | None = None
     fitness: FitnessConfig | None = None
     wildcards: list[WildcardEvent] = Field(default_factory=list)
+    wildcards_enabled: bool = False
     description: str = ""
 
 

@@ -1,9 +1,26 @@
 # minimal-agora
 
 A world simulation engine where LLM agents debate and interact to explore
-counterfactual hypotheses and population dynamics. Agents propose state
-transitions, critics evaluate plausibility, and judges resolve outcomes —
-producing trajectories that can be statistically aggregated.
+counterfactual hypotheses and population dynamics.
+
+## Why
+
+History happened once. We can't rerun the Peloponnesian War or the Cold War
+to see what would have changed. minimal-agora treats historical and
+scientific questions as Monte Carlo problems: run the same scenario hundreds
+of times with stochastic shocks and independent agent reasoning, then
+aggregate outcomes into statistical answers.
+
+The core idea is **structured disagreement**. Each simulation step forces
+multiple agents — with different perspectives and domain expertise — to
+propose, critique, and resolve what happens next. A judge synthesizes the
+result. This adversarial loop produces more plausible trajectories than any
+single prompt could, because bad proposals get filtered by critics before
+they affect state.
+
+Agents are stateless `claude -p` subprocesses. They share context through a
+filesystem board (state, narrative, proposals). No fine-tuning, no memory,
+no agent frameworks — just prompts, roles, and domain rules.
 
 ## Simulation Modes
 
@@ -124,16 +141,18 @@ rules:                        # domain-specific governing rules
     description: "Evolution operates through variation and selection..."
     applies_to: ["actor"]     # optional: restrict to specific roles/agents
 
+wildcards_enabled: true        # off by default; opt in per scenario
+
 wildcards:                    # stochastic external shocks
   - name: asteroid_impact
-    probability: 0.1
+    probability: 1.0           # expected occurrences per trajectory
     description: "A major asteroid impact..."
     state_impact:
       environment:
         biodiversity: "collapse"
 
 termination:
-  max_steps: 20
+  max_steps: 500
   conditions:
     - field: "life.intelligence"
       equals: true
@@ -167,18 +186,23 @@ minimal-agora report runs/my-scenario/
 # Examples
 minimal-agora run scenarios/examples/intelligence.yaml -n 5
 minimal-agora run scenarios/examples/mediterranean.yaml -n 3 -m population
-minimal-agora run scenarios/examples/intelligence.yaml -n 30 --steps 15
+minimal-agora run scenarios/examples/intelligence.yaml -n 30 --steps 10  # quick test run
 ```
 
 ## Example Scenarios
 
-- **intelligence.yaml** — Biological evolution on an Earth-like planet.
-  Tests how frequently intelligence emerges over 5 billion years.
-  Counterfactual mode with natural selection rules and 6 wildcard events.
+| Scenario | Mode | Steps | Step scale | Time span | Question |
+|----------|------|-------|------------|-----------|----------|
+| intelligence | counterfactual | 500 | 10M years | 5B years | Does intelligence emerge? |
+| mediterranean | population | 500 | 2 years | 1000 years | Which civilization dominates? |
+| pandemic | counterfactual | 200 | 1 week | ~4 years | Does coordinated response prevent collapse? |
+| market | population | 300 | 1 month | 25 years | Which competitive dynamic prevails? |
+| complexity | open_ended | 500 | 10M years | 5B years | What complexity level is achieved? |
+| democracy | counterfactual | 1000 | 5 years | 5000 years | Does liberal democracy emerge? |
+| capitalism | counterfactual | 800 | 5 years | 4000 years | Does market capitalism emerge? |
+| nuclear_war | counterfactual | 500 | 1 month | ~42 years | Does nuclear war occur? |
 
-- **mediterranean.yaml** — Rise of Mediterranean civilizations.
-  Rome, Greece, and Persia compete over 1000 years. Population mode with
-  environmental forces, historical critic, and Thucydides as judge.
+Use `--steps 10` for quick test runs.
 
 ## Requirements
 
@@ -189,4 +213,5 @@ minimal-agora run scenarios/examples/intelligence.yaml -n 30 --steps 15
 ```bash
 uv sync
 uv run minimal-agora run scenarios/examples/intelligence.yaml -n 3
+uv run minimal-agora run scenarios/examples/intelligence.yaml -n 3 --steps 10  # quick test
 ```

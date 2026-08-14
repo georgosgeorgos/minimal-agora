@@ -5,30 +5,44 @@ rules, wildcards, and termination conditions. Agents are `claude -p`
 subprocesses differentiated only by their prompt — role, perspective, and
 domain rules shape behavior.
 
+All scenarios use realistic step counts (200–1000) for meaningful emergent
+dynamics. Use `--steps 10` for quick test runs.
+
+## Wildcards
+
+Wildcards are disabled by default (`wildcards_enabled: false`). Scenarios
+that use them must opt in with `wildcards_enabled: true`.
+
+The `probability` field means **expected occurrences per trajectory** — the
+engine divides by `max_steps` to get the per-step probability. A wildcard
+with `probability: 1.0` fires roughly once per trajectory regardless of
+step count.
+
 ## Scenarios
 
 ### intelligence.yaml — Emergence of Intelligence
 
 **Mode**: counterfactual (5 trajectories)
-**Step scale**: 100 million years
+**Steps**: 500 at 10 million years each (5 billion years)
 **Question**: Does intelligent life emerge?
 
-Simulates 4.5 billion years of evolution on a terrestrial planet. Two actor
-agents (natural selection, geological forces) propose changes each step. A
-thermodynamic critic checks plausibility. A judge synthesizes outcomes.
+Simulates evolution on a terrestrial planet. Two actor agents (natural
+selection, geological forces) propose changes each step. A thermodynamic
+critic checks plausibility. A judge synthesizes outcomes.
 
 Six wildcards (asteroid, gamma ray burst, supervolcano, snowball earth, alien
-contact, deus ex machina) inject catastrophic disruptions. Five domain rules
-govern evolutionary dynamics.
+contact, deus ex machina) inject rare catastrophic disruptions (~3 per
+trajectory). Five domain rules govern evolutionary dynamics.
 
 ```bash
 uv run minimal-agora run scenarios/examples/intelligence.yaml -n 10
+uv run minimal-agora run scenarios/examples/intelligence.yaml -n 10 --steps 10  # test
 ```
 
 ### mediterranean.yaml — Mediterranean Powers
 
 **Mode**: population (5 trajectories)
-**Step scale**: 50 years
+**Steps**: 500 at 2 years each (1000 years)
 **Question**: Which civilization dominated the Mediterranean?
 
 Three interacting populations (Rome, Greece, Persia) with distinct agents,
@@ -45,28 +59,10 @@ and economic incentives.
 uv run minimal-agora run scenarios/examples/mediterranean.yaml -n 5
 ```
 
-### complexity.yaml — Complexity Maximizer
-
-**Mode**: open_ended (1 trajectory)
-**Step scale**: 200 million years
-**Question**: What level of complexity was achieved?
-
-Fitness-tracked simulation that maximizes biological complexity. The
-`life.complexity` metric is evaluated each step. Simulation terminates
-when fitness plateaus (no change > 0.5 over 5 steps) or complexity
-exceeds 50.
-
-Rules enforce stepwise evolutionary transitions — no skipping from
-bacteria to intelligence. Extinction resets complexity but opens niches.
-
-```bash
-uv run minimal-agora run scenarios/examples/complexity.yaml
-```
-
 ### pandemic.yaml — Pandemic Spread
 
 **Mode**: counterfactual (10 trajectories)
-**Step scale**: 1 month
+**Steps**: 200 at 1 week each (~4 years)
 **Question**: Did coordinated response prevent societal collapse?
 
 Novel pathogen spreading across three regions (East Asia, Europe, Americas).
@@ -84,7 +80,7 @@ uv run minimal-agora run scenarios/examples/pandemic.yaml -n 10
 ### market.yaml — Market Competition
 
 **Mode**: population (5 trajectories)
-**Step scale**: 1 fiscal quarter
+**Steps**: 300 at 1 month each (25 years)
 **Question**: Which competitive dynamic prevailed?
 
 Three tech companies (Alpha Corp, Beta Inc, Gamma Labs) compete for market
@@ -97,6 +93,88 @@ and resource competition. Wildcards: paradigm shift, recession, data breach.
 
 ```bash
 uv run minimal-agora run scenarios/examples/market.yaml -n 5
+```
+
+### complexity.yaml — Complexity Maximizer
+
+**Mode**: open_ended (1 trajectory)
+**Steps**: 500 at 10 million years each (5 billion years, wildcards disabled)
+**Question**: What level of complexity was achieved?
+
+Fitness-tracked simulation that maximizes biological complexity. The
+`life.complexity` metric is evaluated each step. Simulation terminates
+when fitness plateaus (no change > 0.5 over 5 steps) or complexity
+exceeds 50.
+
+Rules enforce stepwise evolutionary transitions — no skipping from
+bacteria to intelligence. Extinction resets complexity but opens niches.
+
+```bash
+uv run minimal-agora run scenarios/examples/complexity.yaml
+```
+
+### democracy.yaml — Emergence of Democracy
+
+**Mode**: counterfactual (10 trajectories)
+**Steps**: 1000 at 5 years each (5000 years, from 3000 BCE)
+**Question**: Does liberal democracy become the dominant global governance form?
+
+Simulates political evolution from early agrarian city-states to modern
+governance. Three actor agents model political evolution, economic forces,
+and cultural/intellectual movements. Tracks governance types across four
+regions (Mesopotamia, Mediterranean, East Asia, South Asia) and political
+concept milestones (rule of law, representative assembly, individual rights,
+separation of powers, universal suffrage).
+
+Democracy is treated as one possible outcome — autocracy, theocracy, and
+empire are equally valid endpoints. Wildcards include great conquerors,
+revolutionary movements, technological disruptions, and civilizational
+collapses.
+
+```bash
+uv run minimal-agora run scenarios/examples/democracy.yaml -n 10
+```
+
+### capitalism.yaml — Emergence of Capitalism
+
+**Mode**: counterfactual (10 trajectories)
+**Steps**: 800 at 5 years each (4000 years, from 2000 BCE)
+**Question**: Does market capitalism become the dominant global economic system?
+
+Simulates economic evolution from subsistence agriculture through merchant
+economies to potential industrialization. Three actor agents model economic
+dynamics, institutional evolution, and technological change. Tracks economic
+systems across four regions and concept milestones (private property, wage
+labor, capital accumulation, free markets, banking, industrial production).
+
+Capitalism is treated as contingent, not inevitable. Sustained feudalism,
+state command economies, and merchant oligarchies are equally valid
+endpoints. Wildcards include trade route discoveries, monetary innovations,
+economic crises, and state collapses.
+
+```bash
+uv run minimal-agora run scenarios/examples/capitalism.yaml -n 10
+```
+
+### nuclear_war.yaml — Nuclear War
+
+**Mode**: counterfactual (20 trajectories)
+**Steps**: 500 at 1 month each (~42 years, from August 1945)
+**Question**: Does nuclear war occur?
+
+Simulates Cold War and post-Cold War nuclear dynamics. Four actor agents
+model US strategy, Soviet/Russian strategy, crisis dynamics, and nuclear
+proliferation/technology. Tracks arsenals, crisis escalation (0–10 scale),
+early warning systems, arms control, and delivery technology evolution.
+
+Higher trajectory count (20) to get stable statistics on a low-probability
+catastrophic event. Rules enforce deterrence stability, escalation ladder
+dynamics, crisis time pressure, and domestic political constraints.
+Wildcards include false alarms, regional crises, leadership changes,
+rogue actors, and arms control breakthroughs.
+
+```bash
+uv run minimal-agora run scenarios/examples/nuclear_war.yaml -n 20
 ```
 
 ## How Agents Work
@@ -120,7 +198,7 @@ Agents have no persistent memory across steps. The board (`state.json`,
 name: "your-scenario"
 mode: counterfactual | population | open_ended
 n_trajectories: 10
-step_budget: 20
+step_budget: 500
 
 initial_state:
   # Your domain's starting conditions
@@ -144,15 +222,17 @@ rules:
     description: "What this rule enforces"
     applies_to: ["actor"]  # optional filter
 
+wildcards_enabled: true     # must opt in (default: false)
+
 wildcards:
   - name: event_name
-    probability: 0.1
+    probability: 1.0        # expected occurrences per trajectory
     description: "What happens"
     state_impact:
       path.to.field: new_value
 
 termination:
-  max_steps: 20
+  max_steps: 500
   conditions:
     - field: "path.to.field"
       equals: target_value

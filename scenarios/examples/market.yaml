@@ -1,10 +1,10 @@
 name: "market-competition"
 mode: population
 n_trajectories: 5
-step_budget: 15
+step_budget: 300
 description: >
   Simulate market competition between three tech companies in a
-  regulated environment. Each step represents one fiscal quarter.
+  regulated environment. Each step represents one month.
   Companies compete for market share, talent, and innovation while
   navigating regulatory pressure and market forces.
 
@@ -24,9 +24,9 @@ initial_state:
     inflation: 0.03
     recession_risk: low
   time:
-    quarter: 1
+    month: 1
     year: 2025
-    step_scale: "1 quarter"
+    step_scale: "1 month"
 
 entities:
   - name: alpha_corp
@@ -188,9 +188,11 @@ rules:
       valuable as they gain users. Market leaders in networked markets
       are hard to displace without a paradigm shift.
 
+wildcards_enabled: true
+
 wildcards:
   - name: paradigm_shift
-    probability: 0.05
+    probability: 0.6
     description: >
       A technological paradigm shift (quantum computing breakthrough,
       new computing architecture) disrupts the market. Companies
@@ -201,7 +203,7 @@ wildcards:
         disruption_probability: 0.5
 
   - name: recession
-    probability: 0.08
+    probability: 0.9
     description: >
       Economic downturn reduces market spending, tightens capital
       markets, and forces cost-cutting. Companies with low cash
@@ -211,7 +213,7 @@ wildcards:
         recession_risk: high
 
   - name: data_breach
-    probability: 0.06
+    probability: 0.6
     description: >
       A major data breach at one of the companies erodes public
       trust and triggers regulatory scrutiny.
@@ -220,7 +222,7 @@ wildcards:
         consumer_sentiment: negative
 
 termination:
-  max_steps: 15
+  max_steps: 300
   conditions:
     - field: "companies.alpha_corp.market_share"
       greater_than: 0.7

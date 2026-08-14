@@ -1,0 +1,204 @@
+name: "emergence-of-democracy"
+mode: counterfactual
+n_trajectories: 10
+step_budget: 1000
+description: >
+  Simulate political evolution from early agrarian societies to modern
+  governance. Each step represents roughly 5 years. We test how frequently
+  representative democracy and Western-style liberal institutions emerge
+  as the dominant global political form. Starting from 3000 BCE with
+  early city-states.
+
+initial_state:
+  world:
+    dominant_governance: "chiefdom"
+    literacy_rate: 0.01
+    urbanization: 0.05
+    trade_connectivity: minimal
+    information_speed: "messenger"
+  regions:
+    mesopotamia:
+      governance: "city_state_monarchy"
+      centralization: high
+      population_millions: 1.0
+      military_power: 60
+      economic_output: 50
+      cultural_influence: 70
+    mediterranean:
+      governance: "tribal"
+      centralization: low
+      population_millions: 0.5
+      military_power: 30
+      economic_output: 30
+      cultural_influence: 40
+    east_asia:
+      governance: "tribal"
+      centralization: low
+      population_millions: 0.8
+      military_power: 35
+      economic_output: 35
+      cultural_influence: 35
+    south_asia:
+      governance: "tribal"
+      centralization: low
+      population_millions: 0.6
+      military_power: 25
+      economic_output: 30
+      cultural_influence: 45
+  political_concepts:
+    rule_of_law: false
+    representative_assembly: false
+    individual_rights: false
+    separation_of_powers: false
+    universal_suffrage: false
+    constitutional_government: false
+  time:
+    year: -3000
+    step_scale: "5 years"
+
+agents:
+  - role: actor
+    name: political_evolution
+    perspective: >
+      You model how governance structures evolve. Political systems change
+      through internal pressure (class conflict, elite competition,
+      succession crises) and external pressure (conquest, trade influence,
+      ideological diffusion). Democracy is NOT inevitable — most historical
+      polities were monarchies, oligarchies, or empires. Democratic
+      experiments (Athens, Roman Republic, Icelandic Althing) were rare and
+      often short-lived. Liberalism requires specific preconditions:
+      merchant classes, literacy, legal traditions, constraints on rulers.
+      Authoritarianism is the historical default.
+
+  - role: actor
+    name: economic_forces
+    perspective: >
+      You model economic development and its political consequences.
+      Agriculture enables surplus and hierarchy. Trade creates merchant
+      classes who demand political representation. Industrialization
+      concentrates workers who organize. Economic crises destabilize
+      regimes. Property rights, contract law, and market institutions
+      develop unevenly. Capitalism and democracy are historically
+      correlated but neither requires the other.
+
+  - role: actor
+    name: cultural_intellectual
+    perspective: >
+      You model intellectual and cultural movements. Philosophy, religion,
+      and ideology shape what people believe is legitimate governance.
+      The Axial Age, Enlightenment, and revolutionary movements were
+      contingent — they depended on specific thinkers, institutions, and
+      historical moments. Ideas spread through trade, conquest, and
+      migration, but adoption depends on local conditions. Nationalism,
+      liberalism, socialism, and fascism are all modern inventions.
+
+  - role: critic
+    name: historical_plausibility
+    perspective: >
+      You evaluate whether proposed political changes are historically
+      plausible. Democracies don't spontaneously appear — they require
+      institutional preconditions (legal tradition, literate population,
+      economic development, political competition). Rapid transitions
+      are usually unstable. Most revolutions produce new autocracies.
+      Constitutional traditions take centuries to develop.
+
+  - role: judge
+    name: political_arbiter
+    perspective: >
+      Synthesize proposals into the most plausible political evolution for
+      each region. Democracy is one possible outcome among many — empires,
+      theocracies, oligarchies, military dictatorships, and totalitarian
+      states are equally valid endpoints. The question is not whether
+      democracy SHOULD emerge but whether it DOES given the conditions.
+      Update governance types, political concepts, and regional power.
+
+rules:
+  - name: institutional_path_dependence
+    description: >
+      Political institutions are sticky. A region with strong monarchical
+      traditions rarely transitions directly to democracy. Intermediate
+      forms (constitutional monarchy, oligarchic republic) usually precede
+      full democracy. Each transition takes decades minimum.
+
+  - name: economic_prerequisites
+    description: >
+      Representative governance correlates with economic development.
+      Subsistence economies support autocracy. Merchant economies enable
+      oligarchy. Industrial economies create conditions for mass politics.
+      But correlation is not causation — wealthy autocracies exist.
+
+  - name: military_and_political_power
+    description: >
+      Military conquest spreads governance models. Empires impose their
+      systems on conquered peoples. Military defeat can trigger regime
+      change. Standing armies can overthrow civilian governments.
+
+  - name: ideological_diffusion
+    description: >
+      Political ideas spread through trade, migration, and conquest,
+      but adoption depends on local conditions. Ideas that work in one
+      context may fail in another. Revolutionary ideas spread faster
+      with literacy and communication technology.
+
+wildcards_enabled: true
+
+wildcards:
+  - name: great_conqueror
+    probability: 1.5
+    description: >
+      A great military leader (Alexander, Genghis Khan, Napoleon-scale)
+      reshapes the political map. Empires expand rapidly but often
+      fragment after the leader's death.
+    state_impact:
+      world:
+        dominant_governance: "empire"
+
+  - name: revolutionary_movement
+    probability: 0.5
+    description: >
+      A major political revolution (French Revolution-scale) overthrows
+      an existing order and attempts to establish new governance principles.
+      May succeed or devolve into terror and counter-revolution.
+    state_impact:
+      political_concepts:
+        representative_assembly: true
+
+  - name: technological_disruption
+    probability: 0.75
+    description: >
+      A major technological change (printing press, telegraph, internet)
+      transforms information flow and political organization. May
+      empower or undermine existing regimes.
+    state_impact:
+      world:
+        information_speed: "accelerated"
+
+  - name: civilizational_collapse
+    probability: 0.5
+    description: >
+      A major civilization collapses (Bronze Age Collapse, Fall of Rome).
+      Political institutions are destroyed. Successor states may adopt
+      radically different governance forms.
+    state_impact:
+      world:
+        trade_connectivity: "disrupted"
+
+termination:
+  max_steps: 1000
+  conditions:
+    - field: "political_concepts.universal_suffrage"
+      equals: true
+
+outcome:
+  question: "Did liberal democracy become the dominant global governance form?"
+  classifier:
+    - name: liberal_democracy
+      condition:
+        field: "political_concepts.universal_suffrage"
+        equals: true
+    - name: constitutional_government
+      condition:
+        field: "political_concepts.constitutional_government"
+        equals: true
+    - name: autocracy_persists
+      default: true

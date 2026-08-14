@@ -1,10 +1,10 @@
 name: "emergence-of-intelligence"
 mode: counterfactual
 n_trajectories: 5
-step_budget: 10
+step_budget: 500
 description: >
   Simulate the evolution of life on an Earth-like planet over billions of years.
-  Each step represents roughly 500 million years. We test how frequently
+  Each step represents roughly 10 million years. We test how frequently
   intelligence emerges under standard planetary conditions.
 
 initial_state:
@@ -29,7 +29,7 @@ initial_state:
     mass_extinctions: 0
   time:
     step: 0
-    step_scale: "500 million years"
+    step_scale: "10 million years"
 
 rules:
   - name: natural_selection
@@ -110,9 +110,11 @@ agents:
       a concrete state update and a narrative summary written as a
       scientific account of this era.
 
+wildcards_enabled: true
+
 wildcards:
   - name: asteroid_impact
-    probability: 0.1
+    probability: 1.0
     description: >
       A major asteroid impact event (Chicxulub-scale). Causes mass extinction,
       climate disruption, atmospheric changes. Most complex life perishes but
@@ -123,7 +125,7 @@ wildcards:
         biodiversity: "collapse"
 
   - name: gamma_ray_burst
-    probability: 0.03
+    probability: 0.25
     description: >
       A nearby gamma-ray burst strips the ozone layer. Surface life faces
       lethal UV radiation for millions of years. Deep ocean and underground
@@ -135,7 +137,7 @@ wildcards:
         biodiversity: "collapse"
 
   - name: supervolcanic_eruption
-    probability: 0.08
+    probability: 0.75
     description: >
       Massive volcanic event (Siberian Traps scale). Triggers volcanic winter,
       ocean acidification, and greenhouse warming. Severe but not necessarily
@@ -147,7 +149,7 @@ wildcards:
         mass_extinctions: "+1"
 
   - name: alien_contact
-    probability: 0.02
+    probability: 0.25
     description: >
       An alien civilization makes contact or intervenes. This could range from
       seeding biological material (panspermia), altering atmospheric composition,
@@ -160,7 +162,7 @@ wildcards:
         biodiversity: "disrupted"
 
   - name: deus_ex_machina
-    probability: 0.01
+    probability: 0.1
     description: >
       An unexplained, seemingly purposeful event occurs that defies known
       physics. A sudden, dramatic acceleration or reversal of evolutionary
@@ -173,7 +175,7 @@ wildcards:
         anomaly_detected: true
 
   - name: snowball_earth
-    probability: 0.05
+    probability: 0.65
     description: >
       Global glaciation covers the planet in ice. Photosynthesis collapses,
       oceans freeze over. Life retreats to hydrothermal vents and volcanic
@@ -185,7 +187,7 @@ wildcards:
         biodiversity: "minimal"
 
 termination:
-  max_steps: 10
+  max_steps: 500
   conditions:
     - field: "life.intelligence"
       equals: true

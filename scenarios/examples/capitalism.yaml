@@ -1,0 +1,212 @@
+name: "emergence-of-capitalism"
+mode: counterfactual
+n_trajectories: 10
+step_budget: 800
+description: >
+  Simulate economic evolution from agrarian subsistence to modern
+  economic systems. Each step represents roughly 5 years. We test
+  how frequently market capitalism and Western-style economic
+  institutions emerge as the dominant global model. Starting from
+  early agricultural surplus economies around 2000 BCE.
+
+initial_state:
+  world:
+    dominant_economy: "subsistence_agriculture"
+    global_trade_volume: 1
+    monetary_systems: barter
+    financial_institutions: none
+    dominant_property_regime: "communal"
+  regions:
+    near_east:
+      economy: "palace_economy"
+      surplus: moderate
+      specialization: low
+      trade_activity: moderate
+      population_millions: 2.0
+      urbanization: 0.1
+      property_rights: "royal_grant"
+    europe:
+      economy: "subsistence"
+      surplus: low
+      specialization: minimal
+      trade_activity: low
+      population_millions: 0.5
+      urbanization: 0.02
+      property_rights: "tribal"
+    east_asia:
+      economy: "subsistence"
+      surplus: low
+      specialization: minimal
+      trade_activity: low
+      population_millions: 1.0
+      urbanization: 0.03
+      property_rights: "communal"
+    south_asia:
+      economy: "subsistence"
+      surplus: low
+      specialization: minimal
+      trade_activity: moderate
+      population_millions: 0.8
+      urbanization: 0.05
+      property_rights: "caste_based"
+  economic_concepts:
+    private_property: false
+    wage_labor: false
+    capital_accumulation: false
+    free_markets: false
+    joint_stock_companies: false
+    industrial_production: false
+    banking_system: false
+    fiat_currency: false
+  time:
+    year: -2000
+    step_scale: "5 years"
+
+agents:
+  - role: actor
+    name: economic_dynamics
+    perspective: >
+      You model how economic systems evolve. Markets are ancient but
+      capitalism is specific: private ownership of means of production,
+      wage labor, capital accumulation, and market-determined prices.
+      Most historical economies were command economies (palace, feudal,
+      tributary). Capitalism emerged in specific conditions (late medieval
+      European city-states, merchant guilds, proto-banking). Alternative
+      paths are equally plausible: Chinese bureaucratic capitalism,
+      Islamic merchant networks, or sustained command economies.
+      Industrialization is not inevitable — it required coal, iron,
+      specific institutions, and contingent invention.
+
+  - role: actor
+    name: institutional_evolution
+    perspective: >
+      You model the legal, financial, and social institutions that
+      underpin economic systems. Property rights, contract enforcement,
+      banking, insurance, corporate law — these develop over centuries
+      and require specific political conditions. Guild systems, merchant
+      law, and customary property evolve into formal institutions only
+      under certain pressures. State capacity shapes what economic
+      organization is possible.
+
+  - role: actor
+    name: technological_change
+    perspective: >
+      You model technological innovation and its economic consequences.
+      Agricultural improvements enable surplus. Transport technology
+      enables trade. Energy technology (water mills, steam, electricity)
+      enables industrialization. Each innovation changes what economic
+      organization is viable. But invention is contingent — the steam
+      engine required specific metallurgy, fuel availability, and
+      economic incentive.
+
+  - role: critic
+    name: economic_historian
+    perspective: >
+      You evaluate whether proposed economic changes are historically
+      plausible. Market economies don't appear overnight — they require
+      institutional preconditions. Industrialization requires prior
+      proto-industrialization. Financial systems develop incrementally.
+      Economic transitions that took centuries in reality should not
+      happen in decades in the simulation.
+
+  - role: judge
+    name: economic_arbiter
+    perspective: >
+      Synthesize proposals into the most plausible economic evolution.
+      Capitalism is one possible outcome — sustained feudalism, state
+      socialism, merchant oligarchies, and mixed economies are equally
+      valid endpoints. Update economic structures, trade patterns,
+      institutional development, and regional economic power.
+
+rules:
+  - name: surplus_prerequisite
+    description: >
+      Economic complexity requires agricultural surplus. Without surplus,
+      there is no specialization, no trade, and no urbanization. Surplus
+      depends on climate, soil, crops, and technology.
+
+  - name: institutional_lag
+    description: >
+      Legal and financial institutions develop slower than economic
+      practice. Merchants trade before there is merchant law. Banks
+      exist before banking regulation. This lag creates instability
+      but also innovation.
+
+  - name: path_dependence
+    description: >
+      Economic institutions are sticky. A region with strong guild
+      traditions develops differently from one with free merchant
+      activity. State-directed economies persist if the state is strong.
+      Property regimes rarely change without political upheaval.
+
+  - name: trade_network_effects
+    description: >
+      Trade creates positive feedback loops. Regions connected to trade
+      networks develop faster. Trade spreads not just goods but
+      institutions, technologies, and ideas about economic organization.
+
+wildcards_enabled: true
+
+wildcards:
+  - name: trade_route_discovery
+    probability: 1.0
+    description: >
+      A major new trade route opens (Silk Road, Indian Ocean trade,
+      Atlantic crossing). Connects previously isolated economic systems.
+      Creates enormous wealth for intermediaries and reshapes global
+      economic geography.
+    state_impact:
+      world:
+        global_trade_volume: "doubled"
+
+  - name: monetary_innovation
+    probability: 0.75
+    description: >
+      A major monetary innovation (coinage, paper money, bills of
+      exchange, central banking). Changes how value is stored and
+      transferred, enabling new economic organization.
+    state_impact:
+      world:
+        monetary_systems: "evolving"
+
+  - name: economic_crisis
+    probability: 1.0
+    description: >
+      A major economic disruption (famine, plague reducing labor force,
+      trade collapse, currency crisis). Destroys existing economic
+      arrangements but may enable new ones — the Black Death raised
+      European wages and weakened feudalism.
+    state_impact:
+      world:
+        global_trade_volume: "contracted"
+
+  - name: state_collapse
+    probability: 0.5
+    description: >
+      A major state collapses, removing the institutional framework
+      that supported its economic system. Successor states may adopt
+      different economic models. Power vacuums create opportunities
+      for merchant autonomy.
+    state_impact:
+      world:
+        dominant_property_regime: "contested"
+
+termination:
+  max_steps: 800
+  conditions:
+    - field: "economic_concepts.industrial_production"
+      equals: true
+
+outcome:
+  question: "Did market capitalism become the dominant global economic system?"
+  classifier:
+    - name: industrial_capitalism
+      condition:
+        field: "economic_concepts.industrial_production"
+        equals: true
+    - name: merchant_capitalism
+      condition:
+        field: "economic_concepts.capital_accumulation"
+        equals: true
+    - name: command_economy
+      default: true

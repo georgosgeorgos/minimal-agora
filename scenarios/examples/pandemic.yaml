@@ -1,10 +1,10 @@
 name: "pandemic-spread"
 mode: counterfactual
 n_trajectories: 10
-step_budget: 15
+step_budget: 200
 description: >
   Simulate a novel pandemic spreading across three connected regions.
-  Each step represents one month. Tracks disease spread, public health
+  Each step represents one week. Tracks disease spread, public health
   response, economic impact, and social cohesion. The question: does
   coordinated response prevent collapse?
 
@@ -44,8 +44,8 @@ initial_state:
     information_quality: high
     cooperation_level: moderate
   time:
-    month: 1
-    step_scale: "1 month"
+    week: 1
+    step_scale: "1 week"
 
 agents:
   - role: actor
@@ -118,9 +118,11 @@ rules:
       with funding. Vaccine available at progress >= 100. Distribution
       takes 3-6 months to reach meaningful coverage.
 
+wildcards_enabled: true
+
 wildcards:
   - name: super_spreader_event
-    probability: 0.1
+    probability: 0.8
     description: >
       A large gathering (religious event, sporting event, political rally)
       causes a massive spike in cases in one region.
@@ -129,7 +131,7 @@ wildcards:
         transmissibility: 0.85
 
   - name: mutation
-    probability: 0.05
+    probability: 0.6
     description: >
       The pathogen mutates. Could become more transmissible, more lethal,
       or partially evade prior immunity/vaccines.
@@ -138,7 +140,7 @@ wildcards:
         mutations: 1
 
   - name: misinformation_wave
-    probability: 0.08
+    probability: 0.6
     description: >
       A major misinformation campaign undermines public health messaging.
       Compliance with measures drops across all regions.
@@ -147,7 +149,7 @@ wildcards:
         information_quality: degraded
 
 termination:
-  max_steps: 15
+  max_steps: 200
   conditions:
     - field: "global.vaccine_progress"
       greater_than: 100
