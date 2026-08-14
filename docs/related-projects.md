@@ -3,7 +3,7 @@
 Research landscape for multi-agent LLM simulations, agent-based modeling with LLMs,
 counterfactual reasoning systems, and related paradigms. Compiled August 2026.
 
-**Already known / in-repo:** TerraLingua, MatrAIx, re:factory.
+**See also:** re:factory (internal).
 
 ---
 
@@ -84,6 +84,32 @@ Large ecosystem (13,800+ stars, 100+ contributors).
 
 - Paper: https://openreview.net/forum?id=3IyL2XWDkG
 - GitHub: https://github.com/camel-ai/camel
+
+### TerraLingua (2025)
+
+Multi-agent simulation for studying emergent behavior, artifact creation, and
+cultural evolution. LLM-powered agents (Claude or other models) interact in a
+shared 2D grid environment — foraging for resources, creating text artifacts,
+reproducing, and communicating. After each experiment, an AI Anthropologist
+(itself an LLM agent) analyzes the simulation logs to annotate behaviors, infer
+group dynamics, classify artifacts, and trace cultural lineages.
+
+- Paper: https://arxiv.org/abs/2603.16910
+- Dataset: https://huggingface.co/datasets/GPaolo/TerraLingua
+- Dashboard: https://aianthropology.decisionai.ml/
+
+### MatrAIx (2026)
+
+Population-scale, persona-driven infrastructure for evaluating AI systems and
+interactive products with heterogeneous simulated users. Instantiates sampled
+persona records (from a schema of 1,290 categorical dimensions covering
+background, psychology, capability, and behavior) as LLM agents and runs them
+through reproducible tasks across four environments — Survey, AI Chatbot, Web,
+and App. Combines dependency-aware synthetic generation with evidence-aware
+human grounding.
+
+- Website: https://matraix.ai/
+- Dataset: https://huggingface.co/datasets/MatrAIx2026/MatrAIx_Persona_1M_Public_Release
 
 ### ChatArena (Farama Foundation)
 
