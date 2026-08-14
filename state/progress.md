@@ -70,3 +70,7 @@
 | feat-006 | reliability | Mode collapse mitigation | passing |
 | feat-007 | reliability | Checkpoint and resume | passing |
 | feat-008 | scenarios | Additional example scenarios | passing |
+| feat-009 | core | Claude API direct backend | not_started |
+| feat-010 | performance | Adaptive step resolution (skip LLM for routine steps) | not_started |
+| feat-011 | performance | Step batching (multi-step per LLM call) | not_started |
+| feat-012 | architecture | State-in-prompt vs. file-based board | not_started |
