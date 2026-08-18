@@ -15,7 +15,7 @@ from minimal_agora.analysis import (
     save_report,
 )
 from minimal_agora.logging_config import configure_logging
-from minimal_agora.runner import run_batch
+from minimal_agora.runner import run_batch, run_particle_filter
 from minimal_agora.scenario import load_scenario
 
 
@@ -142,9 +142,14 @@ def cmd_run(args) -> int:
         print("\nDry run complete. Scenario is valid.")
         return 0
 
-    trajectories = asyncio.run(
-        run_batch(scenario, output_dir, args.concurrency, args.timeout)
-    )
+    if scenario.resampling:
+        trajectories = asyncio.run(
+            run_particle_filter(scenario, output_dir, args.concurrency, args.timeout)
+        )
+    else:
+        trajectories = asyncio.run(
+            run_batch(scenario, output_dir, args.concurrency, args.timeout)
+        )
 
     question = scenario.outcome.question if scenario.outcome else ""
     result = aggregate_outcomes(trajectories, question)

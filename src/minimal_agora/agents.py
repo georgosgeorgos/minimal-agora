@@ -10,6 +10,7 @@ from minimal_agora.models import (
     Critique,
     EntityConfig,
     Proposal,
+    ResamplingScore,
     Resolution,
     SimRule,
 )
@@ -320,4 +321,51 @@ def parse_resolution(workspace: Path, step: int) -> Resolution | None:
             return Resolution.model_validate_json(f.read())
     except (ValueError, OSError, KeyError) as e:
         logger.warning("Failed to parse resolution %s: %s", path.name, e)
+        return None
+
+
+def build_resampling_critic_prompt(criteria: list[str], step: int) -> str:
+    criteria_lines = "\n".join(f"{i + 1}. {c}" for i, c in enumerate(criteria))
+    return f"""You are a **resampling critic** evaluating trajectory quality at step {step}.
+
+## Instructions
+1. Read the current world state from `board/state.json`
+2. Read the narrative history from `board/narrative.md`
+3. For each criterion below, score 0 (no) or 1 (yes):
+
+{criteria_lines}
+
+4. Write your result as a JSON file to `critiques/resample_step_{step:03d}.json`
+
+The JSON must have this structure:
+```json
+{{
+  "scores": [0, 1, 1, ...],
+  "total": 4,
+  "notes": "Brief explanation of your scoring"
+}}
+```
+
+The `scores` array must have exactly {len(criteria)} elements (one per criterion above).
+The `total` must equal the sum of the scores array.
+"""
+
+
+def parse_resampling_score(workspace: Path, step: int, trajectory_id: int) -> ResamplingScore | None:
+    path = workspace / "critiques" / f"resample_step_{step:03d}.json"
+    if not path.exists():
+        logger.warning("Resampling score file missing: %s", path)
+        return None
+    try:
+        import json
+        with open(path) as f:
+            data = json.load(f)
+        return ResamplingScore(
+            trajectory_id=trajectory_id,
+            scores=data["scores"],
+            total=data["total"],
+            notes=data.get("notes", ""),
+        )
+    except (ValueError, OSError, KeyError) as e:
+        logger.warning("Failed to parse resampling score %s: %s", path.name, e)
         return None

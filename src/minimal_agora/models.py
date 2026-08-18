@@ -113,6 +113,37 @@ class FitnessConfig(BaseModel):
     direction: str = "maximize"
 
 
+class ResamplingConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    interval: int = Field(default=5, ge=1)
+    criteria: list[str] = Field(default_factory=list)
+    min_particles: int = Field(default=2, ge=1)
+
+
+class ResamplingScore(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    trajectory_id: int
+    scores: list[int]
+    total: int
+    notes: str = ""
+
+
+DEFAULT_RESAMPLING_CRITERIA = [
+    "Did the system state change meaningfully this period?",
+    "Did a novel entity, force, or dynamic emerge?",
+    "Is there active conflict or tension between forces?",
+    "Did complexity increase (new structures, relationships, or hierarchies)?",
+    "Did an unexpected or surprising event occur?",
+    "Are there unresolved tensions that could drive future change?",
+    "Is this trajectory exploring a unique path compared to the initial state?",
+    "Did the environment or external conditions change significantly?",
+    "Are there second-order effects or cascading consequences unfolding?",
+    "Would continuing this trajectory likely produce new information?",
+]
+
+
 class Scenario(BaseModel):
     """Top-level simulation scenario defining agents, rules, and termination conditions."""
 
@@ -134,6 +165,7 @@ class Scenario(BaseModel):
     description: str = ""
     max_concurrent_agents: int = Field(default=8, ge=1)
     review_interval: int = Field(default=1, ge=1)
+    resampling: ResamplingConfig | None = None
 
 
 class Proposal(BaseModel):
