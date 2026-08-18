@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import random
 from copy import deepcopy
+from datetime import UTC, datetime
 from pathlib import Path
 
 import structlog
@@ -17,7 +18,7 @@ from minimal_agora.agents import (
     parse_proposal,
     parse_resolution,
 )
-from minimal_agora.board import Board, _deep_merge
+from minimal_agora.board import Board, _atomic_write, _deep_merge
 from minimal_agora.models import (
     AgentRole,
     FitnessConfig,
@@ -120,6 +121,9 @@ async def run_trajectory(
     if resume_from > 0:
         tlog.info("trajectory.resume", from_step=resume_from)
         trajectory.steps = _restore_checkpoint(workspace, resume_from, board)
+        trajectory.metadata["resumed"] = True
+        trajectory.metadata["resume_from_step"] = resume_from
+        trajectory.metadata["resume_timestamp"] = datetime.now(UTC).isoformat()
 
     max_steps = scenario.termination.get("max_steps", scenario.step_budget)
     conditions = scenario.termination.get("conditions", [])
@@ -163,9 +167,8 @@ async def run_trajectory(
     final_state = board.read_state()
     final_step = len(trajectory.steps) - 1
 
-    metadata: dict = {}
     if fitness_history:
-        metadata["fitness_history"] = fitness_history
+        trajectory.metadata["fitness_history"] = fitness_history
 
     classification = _classify_outcome(final_state, scenario)
     trajectory.outcome = TrajectoryOutcome(
@@ -173,7 +176,6 @@ async def run_trajectory(
         final_step=final_step,
         final_state=final_state,
     )
-    trajectory.metadata = metadata
 
     _save_trajectory(trajectory, workspace)
     return trajectory
@@ -481,5 +483,5 @@ def _check_plateau(
 
 def _save_trajectory(trajectory: Trajectory, workspace: Path) -> None:
     path = workspace / "trajectory.json"
-    with open(path, "w") as f:
+    with _atomic_write(path) as f:
         f.write(trajectory.model_dump_json(indent=2))
