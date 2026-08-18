@@ -1,5 +1,5 @@
 {
-  "total": 0.543421568627451,
+  "total": 0.55159,
   "results": [
     {
       "name": "tests",
@@ -45,43 +45,43 @@
     },
     {
       "name": "capability_surface",
-      "score": 0.66,
-      "weight": 0.12254901960784313,
+      "score": 0.68,
+      "weight": 0.125,
       "passed": true,
-      "details": "surface=132 (modules=20, public_fns=104, entry_points=8), target=200"
+      "details": "surface=136 (modules=20, public_fns=108, entry_points=8), target=200"
     },
     {
       "name": "experiment_diversity",
       "score": 0.5,
-      "weight": 0.09803921568627451,
+      "weight": 0.1,
       "passed": true,
-      "details": "Only 0 experiments, too few to judge"
+      "details": "Only 1 experiments, too few to judge"
     },
     {
       "name": "observability",
-      "score": 0.336,
-      "weight": 0.08823529411764705,
+      "score": 0.351,
+      "weight": 0.09,
       "passed": false,
-      "details": "observability_score=0.34, function_coverage=0.14, structured_logging=False"
+      "details": "observability_score=0.35, function_coverage=0.16, structured_logging=False"
     },
     {
       "name": "research_grounding",
       "score": 0.0,
-      "weight": 0.0784313725490196,
-      "passed": true,
-      "details": "vault not configured \u2014 set $FACTORY_VAULT_PATH"
+      "weight": 0.07,
+      "passed": false,
+      "details": "sources=0 (archive), utilization=0.00, research_report=no, doc_ratio=0.00 (0/2), citation_ratio=0.00"
     },
     {
       "name": "factory_effectiveness",
       "score": 0.5,
-      "weight": 0.06372549019607843,
+      "weight": 0.065,
       "passed": true,
-      "details": "Only 0 experiments, too few to judge"
+      "details": "Only 1 experiments, too few to judge"
     },
     {
       "name": "spec_compliance",
       "score": 0.5,
-      "weight": 0.049019607843137254,
+      "weight": 0.05,
       "passed": true,
       "details": "spec_results.json not found \u2014 neutral score"
     }

@@ -1,0 +1,15 @@
+{
+  "id": 1,
+  "timestamp": "2026-08-18 17:30:20.742261",
+  "hypothesis": "Fix resampling critic \u2014 migrate to inline prompts (Issue #40)",
+  "change_summary": "",
+  "issue_number": null,
+  "pr_number": 45,
+  "score_before": null,
+  "score_after": null,
+  "delta": null,
+  "verdict": "revert",
+  "cost_usd": 2.4363884999999996,
+  "notes": "[OVERRIDDEN by finalize gate] precheck failed: score_direction. ceo:keep score_before=0.543 score_after=0.549 delta=+0.006 tests=55/55 lint=clean qa_pass=true capability_surface=0.67 precheck_halt=below_threshold reason=correct_bugfix_positive_delta",
+  "research_citations": []
+}

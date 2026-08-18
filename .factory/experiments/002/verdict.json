@@ -1,0 +1,15 @@
+{
+  "id": 2,
+  "timestamp": "2026-08-18 17:43:07.623511",
+  "hypothesis": "Conditional wildcards \u2014 state-dependent triggers (Issue #34)",
+  "change_summary": "",
+  "issue_number": null,
+  "pr_number": 45,
+  "score_before": null,
+  "score_after": null,
+  "delta": null,
+  "verdict": "revert",
+  "cost_usd": 3.745698,
+  "notes": "[OVERRIDDEN by finalize gate] precheck failed: score_direction. ceo:keep score_before=0.543 score_after=0.552 delta=+0.009 tests=85/85 lint=clean qa_pass=true capability_surface=0.68 new_tests=30 precheck_halt=below_threshold reason=factory_internal_eval_tests_coverage_not_detected score_py_composite=0.813",
+  "research_citations": []
+}

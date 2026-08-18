@@ -1,13 +1,18 @@
 # Builder Agent Output
 
-- **timestamp:** 2026-08-18T21:12:37Z
+- **timestamp:** 2026-08-18T21:36:28Z
 - **exit_code:** 0
 
 ---
 
-Both errors are fixed and `eval/score.py` passes ruff clean. The fixes were:
-1. **EXE001**: Made `eval/score.py` executable (`chmod +x`) since it has a shebang line
-2. **I001**: Auto-fixed import block formatting (added blank line after imports)
+Implementation complete. PR updated at https://github.com/georgosgeorgos/minimal-agora/pull/45.
+
+**Summary of what was built:**
+- `ConditionOperator` enum and `TriggerCondition` model in models.py, with optional `trigger_conditions` field on `WildcardEvent` (empty default for backward compatibility)
+- `evaluate_trigger_conditions()` in board.py with logging — checks all conditions against current state before allowing a wildcard to roll probability
+- Updated `_roll_wildcard()` in loop.py to skip wildcards whose conditions aren't satisfied
+- Updated pandemic.yaml with two conditional wildcards as demonstration
+- 30 new tests covering all operators, edge cases, integration, and backward compatibility — all 85 tests pass, lint clean
 ---
 
 > **⚠ CEO IDENTITY RE-ANCHOR (Sacred Rule 8)**
