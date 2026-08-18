@@ -1,8 +1,13 @@
 # Ceo Agent Output
 
-- **timestamp:** 2026-08-18T21:14:16Z
+- **timestamp:** 2026-08-18T21:45:59Z
 - **exit_code:** 0
 
 ---
 
-Created `factory.md` with all sections populated from the project context: goal, scope (src/minimal_agora, tests, scenarios, eval), guards (CLAUDE.md, AGENTS.md, pyproject.toml), eval command (`uv run python eval/score.py`), threshold 0.60, smoke test (`uv run pytest tests/ -v`), target branch `main`, and the two eval spec items from `.factory/eval_spec.json`. Research sections are present but marked as not configured since no research configuration exists.
+Done. Updated `factory.md` with:
+
+- **`## Project Eval`**: Added `test_suite` (exit_code parser) and `test_coverage` (regex parser extracting the percentage from pytest-cov output).
+- **`## Eval Weights`**: Set hygiene 0.30, growth 0.20, project 0.50 — giving project eval (tests + coverage) half the composite weight.
+
+No other sections were modified.

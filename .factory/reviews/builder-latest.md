@@ -1,18 +1,20 @@
 # Builder Agent Output
 
-- **timestamp:** 2026-08-18T21:36:28Z
+- **timestamp:** 2026-08-18T21:49:27Z
 - **exit_code:** 0
 
 ---
 
-Implementation complete. PR updated at https://github.com/georgosgeorgos/minimal-agora/pull/45.
+The existing PR is for a different feature (conditional wildcards from issue #34). My commit has been pushed to the same branch. The PR now includes both changes.
 
-**Summary of what was built:**
-- `ConditionOperator` enum and `TriggerCondition` model in models.py, with optional `trigger_conditions` field on `WildcardEvent` (empty default for backward compatibility)
-- `evaluate_trigger_conditions()` in board.py with logging — checks all conditions against current state before allowing a wildcard to roll probability
-- Updated `_roll_wildcard()` in loop.py to skip wildcards whose conditions aren't satisfied
-- Updated pandemic.yaml with two conditional wildcards as demonstration
-- 30 new tests covering all operators, edge cases, integration, and backward compatibility — all 85 tests pass, lint clean
+Done. Here's what was completed:
+
+1. **Created `eval/test_suite.py`** — runs pytest and outputs JSON `{"score": 1.0, "passed": true, "details": "..."}`
+2. **Created `eval/test_coverage.py`** — runs pytest with coverage, parses the TOTAL line, outputs JSON `{"score": 0.55, "passed": true, "details": "coverage=55%"}`
+3. **Updated `.factory/config.json`** — project_eval commands now use `uv run python eval/test_suite.py` and `uv run python eval/test_coverage.py` instead of inline one-liners
+4. **Verified both scripts** — both produce valid JSON output
+
+The commit is pushed to branch `factory/run-41ad6c6c` and included in PR #45: https://github.com/georgosgeorgos/minimal-agora/pull/45
 ---
 
 > **⚠ CEO IDENTITY RE-ANCHOR (Sacred Rule 8)**

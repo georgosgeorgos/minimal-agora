@@ -55,9 +55,24 @@ main
 ## Project Eval
 <!-- User-defined project-specific eval dimensions (benchmarks, accuracy, latency, etc.) -->
 
+### test_suite
+- command: uv run pytest tests/ -v
+- parser: exit_code
+- description: Run the full pytest test suite
+
+### test_coverage
+- command: uv run pytest --cov=src/minimal_agora --cov-report=term -q
+- parser: regex
+- pattern: TOTAL.*?(\d+)%
+- description: Measure test coverage percentage
+
 ## Eval Weights
 <!-- Weight distribution across eval tiers (must sum to 1.0) -->
 <!-- Default without project eval: hygiene 0.50, growth 0.50 -->
+
+hygiene: 0.30
+growth: 0.20
+project: 0.50
 
 ## Eval Spec
 <!-- Functional spec checks derived from project analysis. -->

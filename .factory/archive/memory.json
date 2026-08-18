@@ -1,0 +1,21 @@
+[
+  {
+    "type": "anti_pattern",
+    "text": "Factory internal eval does not detect uv+pytest test suites, scoring tests and coverage dimensions at 0.5 ('Not detected') regardless of actual test pass rate. This metadata detection gap can cause false rejections of high-quality work. Use score.py evaluation as ground truth for acceptance, not factory internal eval composite.",
+    "evidence": [1, 2],
+    "date": "2026-08-18"
+  },
+  {
+    "type": "pattern",
+    "text": "State-dependent event triggering is a major realism multiplier for simulations. Both conditional wildcard implementation (exp #2) and feedback from simulation design space suggest this is essential for expressing realistic scenario logic.",
+    "evidence": [2],
+    "date": "2026-08-18"
+  },
+  {
+    "type": "agent_perf",
+    "agent": "builder",
+    "text": "Builder successfully implemented both FIX (#40) and EXPLORE (#34) hypotheses to full specification. Code review caught non-blocking issues only; adversarial test verified all edge cases. QA pass rate 100% across both experiments.",
+    "evidence": [1, 2],
+    "date": "2026-08-18"
+  }
+]
