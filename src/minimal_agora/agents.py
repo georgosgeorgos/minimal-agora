@@ -264,6 +264,60 @@ not a technical description.
 """
 
 
+def build_resampling_critic_prompt(
+    state: dict,
+    narrative: str,
+    trajectory_summaries: list[dict],
+) -> str:
+    import json
+
+    state_json = json.dumps(state, indent=2)
+    summaries_json = json.dumps(trajectory_summaries, indent=2)
+    return f"""You are a **resampling critic** in a particle-filtering world simulation.
+
+Your job is to evaluate a set of parallel trajectories and decide which are most
+promising (should be duplicated) and which are least promising (should be pruned).
+
+## Current World State
+```json
+{state_json}
+```
+
+## Narrative So Far
+{narrative}
+
+## Trajectory Summaries
+Each entry describes one trajectory's recent progress, fitness, and outcome so far.
+```json
+{summaries_json}
+```
+
+## Instructions
+Evaluate each trajectory on:
+- **Plausibility**: Is the trajectory's progression realistic and internally consistent?
+- **Diversity**: Does it explore a meaningfully different region of the outcome space?
+- **Promise**: Is it trending toward an interesting or informative outcome?
+
+Return your assessment as JSON on stdout with this structure:
+```json
+{{
+  "scores": [
+    {{
+      "trajectory_id": 0,
+      "score": 0.85,
+      "reasoning": "Why this trajectory is or isn't promising"
+    }}
+  ],
+  "recommendation": "Which trajectories to duplicate and which to prune",
+  "overall_assessment": "Brief assessment of trajectory diversity and quality"
+}}
+```
+
+Score each trajectory from 0.0 (prune) to 1.0 (duplicate). Higher scores mean
+the trajectory should receive more copies in the resampled population.
+"""
+
+
 def build_prompt(agent: AgentConfig, step: int, rules: list[SimRule] | None = None, interaction_context: str = "", trajectory_id: int | None = None) -> str:
     if agent.role == AgentRole.ACTOR:
         return build_actor_prompt(agent, step, rules, interaction_context, trajectory_id)
@@ -271,6 +325,11 @@ def build_prompt(agent: AgentConfig, step: int, rules: list[SimRule] | None = No
         return build_critic_prompt(agent, step, rules)
     elif agent.role == AgentRole.JUDGE:
         return build_judge_prompt(agent, step, rules)
+    elif agent.role == AgentRole.RESAMPLING_CRITIC:
+        raise ValueError(
+            "RESAMPLING_CRITIC must be invoked via build_resampling_critic_prompt() directly, "
+            "not through build_prompt(), because it requires state, narrative, and trajectory_summaries parameters"
+        )
     raise ValueError(f"Unknown role: {agent.role}")
 
 

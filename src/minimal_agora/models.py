@@ -16,6 +16,7 @@ class AgentRole(str, Enum):
     ACTOR = "actor"
     CRITIC = "critic"
     JUDGE = "judge"
+    RESAMPLING_CRITIC = "resampling_critic"
 
 
 class AgentConfig(BaseModel):
