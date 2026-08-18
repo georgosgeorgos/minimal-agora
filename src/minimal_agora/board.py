@@ -1,13 +1,39 @@
 from __future__ import annotations
 
 import json
+import os
+import tempfile
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
+from typing import IO
 
 import structlog
 
 from minimal_agora.models import Critique, Proposal, Resolution, Step, WildcardEvent
 
 logger = structlog.stdlib.get_logger(__name__)
+
+
+@contextmanager
+def _atomic_write(filepath: Path) -> Iterator[IO[str]]:
+    directory = filepath.parent
+    fd, temppath = tempfile.mkstemp(dir=str(directory), prefix=".tmp_", suffix=filepath.suffix)
+    try:
+        f = os.fdopen(fd, "w", encoding="utf-8")
+        with f:
+            yield f
+            f.flush()
+            os.fsync(f.fileno())
+            logger.debug("checkpoint.write", path=str(filepath))
+        os.replace(temppath, str(filepath))
+        logger.debug("checkpoint.atomic_rename", path=str(filepath))
+    except Exception:
+        try:
+            os.unlink(temppath)
+        except OSError:
+            pass
+        raise
 
 
 class Board:
@@ -35,14 +61,14 @@ class Board:
 
     def write_state(self, state: dict) -> None:
         logger.debug("board.write_state", path=str(self.state_path))
-        with open(self.state_path, "w") as f:
+        with _atomic_write(self.state_path) as f:
             json.dump(state, f, indent=2)
 
     def snapshot_state(self, step: int) -> None:
         state = self.read_state()
         path = self.workspace / "history" / f"step_{step:03d}_state.json"
         logger.info("board.snapshot_state", step=step, path=str(path))
-        with open(path, "w") as f:
+        with _atomic_write(path) as f:
             json.dump(state, f, indent=2)
 
     def apply_resolution(self, resolution: Resolution, step: int) -> dict:
@@ -58,25 +84,25 @@ class Board:
 
     def save_proposal(self, proposal: Proposal, step: int) -> Path:
         path = self.workspace / "proposals" / f"step_{step:03d}_{proposal.agent}.json"
-        with open(path, "w") as f:
+        with _atomic_write(path) as f:
             f.write(proposal.model_dump_json(indent=2))
         return path
 
     def save_critique(self, critique: Critique, step: int) -> Path:
         path = self.workspace / "critiques" / f"step_{step:03d}_{critique.agent}.json"
-        with open(path, "w") as f:
+        with _atomic_write(path) as f:
             f.write(critique.model_dump_json(indent=2))
         return path
 
     def save_resolution(self, resolution: Resolution, step: int) -> Path:
         path = self.workspace / "resolutions" / f"step_{step:03d}_resolution.json"
-        with open(path, "w") as f:
+        with _atomic_write(path) as f:
             f.write(resolution.model_dump_json(indent=2))
         return path
 
     def save_step(self, step: Step) -> Path:
         path = self.workspace / "history" / f"step_{step.step_number:03d}_full.json"
-        with open(path, "w") as f:
+        with _atomic_write(path) as f:
             f.write(step.model_dump_json(indent=2))
         return path
 
@@ -99,7 +125,7 @@ class Board:
     def write_wildcard(self, event: WildcardEvent, step: int) -> Path:
         path = self.workspace / "board" / f"wildcard_step_{step:03d}.json"
         logger.info("board.write_wildcard", step=step, wildcard=event.name)
-        with open(path, "w") as f:
+        with _atomic_write(path) as f:
             json.dump(event.model_dump(), f, indent=2)
         return path
 
