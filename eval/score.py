@@ -15,6 +15,7 @@ import json
 import subprocess
 import sys
 
+
 def eval_tests() -> dict:
     """Run test suite: uv run pytest -v"""
     try:

@@ -1,0 +1,56 @@
+{
+  "goal": "A world simulation engine where LLM agents debate and interact to explore counterfactual hypotheses and population dynamics \u2014 implement open issues, improve the simulation (make it better/faster), and improve the visualizations.",
+  "scope": [
+    "src/minimal_agora/**",
+    "tests/**",
+    "scenarios/**",
+    "eval/**"
+  ],
+  "guards": [
+    "Do not delete or overwrite existing tests",
+    "Do not modify files outside the declared scope",
+    "Do not introduce secrets or credentials into the repository",
+    "Do not modify CLAUDE.md, AGENTS.md, or pyproject.toml structure"
+  ],
+  "eval_command": "uv run python eval/score.py",
+  "eval_threshold": 0.6,
+  "constraints": [
+    "Prefer small, incremental changes over large rewrites",
+    "Each change should be accompanied by at least one test",
+    "Follow the existing code style and conventions",
+    "Work on one feature at a time",
+    "Keep changes within the selected feature scope"
+  ],
+  "hypothesis_budget": {
+    "min_growth": 2,
+    "max_new": 2
+  },
+  "target_branch": "main",
+  "smoke_test": "uv run pytest tests/ -v",
+  "project_eval": [],
+  "eval_weights": {
+    "hygiene": 0.5,
+    "growth": 0.5,
+    "project": 0.0
+  },
+  "research_target": null,
+  "inner_loop": null,
+  "outer_loop": null,
+  "mutable_surfaces": [],
+  "fixed_surfaces": [],
+  "research_constraints": [],
+  "cost_budget": null,
+  "hard_constraints": [],
+  "eval_spec": [
+    "Run the CLI with --help and verify it prints usage information",
+    "Run the CLI with a sample input and verify it produces expected output"
+  ],
+  "hygiene_weights": null,
+  "growth_weights": null,
+  "adversarial": null,
+  "parallel": null,
+  "clean_pr": false,
+  "clean_pr_include": [],
+  "clean_pr_exclude": [],
+  "test_timeout": 600
+}
