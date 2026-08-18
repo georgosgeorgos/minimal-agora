@@ -1,0 +1,58 @@
+{
+  "goal": "Evolve the minimal-agora simulation engine toward production-quality code (type safety, test coverage, observability) and expanded capability surface.",
+  "scope": [
+    "src/minimal_agora/**/*.py",
+    "tests/**/*.py",
+    "scenarios/**/*.yaml",
+    "eval/**/*.py"
+  ],
+  "guards": [
+    "Do not delete or overwrite existing tests",
+    "Do not break the CLI interface (`minimal-agora run`, `minimal-agora report`)",
+    "Do not introduce secrets or credentials into the repository",
+    "Do not modify files outside the declared scope"
+  ],
+  "eval_command": "uv run python eval/score.py",
+  "eval_threshold": 0.5,
+  "constraints": [
+    "Prefer small, incremental changes over large rewrites",
+    "Each change should be accompanied by at least one test",
+    "Follow the existing code style and conventions",
+    "Maintain backward compatibility with existing scenario YAML files"
+  ],
+  "hypothesis_budget": {
+    "min_growth": 2,
+    "max_new": 2
+  },
+  "target_branch": "main",
+  "smoke_test": "uv run minimal-agora --help",
+  "project_eval": [],
+  "eval_weights": {
+    "hygiene": 0.5,
+    "growth": 0.5,
+    "project": 0.0
+  },
+  "research_target": null,
+  "inner_loop": null,
+  "outer_loop": null,
+  "mutable_surfaces": [],
+  "fixed_surfaces": [],
+  "research_constraints": [],
+  "cost_budget": null,
+  "hard_constraints": [],
+  "eval_spec": [
+    "name: tests\ncommand: uv run pytest -v\nweight: 0.4167\nparser: exit_code\ndescription: Run test suite\nsource: discovered",
+    "name: lint\ncommand: uv run ruff check .\nweight: 0.25\nparser: exit_code\ndescription: Run linter\nsource: discovered",
+    "name: type_check\ncommand: uv run mypy ./\nweight: 0.125\nparser: exit_code\ndescription: Run type checker\nsource: researched",
+    "name: coverage\ncommand: uv run pytest --cov= --cov-report=term -q\nweight: 0.125\nparser: exit_code\ndescription: Measure test coverage\nsource: researched",
+    "name: observability\ncommand: (inline)\nweight: 0.0833\nparser: json\ndescription: Analyze logging coverage, structured logging, and request tracing\nsource: researched"
+  ],
+  "hygiene_weights": null,
+  "growth_weights": null,
+  "adversarial": null,
+  "parallel": null,
+  "clean_pr": false,
+  "clean_pr_include": [],
+  "clean_pr_exclude": [],
+  "test_timeout": 600
+}
