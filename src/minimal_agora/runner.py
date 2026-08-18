@@ -14,6 +14,7 @@ async def run_batch(
     concurrency: int = 4,
     agent_timeout: int = 300,
 ) -> list[Trajectory]:
+    """Run multiple trajectories in parallel with bounded concurrency."""
     output_dir.mkdir(parents=True, exist_ok=True)
     n = scenario.n_trajectories
 

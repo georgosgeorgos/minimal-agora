@@ -14,6 +14,7 @@ logger = structlog.stdlib.get_logger(__name__)
 
 
 def load_scenario(path: str | Path) -> Scenario:
+    """Load and validate a scenario from a YAML or JSON file."""
     path = Path(path)
     logger.info("scenario.load", path=str(path), format=path.suffix)
     with open(path) as f:

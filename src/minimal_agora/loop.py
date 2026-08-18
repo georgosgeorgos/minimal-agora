@@ -100,6 +100,7 @@ async def run_trajectory(
     trajectory_id: int = 0,
     agent_timeout: int = 300,
 ) -> Trajectory:
+    """Run a single simulation trajectory, returning the completed Trajectory with outcome."""
     board = Board(workspace)
     agent_semaphore = asyncio.Semaphore(scenario.max_concurrent_agents)
 
