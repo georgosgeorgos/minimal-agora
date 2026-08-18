@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from pathlib import Path
 
 from minimal_agora.models import (
@@ -145,6 +146,67 @@ _CONDITION_OPS = {
     ConditionOperator.GTE: lambda v, t: v >= t,
     ConditionOperator.LTE: lambda v, t: v <= t,
 }
+
+
+def compress_narrative(narrative: str, window: int = 20) -> str:
+    _STEP_HEADER = re.compile(r"^## Step (\d+)$", re.MULTILINE)
+    matches = [(m, int(m.group(1))) for m in _STEP_HEADER.finditer(narrative) if int(m.group(1)) >= 1]
+
+    if len(matches) <= window:
+        logger.debug("narrative has %d steps, within window %d — no compression", len(matches), window)
+        return narrative
+
+    logger.info("compressing narrative: %d steps, keeping %d recent", len(matches), window)
+
+    steps: list[tuple[str, str]] = []
+    for i, (match, _step_num) in enumerate(matches):
+        header = match.group(0)
+        body_start = match.end()
+        body_end = matches[i + 1][0].start() if i + 1 < len(matches) else len(narrative)
+        body = narrative[body_start:body_end].strip()
+        steps.append((header, body))
+
+    preamble = narrative[: matches[0][0].start()]
+
+    summary_marker = "## Summary of Earlier Steps"
+    existing_summary = ""
+    clean_preamble = preamble
+    if summary_marker in preamble:
+        idx = preamble.index(summary_marker)
+        existing_summary = preamble[idx + len(summary_marker) :].strip()
+        clean_preamble = preamble[:idx].rstrip() + "\n\n"
+
+    old_steps = steps[:-window]
+    recent_steps = steps[-window:]
+
+    batch_size = 10
+    summary_parts: list[str] = []
+    if existing_summary:
+        summary_parts.append(existing_summary)
+
+    for i in range(0, len(old_steps), batch_size):
+        batch = old_steps[i : i + batch_size]
+        sentences = [_extract_first_sentence(body) for _, body in batch if body]
+        if sentences:
+            summary_parts.append(" ".join(sentences))
+
+    result = clean_preamble.rstrip("\n") + "\n\n"
+    if summary_parts:
+        result += summary_marker + "\n\n"
+        result += "\n\n".join(summary_parts)
+        result += "\n"
+
+    for header, body in recent_steps:
+        result += f"\n{header}\n\n{body}\n"
+
+    return result
+
+
+def _extract_first_sentence(text: str) -> str:
+    dot = text.find(".")
+    if dot >= 0:
+        return text[: dot + 1]
+    return (text[:100].rstrip() + "...") if len(text) > 100 else text
 
 
 def evaluate_trigger_conditions(conditions: list[TriggerCondition], state: dict) -> bool:

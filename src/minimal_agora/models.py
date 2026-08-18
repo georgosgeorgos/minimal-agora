@@ -143,6 +143,7 @@ class Scenario(BaseModel):
     fitness: FitnessConfig | None = None
     wildcards: list[WildcardEvent] = Field(default_factory=list)
     wildcards_enabled: bool = False
+    narrative_window: int | None = None
     description: str = ""
 
 

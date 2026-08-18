@@ -16,7 +16,7 @@ from minimal_agora.agents import (
     parse_proposal,
     parse_resolution,
 )
-from minimal_agora.board import Board, _deep_merge, evaluate_trigger_conditions
+from minimal_agora.board import Board, _deep_merge, compress_narrative, evaluate_trigger_conditions
 from minimal_agora.models import (
     AgentRole,
     FitnessConfig,
@@ -168,6 +168,13 @@ async def _run_step(
     timeout: int,
     trajectory_id: int = 0,
 ) -> Step:
+    if scenario.narrative_window is not None:
+        raw = board.narrative_path.read_text()
+        compressed = compress_narrative(raw, scenario.narrative_window)
+        if compressed != raw:
+            logger.info("Compressed narrative: %d → %d chars", len(raw), len(compressed))
+            board.narrative_path.write_text(compressed)
+
     state_before = deepcopy(board.read_state())
 
     if scenario.entities:
