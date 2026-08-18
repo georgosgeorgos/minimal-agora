@@ -18,7 +18,7 @@ from minimal_agora.agents import (
     parse_proposal,
     parse_resolution,
 )
-from minimal_agora.board import Board, _atomic_write, _deep_merge
+from minimal_agora.board import Board, _atomic_write, _deep_merge, _expand_dotted_keys
 from minimal_agora.models import (
     AgentRole,
     FitnessConfig,
@@ -145,7 +145,7 @@ async def run_trajectory(
             slog.info("step.start")
             board.clear_wildcard(step_num)
 
-        step = await _run_step(scenario, board, step_num, agent_timeout, trajectory_id, agent_semaphore)
+        step = await _run_step(scenario, board, step_num, agent_timeout, trajectory_id, agent_semaphore, max_steps)
         trajectory.steps.append(step)
 
         if scenario.fitness:
@@ -188,12 +188,13 @@ async def _run_step(
     timeout: int,
     trajectory_id: int = 0,
     agent_semaphore: asyncio.Semaphore | None = None,
+    max_steps: int = 1,
 ) -> Step:
     state_before = deepcopy(board.read_state())
 
     if scenario.entities:
         return await _run_entity_step(scenario, board, step_num, timeout, state_before, trajectory_id, agent_semaphore)
-    return await _run_flat_step(scenario, board, step_num, timeout, state_before, trajectory_id, agent_semaphore)
+    return await _run_flat_step(scenario, board, step_num, timeout, state_before, trajectory_id, agent_semaphore, max_steps)
 
 
 async def _run_flat_step(
@@ -204,6 +205,7 @@ async def _run_flat_step(
     state_before: dict,
     trajectory_id: int = 0,
     agent_semaphore: asyncio.Semaphore | None = None,
+    max_steps: int = 1,
 ) -> Step:
     actors = [a for a in scenario.agents if a.role == AgentRole.ACTOR]
     critics = [a for a in scenario.agents if a.role == AgentRole.CRITIC]
@@ -232,36 +234,67 @@ async def _run_flat_step(
             proposals.append(p)
             board.save_proposal(p, step_num)
 
+    is_review_step = (
+        scenario.review_interval == 1
+        or (step_num % scenario.review_interval == 0)
+        or (step_num == max_steps - 1)
+    )
+
     critiques = []
-    if critics:
-        critic_tasks = [
-            _invoke_with_semaphore(
-                agent_semaphore, c, board.workspace, step_num,
-                build_prompt(c, step_num, rules), timeout, max_concurrent,
-            ) if agent_semaphore else _invoke_with_retry(
-                c, board.workspace, step_num, build_prompt(c, step_num, rules), timeout,
-            )
-            for c in critics
-        ]
-        await asyncio.gather(*critic_tasks, return_exceptions=True)
-
-        for c in critics:
-            cr = parse_critique(board.workspace, c.name, step_num)
-            if cr:
-                critiques.append(cr)
-                board.save_critique(cr, step_num)
-
     resolution = None
-    if judges:
-        judge = judges[0]
-        await _invoke_with_retry(judge, board.workspace, step_num, build_prompt(judge, step_num, rules), timeout)
-        resolution = parse_resolution(board.workspace, step_num)
 
-    if resolution is None:
-        resolution = _fallback_resolution(proposals)
+    if is_review_step:
+        if critics:
+            critic_tasks = [
+                _invoke_with_semaphore(
+                    agent_semaphore, c, board.workspace, step_num,
+                    build_prompt(c, step_num, rules), timeout, max_concurrent,
+                ) if agent_semaphore else _invoke_with_retry(
+                    c, board.workspace, step_num, build_prompt(c, step_num, rules), timeout,
+                )
+                for c in critics
+            ]
+            await asyncio.gather(*critic_tasks, return_exceptions=True)
 
-    board.save_resolution(resolution, step_num)
-    state_after = board.apply_resolution(resolution, step_num)
+            for c in critics:
+                cr = parse_critique(board.workspace, c.name, step_num)
+                if cr:
+                    critiques.append(cr)
+                    board.save_critique(cr, step_num)
+
+        if judges:
+            judge = judges[0]
+            await _invoke_with_retry(judge, board.workspace, step_num, build_prompt(judge, step_num, rules), timeout)
+            resolution = parse_resolution(board.workspace, step_num)
+
+        if resolution is None:
+            resolution = _fallback_resolution(proposals)
+
+        board.save_resolution(resolution, step_num)
+        state_after = board.apply_resolution(resolution, step_num)
+    else:
+        next_review_step = ((step_num // scenario.review_interval) + 1) * scenario.review_interval
+        logger.debug(
+            "step.auto_merge",
+            step=step_num,
+            n_proposals=len(proposals),
+            next_review_step=next_review_step,
+        )
+
+        merged_state = deepcopy(state_before)
+        for p in proposals:
+            expanded = _expand_dotted_keys(p.proposed_changes)
+            _deep_merge(merged_state, expanded)
+        board.write_state(merged_state)
+        board.snapshot_state(step_num + 1)
+
+        narrative = (
+            f"Step {step_num}: Auto-merged {len(proposals)} actor proposals "
+            f"(review scheduled at step {next_review_step})."
+        )
+        board._append_narrative(narrative, step_num)
+
+        state_after = merged_state
 
     step = Step(
         step_number=step_num,

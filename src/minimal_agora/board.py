@@ -74,7 +74,8 @@ class Board:
     def apply_resolution(self, resolution: Resolution, step: int) -> dict:
         logger.info("board.apply_resolution", step=step, delta_keys=list(resolution.state_delta.keys()))
         state = self.read_state()
-        _deep_merge(state, resolution.state_delta)
+        expanded = _expand_dotted_keys(resolution.state_delta)
+        _deep_merge(state, expanded)
         self.write_state(state)
         self.snapshot_state(step + 1)
         self._append_narrative(resolution.narrative, step)
@@ -143,6 +144,27 @@ class Board:
 
     def list_history(self) -> list[Path]:
         return sorted((self.workspace / "history").glob("step_*_state.json"))
+
+
+def _expand_dotted_keys(d: dict) -> dict:
+    result: dict = {}
+    for key, value in d.items():
+        if isinstance(value, dict):
+            value = _expand_dotted_keys(value)
+        if "." in key:
+            parts = key.split(".")
+            current = result
+            for part in parts[:-1]:
+                if part not in current or not isinstance(current[part], dict):
+                    current[part] = {}
+                current = current[part]
+            current[parts[-1]] = value
+        else:
+            if key in result and isinstance(result[key], dict) and isinstance(value, dict):
+                _deep_merge(result[key], value)
+            else:
+                result[key] = value
+    return result
 
 
 def _deep_merge(base: dict, overlay: dict) -> None:
