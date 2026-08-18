@@ -2,15 +2,21 @@ import tempfile
 from pathlib import Path
 
 from minimal_agora.models import (
+    Critique,
+    Proposal,
+    Resolution,
     Step,
     Trajectory,
     TrajectoryOutcome,
 )
 from minimal_agora.visualize import (
+    plot_agent_activity,
     plot_field_timelines,
     plot_outcome_distribution,
     plot_population_scores,
     plot_step_distribution,
+    plot_trajectory_comparison,
+    plot_wildcard_impact,
 )
 
 
@@ -145,6 +151,127 @@ def test_plot_population_scores():
         assert result.stat().st_size > 1000
 
 
+def _make_wildcard_trajectory(tid: int, outcome: str, n_steps: int = 6) -> Trajectory:
+    steps = []
+    val = 10.0 + tid * 5
+    for i in range(n_steps):
+        state_before = {"metric": val}
+        if i in (2, 4):
+            state_before["metric"] += 100
+        val = state_before["metric"] + (i + 1) * 2
+        state_after = {"metric": val}
+        steps.append(Step(
+            step_number=i,
+            state_before=state_before,
+            state_after=state_after,
+        ))
+    return Trajectory(
+        scenario_name="test-wildcards",
+        trajectory_id=tid,
+        steps=steps,
+        outcome=TrajectoryOutcome(
+            classification=outcome,
+            final_step=n_steps - 1,
+            final_state=steps[-1].state_after,
+        ),
+    )
+
+
+def _make_agent_trajectory(tid: int, outcome: str, n_steps: int = 5) -> Trajectory:
+    steps = []
+    for i in range(n_steps):
+        proposals = [
+            Proposal(agent="alice", role="actor", proposed_changes={"x": i}, confidence=0.8),
+            Proposal(agent="bob", role="actor", proposed_changes={"y": i}, confidence=0.6),
+        ]
+        critiques = [
+            Critique(agent="carol", target_proposals=["alice"], plausibility=0.7 + tid * 0.05),
+            Critique(agent="carol", target_proposals=["bob"], plausibility=0.4 + tid * 0.1),
+        ]
+        resolution = Resolution(state_delta={"x": i + 1}, narrative="step resolved")
+        steps.append(Step(
+            step_number=i,
+            proposals=proposals,
+            critiques=critiques,
+            resolution=resolution,
+            state_before={"x": i, "y": i},
+            state_after={"x": i + 1, "y": i},
+        ))
+    return Trajectory(
+        scenario_name="test-agents",
+        trajectory_id=tid,
+        steps=steps,
+        outcome=TrajectoryOutcome(
+            classification=outcome,
+            final_step=n_steps - 1,
+            final_state=steps[-1].state_after,
+        ),
+    )
+
+
+def test_plot_trajectory_comparison():
+    trajectories = [
+        _make_evolution_trajectory(0, "intelligent"),
+        _make_evolution_trajectory(1, "stagnation"),
+        _make_evolution_trajectory(2, "intelligent"),
+    ]
+    with tempfile.TemporaryDirectory() as tmpdir:
+        path = Path(tmpdir) / "comparison.png"
+        result = plot_trajectory_comparison(
+            trajectories, ["life.complexity", "environment.oxygen_level"], path,
+        )
+        assert result.exists()
+        assert result.stat().st_size > 1000
+
+
+def test_plot_trajectory_comparison_empty():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        path = Path(tmpdir) / "comparison.png"
+        result = plot_trajectory_comparison([], ["life.complexity"], path)
+        assert result == path
+
+
+def test_plot_wildcard_impact():
+    trajectories = [
+        _make_wildcard_trajectory(0, "outcome_a"),
+        _make_wildcard_trajectory(1, "outcome_b"),
+        _make_wildcard_trajectory(2, "outcome_a"),
+    ]
+    with tempfile.TemporaryDirectory() as tmpdir:
+        path = Path(tmpdir) / "wildcards.png"
+        result = plot_wildcard_impact(trajectories, path)
+        assert result.exists()
+        assert result.stat().st_size > 1000
+
+
+def test_plot_wildcard_impact_no_events():
+    trajectories = [_make_evolution_trajectory(0, "intelligent")]
+    with tempfile.TemporaryDirectory() as tmpdir:
+        path = Path(tmpdir) / "wildcards.png"
+        result = plot_wildcard_impact(trajectories, path)
+        assert result.exists()
+
+
+def test_plot_agent_activity():
+    trajectories = [
+        _make_agent_trajectory(0, "success"),
+        _make_agent_trajectory(1, "failure"),
+    ]
+    with tempfile.TemporaryDirectory() as tmpdir:
+        path = Path(tmpdir) / "agents.png"
+        result = plot_agent_activity(trajectories, path)
+        assert result.exists()
+        assert result.stat().st_size > 1000
+
+
+def test_plot_agent_activity_no_proposals():
+    trajectories = [_make_evolution_trajectory(0, "intelligent")]
+    with tempfile.TemporaryDirectory() as tmpdir:
+        path = Path(tmpdir) / "agents.png"
+        result = plot_agent_activity(trajectories, path)
+        assert result.exists()
+
+
 def test_generate_all_plots_with_synthetic_data():
     trajectories = [
         _make_evolution_trajectory(0, "intelligent"),
@@ -165,5 +292,28 @@ def test_generate_all_plots_with_synthetic_data():
             output_dir,
             fields=["life.complexity", "environment.oxygen_level"],
         )
-        assert len(paths) >= 3
+        assert len(paths) >= 6
+        assert all(p.exists() for p in paths)
+
+
+def test_generate_all_plots_with_type_filter():
+    trajectories = [
+        _make_evolution_trajectory(0, "intelligent"),
+        _make_evolution_trajectory(1, "stagnation"),
+    ]
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        output_dir = Path(tmpdir)
+        for t in trajectories:
+            traj_dir = output_dir / f"trajectory_{t.trajectory_id:03d}"
+            traj_dir.mkdir(parents=True)
+            with open(traj_dir / "trajectory.json", "w") as f:
+                f.write(t.model_dump_json(indent=2))
+
+        from minimal_agora.visualize import generate_all_plots
+        paths = generate_all_plots(
+            output_dir,
+            plot_types=["outcomes", "wildcards"],
+        )
+        assert len(paths) == 2
         assert all(p.exists() for p in paths)
