@@ -97,7 +97,7 @@ class TestClaudeSubprocessProvider:
             "--output-format",
             "text",
             "--max-turns",
-            "5",
+            "1",
             "--allowedTools",
             "Read,Write,Bash",
             "--add-dir",

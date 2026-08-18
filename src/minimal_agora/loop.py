@@ -16,8 +16,11 @@ from minimal_agora.agents import (
     build_prompt,
     invoke_agent,
     parse_critique,
+    parse_critique_from_text,
     parse_proposal,
+    parse_proposal_from_text,
     parse_resolution,
+    parse_resolution_from_text,
 )
 from minimal_agora.board import Board, _atomic_write, _deep_merge, _expand_dotted_keys
 from minimal_agora.models import (
@@ -205,6 +208,59 @@ async def _run_step(
     return await _run_flat_step(scenario, board, step_num, timeout, state_before, trajectory_id, agent_semaphore, max_steps)
 
 
+def _read_narrative(board: Board) -> str:
+    try:
+        return board.narrative_path.read_text()
+    except FileNotFoundError:
+        return ""
+
+
+def _read_wildcard_dict(board: Board, step_num: int) -> dict | None:
+    import json as _json
+    path = board.workspace / "board" / f"wildcard_step_{step_num:03d}.json"
+    if not path.exists():
+        return None
+    with open(path) as f:
+        return _json.load(f)
+
+
+async def _invoke_and_collect(
+    agent,
+    workspace: Path,
+    step_num: int,
+    prompt: str,
+    timeout: int,
+    agent_semaphore: asyncio.Semaphore | None,
+    max_concurrent: int,
+) -> str | None:
+    try:
+        if agent_semaphore:
+            if agent_semaphore.locked():
+                logger.debug("agent.throttled", agent=agent.name, waiting=True)
+            async with agent_semaphore:
+                logger.debug("agent.semaphore_acquired", agent=agent.name, max_concurrent=max_concurrent)
+                return await _invoke_with_retry_return(agent, workspace, step_num, prompt, timeout)
+        else:
+            return await _invoke_with_retry_return(agent, workspace, step_num, prompt, timeout)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("agent.task_failed", agent=agent.name, error=str(e))
+        return None
+
+
+async def _invoke_with_retry_return(
+    agent, workspace: Path, step_num: int, prompt: str, timeout: int, max_retries: int = 1,
+) -> str | None:
+    for attempt in range(1 + max_retries):
+        try:
+            return await invoke_agent(agent, workspace, step_num, prompt, timeout)
+        except (OSError, RuntimeError, TimeoutError) as e:
+            if attempt < max_retries:
+                logger.warning("Agent %s failed (attempt %d), retrying: %s", agent.name, attempt + 1, e)
+            else:
+                logger.error("Agent %s failed after %d attempts: %s", agent.name, attempt + 1, e)
+    return None
+
+
 async def _run_flat_step(
     scenario: Scenario,
     board: Board,
@@ -222,23 +278,32 @@ async def _run_flat_step(
     max_concurrent = scenario.max_concurrent_agents
     rules = scenario.rules
 
+    current_state = board.read_state()
+    narrative_text = _read_narrative(board)
+    wildcard_dict = _read_wildcard_dict(board, step_num)
+
+    embed_kwargs: dict = {
+        "state": current_state,
+        "narrative": narrative_text,
+        "wildcard": wildcard_dict,
+    }
+
     logger.debug("flat_step.propose_start", step=step_num, n_actors=len(actors))
     t0 = time.monotonic()
+
+    actor_outputs: dict[str, str | None] = {}
+
+    async def _run_actor(a):
+        prompt = build_prompt(a, step_num, rules, trajectory_id=trajectory_id, **embed_kwargs)
+        result = await _invoke_and_collect(
+            a, board.workspace, step_num, prompt, timeout, agent_semaphore, max_concurrent,
+        )
+        actor_outputs[a.name] = result
+
     try:
         async with asyncio.TaskGroup() as tg:
             for a in actors:
-                coro = (
-                    _invoke_with_semaphore(
-                        agent_semaphore, a, board.workspace, step_num,
-                        build_prompt(a, step_num, rules, trajectory_id=trajectory_id),
-                        timeout, max_concurrent,
-                    ) if agent_semaphore else _invoke_with_retry(
-                        a, board.workspace, step_num,
-                        build_prompt(a, step_num, rules, trajectory_id=trajectory_id),
-                        timeout,
-                    )
-                )
-                tg.create_task(_safe_invoke(coro))
+                tg.create_task(_run_actor(a))
     except ExceptionGroup as eg:
         for exc in eg.exceptions:
             logger.error("flat_step.propose.unhandled_failure", step=step_num, error=str(exc))
@@ -246,7 +311,12 @@ async def _run_flat_step(
 
     proposals = []
     for a in actors:
-        p = parse_proposal(board.workspace, a.name, step_num)
+        output = actor_outputs.get(a.name)
+        p = None
+        if output:
+            p = parse_proposal_from_text(output, a.name)
+        if p is None:
+            p = parse_proposal(board.workspace, a.name, step_num)
         if p:
             proposals.append(p)
             board.save_proposal(p, step_num)
@@ -262,21 +332,25 @@ async def _run_flat_step(
 
     if is_review_step:
         if critics:
+            proposals_dicts = [p.model_dump() for p in proposals]
+            critic_kwargs = {**embed_kwargs, "proposals": proposals_dicts}
+
             logger.debug("flat_step.critique_start", step=step_num, n_critics=len(critics))
             t1 = time.monotonic()
+
+            critic_outputs: dict[str, str | None] = {}
+
+            async def _run_critic(c):
+                prompt = build_prompt(c, step_num, rules, **critic_kwargs)
+                result = await _invoke_and_collect(
+                    c, board.workspace, step_num, prompt, timeout, agent_semaphore, max_concurrent,
+                )
+                critic_outputs[c.name] = result
+
             try:
                 async with asyncio.TaskGroup() as tg:
                     for c in critics:
-                        coro = (
-                            _invoke_with_semaphore(
-                                agent_semaphore, c, board.workspace, step_num,
-                                build_prompt(c, step_num, rules), timeout, max_concurrent,
-                            ) if agent_semaphore else _invoke_with_retry(
-                                c, board.workspace, step_num, build_prompt(c, step_num, rules),
-                                timeout,
-                            )
-                        )
-                        tg.create_task(_safe_invoke(coro))
+                        tg.create_task(_run_critic(c))
             except ExceptionGroup as eg:
                 for exc in eg.exceptions:
                     logger.error(
@@ -288,7 +362,12 @@ async def _run_flat_step(
             )
 
             for c in critics:
-                cr = parse_critique(board.workspace, c.name, step_num)
+                output = critic_outputs.get(c.name)
+                cr = None
+                if output:
+                    cr = parse_critique_from_text(output, c.name)
+                if cr is None:
+                    cr = parse_critique(board.workspace, c.name, step_num)
                 if cr:
                     critiques.append(cr)
                     board.save_critique(cr, step_num)
@@ -297,10 +376,19 @@ async def _run_flat_step(
             logger.debug("flat_step.resolve_start", step=step_num)
             t2 = time.monotonic()
             judge = judges[0]
-            await _invoke_with_retry(
-                judge, board.workspace, step_num, build_prompt(judge, step_num, rules), timeout,
+            judge_kwargs = {
+                **embed_kwargs,
+                "proposals": [p.model_dump() for p in proposals],
+                "critiques": [c.model_dump() for c in critiques],
+            }
+            prompt = build_prompt(judge, step_num, rules, **judge_kwargs)
+            judge_output = await _invoke_with_retry_return(
+                judge, board.workspace, step_num, prompt, timeout,
             )
-            resolution = parse_resolution(board.workspace, step_num)
+            if judge_output:
+                resolution = parse_resolution_from_text(judge_output)
+            if resolution is None:
+                resolution = parse_resolution(board.workspace, step_num)
             logger.debug(
                 "flat_step.resolve_done", step=step_num,
                 duration_s=round(time.monotonic() - t2, 3),
@@ -375,26 +463,33 @@ async def _run_entity_step(
         n_evaluators=len(eval_entities),
     )
 
+    current_state = board.read_state()
+    narrative_text = _read_narrative(board)
+    wildcard_dict = _read_wildcard_dict(board, step_num)
+    embed_kwargs: dict = {
+        "state": current_state,
+        "narrative": narrative_text,
+        "wildcard": wildcard_dict,
+    }
+
     # Phase 1: Forces propose world-level changes
     force_agents = [a for e in force_entities for a in e.agents]
     if force_agents:
         logger.debug("entity_step.forces_start", step=step_num, n_agents=len(force_agents))
         t0 = time.monotonic()
+        force_outputs: dict[str, str | None] = {}
+
+        async def _run_force(a):
+            prompt = build_prompt(a, step_num, rules, trajectory_id=trajectory_id, **embed_kwargs)
+            result = await _invoke_and_collect(
+                a, board.workspace, step_num, prompt, timeout, agent_semaphore, max_concurrent,
+            )
+            force_outputs[a.name] = result
+
         try:
             async with asyncio.TaskGroup() as tg:
                 for a in force_agents:
-                    coro = (
-                        _invoke_with_semaphore(
-                            agent_semaphore, a, board.workspace, step_num,
-                            build_prompt(a, step_num, rules, trajectory_id=trajectory_id),
-                            timeout, max_concurrent,
-                        ) if agent_semaphore else _invoke_with_retry(
-                            a, board.workspace, step_num,
-                            build_prompt(a, step_num, rules, trajectory_id=trajectory_id),
-                            timeout,
-                        )
-                    )
-                    tg.create_task(_safe_invoke(coro))
+                    tg.create_task(_run_force(a))
         except ExceptionGroup as eg:
             for exc in eg.exceptions:
                 logger.error(
@@ -405,7 +500,12 @@ async def _run_entity_step(
             duration_s=round(time.monotonic() - t0, 3),
         )
         for a in force_agents:
-            p = parse_proposal(board.workspace, a.name, step_num)
+            output = force_outputs.get(a.name)
+            p = None
+            if output:
+                p = parse_proposal_from_text(output, a.name)
+            if p is None:
+                p = parse_proposal(board.workspace, a.name, step_num)
             if p:
                 proposals.append(p)
                 board.save_proposal(p, step_num)
@@ -418,31 +518,28 @@ async def _run_entity_step(
         for a in entity.agents:
             entity_interaction[a.name] = ctx
 
+    embed_kwargs["state"] = current_state
+
     pop_agents = [a for e in pop_entities for a in e.agents]
     if pop_agents:
         logger.debug("entity_step.populations_start", step=step_num, n_agents=len(pop_agents))
         t1 = time.monotonic()
+        pop_outputs: dict[str, str | None] = {}
+
+        async def _run_pop(a):
+            prompt = build_prompt(
+                a, step_num, rules, entity_interaction.get(a.name, ""),
+                trajectory_id=trajectory_id, **embed_kwargs,
+            )
+            result = await _invoke_and_collect(
+                a, board.workspace, step_num, prompt, timeout, agent_semaphore, max_concurrent,
+            )
+            pop_outputs[a.name] = result
+
         try:
             async with asyncio.TaskGroup() as tg:
                 for a in pop_agents:
-                    coro = (
-                        _invoke_with_semaphore(
-                            agent_semaphore, a, board.workspace, step_num,
-                            build_prompt(
-                                a, step_num, rules, entity_interaction.get(a.name, ""),
-                                trajectory_id=trajectory_id,
-                            ),
-                            timeout, max_concurrent,
-                        ) if agent_semaphore else _invoke_with_retry(
-                            a, board.workspace, step_num,
-                            build_prompt(
-                                a, step_num, rules, entity_interaction.get(a.name, ""),
-                                trajectory_id=trajectory_id,
-                            ),
-                            timeout,
-                        )
-                    )
-                    tg.create_task(_safe_invoke(coro))
+                    tg.create_task(_run_pop(a))
         except ExceptionGroup as eg:
             for exc in eg.exceptions:
                 logger.error(
@@ -453,7 +550,12 @@ async def _run_entity_step(
             duration_s=round(time.monotonic() - t1, 3),
         )
         for a in pop_agents:
-            p = parse_proposal(board.workspace, a.name, step_num)
+            output = pop_outputs.get(a.name)
+            p = None
+            if output:
+                p = parse_proposal_from_text(output, a.name)
+            if p is None:
+                p = parse_proposal(board.workspace, a.name, step_num)
             if p:
                 proposals.append(p)
                 board.save_proposal(p, step_num)
@@ -461,21 +563,24 @@ async def _run_entity_step(
     # Phase 3: Critics evaluate all proposals
     critic_agents = [a for e in critic_entities for a in e.agents]
     if critic_agents:
+        proposals_dicts = [p.model_dump() for p in proposals]
+        critic_kwargs = {**embed_kwargs, "proposals": proposals_dicts}
+
         logger.debug("entity_step.critics_start", step=step_num, n_agents=len(critic_agents))
         t2 = time.monotonic()
+        critic_outputs: dict[str, str | None] = {}
+
+        async def _run_critic(c):
+            prompt = build_prompt(c, step_num, rules, **critic_kwargs)
+            result = await _invoke_and_collect(
+                c, board.workspace, step_num, prompt, timeout, agent_semaphore, max_concurrent,
+            )
+            critic_outputs[c.name] = result
+
         try:
             async with asyncio.TaskGroup() as tg:
                 for c in critic_agents:
-                    coro = (
-                        _invoke_with_semaphore(
-                            agent_semaphore, c, board.workspace, step_num,
-                            build_prompt(c, step_num, rules), timeout, max_concurrent,
-                        ) if agent_semaphore else _invoke_with_retry(
-                            c, board.workspace, step_num,
-                            build_prompt(c, step_num, rules), timeout,
-                        )
-                    )
-                    tg.create_task(_safe_invoke(coro))
+                    tg.create_task(_run_critic(c))
         except ExceptionGroup as eg:
             for exc in eg.exceptions:
                 logger.error(
@@ -486,7 +591,12 @@ async def _run_entity_step(
             duration_s=round(time.monotonic() - t2, 3),
         )
         for c in critic_agents:
-            cr = parse_critique(board.workspace, c.name, step_num)
+            output = critic_outputs.get(c.name)
+            cr = None
+            if output:
+                cr = parse_critique_from_text(output, c.name)
+            if cr is None:
+                cr = parse_critique(board.workspace, c.name, step_num)
             if cr:
                 critiques.append(cr)
                 board.save_critique(cr, step_num)
@@ -498,10 +608,19 @@ async def _run_entity_step(
         logger.debug("entity_step.resolve_start", step=step_num)
         t3 = time.monotonic()
         judge = eval_agents[0]
-        await _invoke_with_retry(
-            judge, board.workspace, step_num, build_prompt(judge, step_num, rules), timeout,
+        judge_kwargs = {
+            **embed_kwargs,
+            "proposals": [p.model_dump() for p in proposals],
+            "critiques": [c.model_dump() for c in critiques],
+        }
+        prompt = build_prompt(judge, step_num, rules, **judge_kwargs)
+        judge_output = await _invoke_with_retry_return(
+            judge, board.workspace, step_num, prompt, timeout,
         )
-        resolution = parse_resolution(board.workspace, step_num)
+        if judge_output:
+            resolution = parse_resolution_from_text(judge_output)
+        if resolution is None:
+            resolution = parse_resolution(board.workspace, step_num)
         logger.debug(
             "entity_step.resolve_done", step=step_num,
             duration_s=round(time.monotonic() - t3, 3),

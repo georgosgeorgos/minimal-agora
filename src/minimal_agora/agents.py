@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import re
 from pathlib import Path
 
 import structlog
@@ -157,140 +159,257 @@ def _diversity_prefix(trajectory_id: int) -> str:
     return f"**Exploration lens (trajectory {trajectory_id})**: {lens}"
 
 
-def build_actor_prompt(agent: AgentConfig, step: int, rules: list[SimRule] | None = None, interaction_context: str = "", trajectory_id: int | None = None) -> str:
+def _format_wildcard(wildcard: dict | None) -> str:
+    if not wildcard:
+        return ""
+    impact = wildcard.get("state_impact", {})
+    impact_str = f"\nImpact: {json.dumps(impact, indent=2)}" if impact else ""
+    return (
+        f"\n## Active Wildcard Event\n"
+        f"**{wildcard['name']}**: {wildcard.get('description', '')}{impact_str}\n"
+        f"This is a major external shock that MUST be accounted for in your proposal.\n"
+    )
+
+
+def build_actor_prompt(
+    agent: AgentConfig,
+    step: int,
+    rules: list[SimRule] | None = None,
+    interaction_context: str = "",
+    trajectory_id: int | None = None,
+    state: dict | None = None,
+    narrative: str | None = None,
+    wildcard: dict | None = None,
+) -> str:
     logger.debug(
         "prompt.build_actor",
         agent=agent.name,
         step=step,
-        has_wildcard=True,
+        has_wildcard=wildcard is not None,
         has_interaction_context=bool(interaction_context),
+        embedded_state=state is not None,
     )
     rules_block = _format_rules(rules or [], agent.name, agent.role.value)
     interaction_block = f"\n{interaction_context}\n" if interaction_context else ""
     diversity_block = f"\n{_diversity_prefix(trajectory_id)}\n" if trajectory_id is not None else ""
-    return f"""You are **{agent.name}**, an actor agent in a world simulation.
-{diversity_block}
-## Your Perspective
-{agent.perspective}
+    wildcard_block = _format_wildcard(wildcard)
 
-{rules_block}{interaction_block}## Instructions
-1. Read the current world state from `board/state.json`
-2. Read the narrative history from `board/narrative.md`
-3. Read the scenario description from `board/scenario.md`
+    if state is not None:
+        state_section = (
+            f"## Simulation Step {step}\n\n"
+            f"## Current World State\n```json\n{json.dumps(state, indent=2)}\n```\n"
+        )
+        narrative_section = f"\n## Narrative History\n{narrative or '(No narrative yet.)'}\n"
+        instructions = (
+            f"{wildcard_block}"
+            f"\n## Instructions\n"
+            f"Based on the current state, any active wildcard, and your perspective, propose\n"
+            f"what happens next in this time step. Think carefully about what changes are\n"
+            f"most likely given your domain of influence.\n\n"
+            f"Respond with ONLY a JSON object (no markdown fences, no explanation):\n"
+            f'{{"agent": "{agent.name}", "role": "actor", '
+            f'"proposed_changes": {{"path.to.field": "new_value"}}, '
+            f'"reasoning": "Why these changes happen", "confidence": 0.7}}\n\n'
+            f"The `proposed_changes` should be a flat or nested dict matching the structure\n"
+            f"of the world state. Only include fields you want to change.\n"
+        )
+    else:
+        state_section = ""
+        narrative_section = ""
+        instructions = (
+            f"## Instructions\n"
+            f"1. Read the current world state from `board/state.json`\n"
+            f"2. Read the narrative history from `board/narrative.md`\n"
+            f"3. Read the scenario description from `board/scenario.md`\n\n"
+            f"Check if a wildcard event file exists at `board/wildcard_step_{step:03d}.json`.\n"
+            f"If present, this is a major external shock (asteroid, pandemic, war, etc.)\n"
+            f"that MUST be accounted for in your proposal. The wildcard's `state_impact`\n"
+            f"suggests direct effects, but you should also reason about cascading consequences.\n\n"
+            f"Based on the current state, any active wildcard, and your perspective, propose\n"
+            f"what happens next in this time step. Think carefully about what changes are\n"
+            f"most likely given your domain of influence.\n\n"
+            f"4. Write your proposal as a JSON file to `proposals/step_{step:03d}_{agent.name}.json`\n\n"
+            f"The JSON must have this structure:\n"
+            f"```json\n"
+            f"{{\n"
+            f'  "agent": "{agent.name}",\n'
+            f'  "role": "actor",\n'
+            f'  "proposed_changes": {{\n'
+            f'    "path.to.field": "new_value"\n'
+            f"  }},\n"
+            f'  "reasoning": "Why these changes happen",\n'
+            f'  "confidence": 0.7\n'
+            f"}}\n"
+            f"```\n\n"
+            f"The `proposed_changes` should be a flat or nested dict matching the structure\n"
+            f"of state.json. Only include fields you want to change.\n"
+        )
 
-Check if a wildcard event file exists at `board/wildcard_step_{step:03d}.json`.
-If present, this is a major external shock (asteroid, pandemic, war, etc.)
-that MUST be accounted for in your proposal. The wildcard's `state_impact`
-suggests direct effects, but you should also reason about cascading consequences.
-
-Based on the current state, any active wildcard, and your perspective, propose
-what happens next in this time step. Think carefully about what changes are
-most likely given your domain of influence.
-
-4. Write your proposal as a JSON file to `proposals/step_{step:03d}_{agent.name}.json`
-
-The JSON must have this structure:
-```json
-{{
-  "agent": "{agent.name}",
-  "role": "actor",
-  "proposed_changes": {{
-    "path.to.field": "new_value"
-  }},
-  "reasoning": "Why these changes happen",
-  "confidence": 0.7
-}}
-```
-
-The `proposed_changes` should be a flat or nested dict matching the structure
-of state.json. Only include fields you want to change.
-"""
+    return (
+        f"You are **{agent.name}**, an actor agent in a world simulation.\n"
+        f"{diversity_block}\n"
+        f"## Your Perspective\n"
+        f"{agent.perspective}\n\n"
+        f"{state_section}"
+        f"{narrative_section}"
+        f"{rules_block}{interaction_block}"
+        f"{instructions}"
+    )
 
 
-def build_critic_prompt(agent: AgentConfig, step: int, rules: list[SimRule] | None = None) -> str:
-    logger.debug("prompt.build_critic", agent=agent.name, step=step)
+def build_critic_prompt(
+    agent: AgentConfig,
+    step: int,
+    rules: list[SimRule] | None = None,
+    state: dict | None = None,
+    narrative: str | None = None,
+    proposals: list[dict] | None = None,
+    wildcard: dict | None = None,
+) -> str:
+    logger.debug(
+        "prompt.build_critic",
+        agent=agent.name,
+        step=step,
+        embedded_state=state is not None,
+    )
     rules_block = _format_rules(rules or [], agent.name, agent.role.value)
-    return f"""You are **{agent.name}**, a critic agent in a world simulation.
+    wildcard_block = _format_wildcard(wildcard)
 
-## Your Perspective
-{agent.perspective}
+    if state is not None:
+        proposals_json = json.dumps(proposals or [], indent=2)
+        return (
+            f"You are **{agent.name}**, a critic agent in a world simulation.\n\n"
+            f"## Your Perspective\n{agent.perspective}\n\n"
+            f"## Current World State\n```json\n{json.dumps(state, indent=2)}\n```\n\n"
+            f"## Narrative History\n{narrative or '(No narrative yet.)'}\n\n"
+            f"## Proposals for Step {step}\n```json\n{proposals_json}\n```\n\n"
+            f"{rules_block}"
+            f"{wildcard_block}"
+            f"\n## Instructions\n"
+            f"Evaluate each proposal for plausibility, consistency, and realism.\n"
+            f"Flag anything impossible, contradictory, or highly unlikely.\n\n"
+            f"Respond with ONLY a JSON object (no markdown fences, no explanation):\n"
+            f'{{"agent": "{agent.name}", "target_proposals": ["agent1", "agent2"], '
+            f'"assessment": "Overall assessment", "plausibility": 0.8, '
+            f'"issues": ["Issue 1", "Issue 2"]}}\n'
+        )
 
-{rules_block}
-## Instructions
-1. Read the current world state from `board/state.json`
-2. Read the narrative history from `board/narrative.md`
-3. Read ALL proposals in `proposals/` for step {step:03d}
+    return (
+        f"You are **{agent.name}**, a critic agent in a world simulation.\n\n"
+        f"## Your Perspective\n{agent.perspective}\n\n"
+        f"{rules_block}\n"
+        f"## Instructions\n"
+        f"1. Read the current world state from `board/state.json`\n"
+        f"2. Read the narrative history from `board/narrative.md`\n"
+        f"3. Read ALL proposals in `proposals/` for step {step:03d}\n\n"
+        f"Check if a wildcard event file exists at `board/wildcard_step_{step:03d}.json`.\n"
+        f"If present, evaluate whether proposals adequately account for its impact.\n\n"
+        f"Evaluate each proposal for plausibility, consistency, and realism.\n"
+        f"Flag anything impossible, contradictory, or highly unlikely.\n\n"
+        f"4. Write your critique as a JSON file to `critiques/step_{step:03d}_{agent.name}.json`\n\n"
+        f"The JSON must have this structure:\n"
+        f"```json\n"
+        f"{{\n"
+        f'  "agent": "{agent.name}",\n'
+        f'  "target_proposals": ["proposal_agent_1", "proposal_agent_2"],\n'
+        f'  "assessment": "Overall assessment of the proposals",\n'
+        f'  "plausibility": 0.8,\n'
+        f'  "issues": ["Issue 1", "Issue 2"]\n'
+        f"}}\n"
+        f"```\n"
+    )
 
-Check if a wildcard event file exists at `board/wildcard_step_{step:03d}.json`.
-If present, evaluate whether proposals adequately account for its impact.
 
-Evaluate each proposal for plausibility, consistency, and realism.
-Flag anything impossible, contradictory, or highly unlikely.
-
-4. Write your critique as a JSON file to `critiques/step_{step:03d}_{agent.name}.json`
-
-The JSON must have this structure:
-```json
-{{
-  "agent": "{agent.name}",
-  "target_proposals": ["proposal_agent_1", "proposal_agent_2"],
-  "assessment": "Overall assessment of the proposals",
-  "plausibility": 0.8,
-  "issues": ["Issue 1", "Issue 2"]
-}}
-```
-"""
-
-
-def build_judge_prompt(agent: AgentConfig, step: int, rules: list[SimRule] | None = None) -> str:
-    logger.debug("prompt.build_judge", agent=agent.name, step=step)
+def build_judge_prompt(
+    agent: AgentConfig,
+    step: int,
+    rules: list[SimRule] | None = None,
+    state: dict | None = None,
+    narrative: str | None = None,
+    proposals: list[dict] | None = None,
+    critiques: list[dict] | None = None,
+    wildcard: dict | None = None,
+) -> str:
+    logger.debug(
+        "prompt.build_judge",
+        agent=agent.name,
+        step=step,
+        embedded_state=state is not None,
+    )
     rules_block = _format_rules(rules or [], agent.name, agent.role.value)
-    return f"""You are **{agent.name}**, the judge agent in a world simulation.
+    wildcard_block = _format_wildcard(wildcard)
 
-## Your Perspective
-{agent.perspective}
+    if state is not None:
+        proposals_json = json.dumps(proposals or [], indent=2)
+        critiques_json = json.dumps(critiques or [], indent=2)
+        return (
+            f"You are **{agent.name}**, the judge agent in a world simulation.\n\n"
+            f"## Your Perspective\n{agent.perspective}\n\n"
+            f"## Current World State\n```json\n{json.dumps(state, indent=2)}\n```\n\n"
+            f"## Narrative History\n{narrative or '(No narrative yet.)'}\n\n"
+            f"## Proposals for Step {step}\n```json\n{proposals_json}\n```\n\n"
+            f"## Critiques for Step {step}\n```json\n{critiques_json}\n```\n\n"
+            f"{rules_block}"
+            f"{wildcard_block}"
+            f"\n## Instructions\n"
+            f"Synthesize the proposals and critiques into a single coherent outcome for this\n"
+            f"time step. Resolve conflicts between proposals. Weight proposals by their\n"
+            f"plausibility as assessed by critics.\n\n"
+            f"The `state_delta` will be deep-merged into the current state. Only include\n"
+            f"fields that change. The narrative should be written as a historical account,\n"
+            f"not a technical description.\n\n"
+            f"Respond with ONLY a JSON object (no markdown fences, no explanation):\n"
+            f'{{"state_delta": {{"path.to.field": "new_value"}}, '
+            f'"narrative": "A paragraph describing what happened", '
+            f'"reasoning": "Why you resolved conflicts this way"}}\n'
+        )
 
-{rules_block}
-## Instructions
-1. Read the current world state from `board/state.json`
-2. Read the narrative history from `board/narrative.md`
-3. Read ALL proposals in `proposals/` for step {step:03d}
-4. Read ALL critiques in `critiques/` for step {step:03d}
-
-Check if a wildcard event file exists at `board/wildcard_step_{step:03d}.json`.
-If present, ensure the resolution fully accounts for the wildcard's impact,
-including applying its `state_impact` and any cascading effects.
-
-Synthesize the proposals and critiques into a single coherent outcome for this
-time step. Resolve conflicts between proposals. Weight proposals by their
-plausibility as assessed by critics.
-
-5. Write your resolution as a JSON file to `resolutions/step_{step:03d}_resolution.json`
-
-The JSON must have this structure:
-```json
-{{
-  "state_delta": {{
-    "path.to.field": "new_value"
-  }},
-  "narrative": "A paragraph describing what happened this step and why",
-  "reasoning": "Why you resolved conflicts this way"
-}}
-```
-
-The `state_delta` will be deep-merged into the current state. Only include
-fields that change. The narrative should be written as a historical account,
-not a technical description.
-"""
+    return (
+        f"You are **{agent.name}**, the judge agent in a world simulation.\n\n"
+        f"## Your Perspective\n{agent.perspective}\n\n"
+        f"{rules_block}\n"
+        f"## Instructions\n"
+        f"1. Read the current world state from `board/state.json`\n"
+        f"2. Read the narrative history from `board/narrative.md`\n"
+        f"3. Read ALL proposals in `proposals/` for step {step:03d}\n"
+        f"4. Read ALL critiques in `critiques/` for step {step:03d}\n\n"
+        f"Check if a wildcard event file exists at `board/wildcard_step_{step:03d}.json`.\n"
+        f"If present, ensure the resolution fully accounts for the wildcard's impact,\n"
+        f"including applying its `state_impact` and any cascading effects.\n\n"
+        f"Synthesize the proposals and critiques into a single coherent outcome for this\n"
+        f"time step. Resolve conflicts between proposals. Weight proposals by their\n"
+        f"plausibility as assessed by critics.\n\n"
+        f"5. Write your resolution as a JSON file to `resolutions/step_{step:03d}_resolution.json`\n\n"
+        f"The JSON must have this structure:\n"
+        f"```json\n"
+        f"{{\n"
+        f'  "state_delta": {{\n'
+        f'    "path.to.field": "new_value"\n'
+        f"  }},\n"
+        f'  "narrative": "A paragraph describing what happened this step and why",\n'
+        f'  "reasoning": "Why you resolved conflicts this way"\n'
+        f"}}\n"
+        f"```\n\n"
+        f"The `state_delta` will be deep-merged into the current state. Only include\n"
+        f"fields that change. The narrative should be written as a historical account,\n"
+        f"not a technical description.\n"
+    )
 
 
-def build_prompt(agent: AgentConfig, step: int, rules: list[SimRule] | None = None, interaction_context: str = "", trajectory_id: int | None = None) -> str:
+def build_prompt(
+    agent: AgentConfig,
+    step: int,
+    rules: list[SimRule] | None = None,
+    interaction_context: str = "",
+    trajectory_id: int | None = None,
+    **kwargs: object,
+) -> str:
     if agent.role == AgentRole.ACTOR:
-        return build_actor_prompt(agent, step, rules, interaction_context, trajectory_id)
+        return build_actor_prompt(agent, step, rules, interaction_context, trajectory_id, **kwargs)
     elif agent.role == AgentRole.CRITIC:
-        return build_critic_prompt(agent, step, rules)
+        return build_critic_prompt(agent, step, rules, **kwargs)
     elif agent.role == AgentRole.JUDGE:
-        return build_judge_prompt(agent, step, rules)
+        return build_judge_prompt(agent, step, rules, **kwargs)
     raise ValueError(f"Unknown role: {agent.role}")
 
 
@@ -336,6 +455,61 @@ def parse_resolution(workspace: Path, step: int) -> Resolution | None:
         return result
     except (ValueError, OSError, KeyError) as e:
         logger.warning("Failed to parse resolution %s: %s", path.name, e)
+        return None
+
+
+def _extract_json_from_text(text: str) -> str | None:
+    """Try to extract JSON from text, handling markdown code blocks."""
+    text = text.strip()
+    try:
+        json.loads(text)
+        return text
+    except (json.JSONDecodeError, ValueError):
+        pass
+    match = re.search(r"```(?:json)?\s*\n?(.*?)\n?```", text, re.DOTALL)
+    if match:
+        candidate = match.group(1).strip()
+        try:
+            json.loads(candidate)
+            return candidate
+        except (json.JSONDecodeError, ValueError):
+            pass
+    return None
+
+
+def parse_proposal_from_text(text: str, agent_name: str) -> Proposal | None:
+    extracted = _extract_json_from_text(text)
+    if extracted is None:
+        logger.warning("parse.proposal_from_text.no_json", agent_name=agent_name)
+        return None
+    try:
+        return Proposal.model_validate_json(extracted)
+    except (ValueError, KeyError) as e:
+        logger.warning("parse.proposal_from_text.invalid", agent_name=agent_name, error=str(e))
+        return None
+
+
+def parse_critique_from_text(text: str, agent_name: str) -> Critique | None:
+    extracted = _extract_json_from_text(text)
+    if extracted is None:
+        logger.warning("parse.critique_from_text.no_json", agent_name=agent_name)
+        return None
+    try:
+        return Critique.model_validate_json(extracted)
+    except (ValueError, KeyError) as e:
+        logger.warning("parse.critique_from_text.invalid", agent_name=agent_name, error=str(e))
+        return None
+
+
+def parse_resolution_from_text(text: str) -> Resolution | None:
+    extracted = _extract_json_from_text(text)
+    if extracted is None:
+        logger.warning("parse.resolution_from_text.no_json")
+        return None
+    try:
+        return Resolution.model_validate_json(extracted)
+    except (ValueError, KeyError) as e:
+        logger.warning("parse.resolution_from_text.invalid", error=str(e))
         return None
 
 
