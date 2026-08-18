@@ -31,7 +31,7 @@ async def run_batch(
 
     skipped = 0
     for i, result in enumerate(completed):
-        if isinstance(result, Exception):
+        if isinstance(result, BaseException):
             print(f"[batch] trajectory {i} failed: {result}")
         else:
             results.append(result)

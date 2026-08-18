@@ -3,7 +3,9 @@ from __future__ import annotations
 import json
 import math
 from collections import defaultdict
+from collections.abc import Sequence
 from pathlib import Path
+from typing import Any
 
 import structlog
 
@@ -58,7 +60,7 @@ def extract_field_timelines(
     return timelines
 
 
-def compute_statistics(values: list[float | int]) -> dict[str, float]:
+def compute_statistics(values: Sequence[float | int]) -> dict[str, float]:
     if not values:
         return {}
     n = len(values)
@@ -118,7 +120,7 @@ def save_artifacts(trajectories: list[Trajectory], output_dir: Path) -> Path:
     artifacts_dir = output_dir / "artifacts"
     artifacts_dir.mkdir(parents=True, exist_ok=True)
 
-    summary = {
+    summary: dict[str, Any] = {
         "scenario": trajectories[0].scenario_name if trajectories else "unknown",
         "n_trajectories": len(trajectories),
         "trajectories": [],

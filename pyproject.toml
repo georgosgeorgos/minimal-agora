@@ -21,6 +21,7 @@ dev = [
     "matplotlib>=3.8",
     "mypy>=2.3.1",
     "pytest-cov>=7.1.0",
+    "types-pyyaml>=6.0.12.20260815",
 ]
 
 [build-system]
