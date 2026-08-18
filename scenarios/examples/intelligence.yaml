@@ -2,6 +2,7 @@ name: "emergence-of-intelligence"
 mode: counterfactual
 n_trajectories: 5
 step_budget: 500
+# max_concurrent_agents: 8  # optional: limit concurrent agent calls per step (default: 8)
 description: >
   Simulate the evolution of life on an Earth-like planet over billions of years.
   Each step represents roughly 10 million years. We test how frequently
