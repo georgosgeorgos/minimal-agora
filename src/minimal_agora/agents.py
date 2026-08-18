@@ -1,11 +1,8 @@
 from __future__ import annotations
 
-import asyncio
 from pathlib import Path
 
 import structlog
-
-logger = structlog.stdlib.get_logger(__name__)
 
 from minimal_agora.models import (
     AgentConfig,
@@ -16,6 +13,23 @@ from minimal_agora.models import (
     Resolution,
     SimRule,
 )
+from minimal_agora.providers.protocol import AgentProvider
+from minimal_agora.providers.subprocess_provider import ClaudeSubprocessProvider
+
+logger = structlog.stdlib.get_logger(__name__)
+
+_default_provider: AgentProvider = ClaudeSubprocessProvider()
+
+
+def set_default_provider(provider: AgentProvider) -> None:
+    """Set the module-level default provider for all agent invocations."""
+    global _default_provider
+    _default_provider = provider
+
+
+def get_default_provider() -> AgentProvider:
+    """Return the current module-level default provider."""
+    return _default_provider
 
 
 async def invoke_agent(
@@ -24,33 +38,28 @@ async def invoke_agent(
     step: int,
     prompt: str,
     timeout: int = 300,
+    provider: AgentProvider | None = None,
 ) -> str:
-    cmd = [
-        "claude",
-        "-p", prompt,
-        "--output-format", "text",
-        "--max-turns", "5",
-    ]
+    active = provider or _default_provider
 
-    proc = await asyncio.create_subprocess_exec(
-        *cmd,
-        cwd=str(workspace),
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
+    logger.debug(
+        "provider.invoke",
+        agent=agent.name,
+        step=step,
+        provider_type=type(active).__name__,
     )
 
-    try:
-        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
-    except TimeoutError:
-        proc.kill()
-        await proc.communicate()
-        raise TimeoutError(f"Agent {agent.name} timed out after {timeout}s")
+    result = await active.invoke(prompt, workspace, timeout)
 
-    if proc.returncode != 0:
-        err = stderr.decode() if stderr else "unknown error"
-        raise RuntimeError(f"Agent {agent.name} failed (exit {proc.returncode}): {err}")
+    logger.debug(
+        "provider.invoke.done",
+        agent=agent.name,
+        step=step,
+        tokens_used=result.tokens_used,
+        model=result.model,
+    )
 
-    return stdout.decode().strip()
+    return result.output
 
 
 def _format_rules(rules: list[SimRule], agent_name: str, agent_role: str) -> str:
