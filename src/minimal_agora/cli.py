@@ -70,6 +70,10 @@ def main() -> int:
         "--format", dest="output_format", choices=["text", "json"], default="text",
         help="Output format",
     )
+    compare_parser.add_argument(
+        "--plots", type=Path, default=None, metavar="DIR",
+        help="Generate comparison plots in the given directory",
+    )
 
     subparsers.add_parser("version", help="Show version info")
 
@@ -370,6 +374,15 @@ def cmd_compare(args) -> int:
                       f"(d={m['cohens_d']:.3f}, {m['interpretation']})")
         print()
         print(result.summary)
+
+    if args.plots:
+        from minimal_agora.visualize_comparison import generate_comparison_plots
+
+        paths = generate_comparison_plots(result, traj_a, traj_b, args.plots)
+        print()
+        for p in paths:
+            print(f"  Plot saved: {p}")
+
     return 0
 
 
