@@ -2,6 +2,8 @@ import json
 import tempfile
 from pathlib import Path
 
+import pytest
+
 from minimal_agora.analysis import aggregate_outcomes, format_report
 from minimal_agora.board import Board, _deep_merge
 from minimal_agora.models import (
@@ -569,6 +571,17 @@ def test_max_concurrent_agents_configurable():
         max_concurrent_agents=4,
     )
     assert scenario.max_concurrent_agents == 4
+
+
+def test_max_concurrent_agents_rejects_zero():
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        Scenario(
+            name="test", mode=SimMode.COUNTERFACTUAL,
+            initial_state={"x": 0}, step_budget=5,
+            max_concurrent_agents=0,
+        )
 
 
 def test_convergence_detection():

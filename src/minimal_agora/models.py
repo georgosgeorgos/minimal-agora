@@ -19,6 +19,8 @@ class AgentRole(str, Enum):
 
 
 class AgentConfig(BaseModel):
+    """Configuration for a single LLM agent within a simulation."""
+
     model_config = ConfigDict(extra="forbid")
 
     role: AgentRole
@@ -74,6 +76,8 @@ class InteractionConfig(BaseModel):
 
 
 class EntityConfig(BaseModel):
+    """Configuration for an entity (population, force, critic, or evaluator) in population mode."""
+
     model_config = ConfigDict(extra="forbid")
 
     name: str
@@ -110,6 +114,8 @@ class FitnessConfig(BaseModel):
 
 
 class Scenario(BaseModel):
+    """Top-level simulation scenario defining agents, rules, and termination conditions."""
+
     model_config = ConfigDict(extra="forbid")
 
     name: str
@@ -126,7 +132,7 @@ class Scenario(BaseModel):
     wildcards: list[WildcardEvent] = Field(default_factory=list)
     wildcards_enabled: bool = False
     description: str = ""
-    max_concurrent_agents: int = 8
+    max_concurrent_agents: int = Field(default=8, ge=1)
 
 
 class Proposal(BaseModel):
@@ -186,6 +192,8 @@ class TrajectoryOutcome(BaseModel):
 
 
 class Trajectory(BaseModel):
+    """Record of a single simulation run including steps and final outcome."""
+
     model_config = ConfigDict(extra="forbid")
 
     scenario_name: str
