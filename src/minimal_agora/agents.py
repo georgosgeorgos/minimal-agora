@@ -158,6 +158,13 @@ def _diversity_prefix(trajectory_id: int) -> str:
 
 
 def build_actor_prompt(agent: AgentConfig, step: int, rules: list[SimRule] | None = None, interaction_context: str = "", trajectory_id: int | None = None) -> str:
+    logger.debug(
+        "prompt.build_actor",
+        agent=agent.name,
+        step=step,
+        has_wildcard=True,
+        has_interaction_context=bool(interaction_context),
+    )
     rules_block = _format_rules(rules or [], agent.name, agent.role.value)
     interaction_block = f"\n{interaction_context}\n" if interaction_context else ""
     diversity_block = f"\n{_diversity_prefix(trajectory_id)}\n" if trajectory_id is not None else ""
@@ -201,6 +208,7 @@ of state.json. Only include fields you want to change.
 
 
 def build_critic_prompt(agent: AgentConfig, step: int, rules: list[SimRule] | None = None) -> str:
+    logger.debug("prompt.build_critic", agent=agent.name, step=step)
     rules_block = _format_rules(rules or [], agent.name, agent.role.value)
     return f"""You are **{agent.name}**, a critic agent in a world simulation.
 
@@ -235,6 +243,7 @@ The JSON must have this structure:
 
 
 def build_judge_prompt(agent: AgentConfig, step: int, rules: list[SimRule] | None = None) -> str:
+    logger.debug("prompt.build_judge", agent=agent.name, step=step)
     rules_block = _format_rules(rules or [], agent.name, agent.role.value)
     return f"""You are **{agent.name}**, the judge agent in a world simulation.
 
@@ -292,7 +301,9 @@ def parse_proposal(workspace: Path, agent_name: str, step: int) -> Proposal | No
         return None
     try:
         with open(path) as f:
-            return Proposal.model_validate_json(f.read())
+            result = Proposal.model_validate_json(f.read())
+        logger.debug("parse.proposal.success", agent_name=agent_name, step=step)
+        return result
     except (ValueError, OSError, KeyError) as e:
         logger.warning("Failed to parse proposal %s: %s", path.name, e)
         return None
@@ -305,7 +316,9 @@ def parse_critique(workspace: Path, agent_name: str, step: int) -> Critique | No
         return None
     try:
         with open(path) as f:
-            return Critique.model_validate_json(f.read())
+            result = Critique.model_validate_json(f.read())
+        logger.debug("parse.critique.success", agent_name=agent_name, step=step)
+        return result
     except (ValueError, OSError, KeyError) as e:
         logger.warning("Failed to parse critique %s: %s", path.name, e)
         return None
@@ -318,7 +331,9 @@ def parse_resolution(workspace: Path, step: int) -> Resolution | None:
         return None
     try:
         with open(path) as f:
-            return Resolution.model_validate_json(f.read())
+            result = Resolution.model_validate_json(f.read())
+        logger.debug("parse.resolution.success", step=step)
+        return result
     except (ValueError, OSError, KeyError) as e:
         logger.warning("Failed to parse resolution %s: %s", path.name, e)
         return None

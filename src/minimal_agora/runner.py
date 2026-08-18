@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 from copy import deepcopy
 from pathlib import Path
 
@@ -37,27 +38,49 @@ async def run_batch(
 
     semaphore = asyncio.Semaphore(concurrency)
     results: list[Trajectory] = []
+    completed: list[Trajectory | BaseException | None] = [None] * n
 
-    async def run_one(tid: int) -> Trajectory:
-        async with semaphore:
-            workspace = setup_workspace(scenario, output_dir, tid)
-            print(f"[batch] starting trajectory {tid}/{n}")
-            return await run_trajectory(scenario, workspace, tid, agent_timeout)
+    logger.info("batch.start", n_trajectories=n, concurrency=concurrency)
+    t0 = time.monotonic()
 
-    tasks = [run_one(i) for i in range(n)]
-    completed = await asyncio.gather(*tasks, return_exceptions=True)
+    async def _safe_run_one(tid: int) -> None:
+        try:
+            async with semaphore:
+                workspace = setup_workspace(scenario, output_dir, tid)
+                print(f"[batch] starting trajectory {tid}/{n}")
+                completed[tid] = await run_trajectory(scenario, workspace, tid, agent_timeout)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("trajectory.failed", trajectory_id=tid, error=str(e))
+            completed[tid] = e
 
+    try:
+        async with asyncio.TaskGroup() as tg:
+            for i in range(n):
+                tg.create_task(_safe_run_one(i))
+    except ExceptionGroup as eg:
+        for exc in eg.exceptions:
+            logger.error("batch.unhandled_failure", error=str(exc))
+
+    n_failed = 0
     skipped = 0
     for i, result in enumerate(completed):
         if isinstance(result, BaseException):
             print(f"[batch] trajectory {i} failed: {result}")
-        else:
+            n_failed += 1
+        elif result is not None:
             results.append(result)
             if result.outcome and result.metadata.get("resumed"):
                 skipped += 1
 
     if skipped:
         print(f"[batch] {skipped}/{n} trajectories resumed from checkpoint")
+
+    logger.info(
+        "batch.complete",
+        n_completed=len(results),
+        n_failed=n_failed,
+        duration_s=round(time.monotonic() - t0, 3),
+    )
 
     return results
 
@@ -73,6 +96,9 @@ async def run_particle_filter(
     resample_cfg = scenario.resampling
     if resample_cfg is None:
         return await run_batch(scenario, output_dir, concurrency, agent_timeout)
+
+    logger.info("filter.start", n_trajectories=n, concurrency=concurrency)
+    t0 = time.monotonic()
 
     max_steps = scenario.termination.get("max_steps", scenario.step_budget)
     semaphore = asyncio.Semaphore(concurrency)
@@ -97,17 +123,28 @@ async def run_particle_filter(
 
         is_last = step_num == max_steps - 1
 
-        async def run_one_step(idx: int, _boards=boards, _step_num=step_num) -> None:
-            async with semaphore:
-                state_before = deepcopy(_boards[idx].read_state())
-                step = await _run_flat_step(
-                    scenario, _boards[idx], _step_num, agent_timeout,
-                    state_before, trajectory_id=idx,
-                    agent_semaphore=agent_sem, max_steps=max_steps,
+        async def _safe_run_step(idx: int, _boards=boards, _step_num=step_num) -> None:
+            try:
+                async with semaphore:
+                    state_before = deepcopy(_boards[idx].read_state())
+                    step = await _run_flat_step(
+                        scenario, _boards[idx], _step_num, agent_timeout,
+                        state_before, trajectory_id=idx,
+                        agent_semaphore=agent_sem, max_steps=max_steps,
+                    )
+                    all_steps[idx].append(step)
+            except Exception as e:  # noqa: BLE001
+                logger.warning(
+                    "particle.step_failed", trajectory_id=idx, step=_step_num, error=str(e),
                 )
-                all_steps[idx].append(step)
 
-        await asyncio.gather(*[run_one_step(i) for i in range(n)], return_exceptions=True)
+        try:
+            async with asyncio.TaskGroup() as tg:
+                for i in range(n):
+                    tg.create_task(_safe_run_step(i))
+        except ExceptionGroup as eg:
+            for exc in eg.exceptions:
+                logger.error("filter.step.unhandled_failure", step=step_num, error=str(exc))
 
         if (
             step_num > 0
@@ -115,6 +152,7 @@ async def run_particle_filter(
             and not is_last
             and n > resample_cfg.min_particles
         ):
+            logger.info("filter.resample", step=step_num)
             workspaces = await resample_particles(
                 scenario, workspaces, step_num, agent_timeout, agent_sem,
             )
@@ -136,5 +174,11 @@ async def run_particle_filter(
             ),
         )
         trajectories.append(traj)
+
+    logger.info(
+        "filter.complete",
+        n_trajectories=len(trajectories),
+        duration_s=round(time.monotonic() - t0, 3),
+    )
 
     return trajectories
