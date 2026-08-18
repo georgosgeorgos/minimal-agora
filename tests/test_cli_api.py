@@ -139,6 +139,63 @@ def test_dry_run_population():
     assert "Entities:" in result.stdout
 
 
+def test_validate_invalid_yaml_friendly_error():
+    with tempfile.NamedTemporaryFile(suffix=".yaml", mode="w", delete=False) as f:
+        yaml.dump({"name": "bad", "mode": "counterfactual"}, f)
+        f.flush()
+        result = _run_cli("validate", f.name)
+    assert result.returncode == 1
+    assert "Invalid scenario:" in result.stdout
+    assert "initial_state" in result.stdout
+    assert "Field required" in result.stdout
+
+
+def test_init_scenario_no_overwrite():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        existing = Path(tmpdir) / "existing.yaml"
+        existing.write_text("placeholder")
+        result = subprocess.run(
+            [sys.executable, "-m", "minimal_agora.cli", "init-scenario", "existing"],
+            capture_output=True,
+            text=True,
+            cwd=tmpdir,
+            check=False,
+        )
+        assert result.returncode == 1
+        assert "File already exists" in result.stdout
+        assert "--force" in result.stdout
+        assert existing.read_text() == "placeholder"
+
+
+def test_init_scenario_force():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        existing = Path(tmpdir) / "forced.yaml"
+        existing.write_text("placeholder")
+        result = subprocess.run(
+            [sys.executable, "-m", "minimal_agora.cli", "init-scenario", "forced", "--force"],
+            capture_output=True,
+            text=True,
+            cwd=tmpdir,
+            check=False,
+        )
+        assert result.returncode == 0
+        assert "Created scenario template" in result.stdout
+        data = yaml.safe_load(existing.read_text())
+        assert data["name"] == "forced"
+
+
+def test_agents_missing_file():
+    result = _run_cli("agents", "/tmp/nonexistent_scenario_xyz.yaml")
+    assert result.returncode == 1
+    assert "Scenario file not found" in result.stdout
+
+
+def test_run_missing_scenario():
+    result = _run_cli("run", "/tmp/nonexistent_scenario_xyz.yaml")
+    assert result.returncode == 1
+    assert "Scenario file not found" in result.stdout
+
+
 def test_report_json_format():
     from minimal_agora.models import Trajectory, TrajectoryOutcome
 

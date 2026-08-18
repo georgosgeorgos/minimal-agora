@@ -57,6 +57,7 @@ def main() -> int:
     init_parser = subparsers.add_parser("init-scenario", help="Generate a template scenario YAML file")
     init_parser.add_argument("name", help="Scenario name")
     init_parser.add_argument("--mode", choices=["counterfactual", "open_ended", "population"], default="counterfactual", help="Simulation mode")
+    init_parser.add_argument("--force", action="store_true", help="Overwrite existing file")
 
     agents_parser = subparsers.add_parser("agents", help="List agents/entities from a scenario")
     agents_parser.add_argument("scenario", type=Path, help="Path to scenario YAML/JSON")
@@ -100,6 +101,10 @@ def main() -> int:
 
 def cmd_run(args) -> int:
     from minimal_agora.models import SimMode
+
+    if not args.scenario.exists():
+        print(f"Scenario file not found: {args.scenario}")
+        return 1
 
     scenario = load_scenario(args.scenario)
 
@@ -211,10 +216,18 @@ def cmd_dashboard(args) -> int:
 
 
 def cmd_validate(args) -> int:
+    from pydantic import ValidationError
+
     try:
         load_scenario(args.scenario)
         print("Valid")
         return 0
+    except ValidationError as e:
+        print("Invalid scenario:")
+        for err in e.errors():
+            loc = " → ".join(str(l) for l in err["loc"])
+            print(f"  {loc}: {err['msg']}")
+        return 1
     except (OSError, ValueError, KeyError) as e:
         print(f"Invalid: {e}")
         return 1
@@ -280,7 +293,12 @@ def cmd_init_scenario(args) -> int:
     import yaml
 
     filename = f"{name}.yaml"
-    with open(filename, "w") as f:
+    filepath = Path(filename)
+    if filepath.exists() and not args.force:
+        print(f"File already exists: {filepath}. Use --force to overwrite.")
+        return 1
+
+    with open(filepath, "w") as f:
         yaml.dump(template, f, default_flow_style=False, sort_keys=False)
 
     print(f"Created scenario template: {filename}")
@@ -288,6 +306,10 @@ def cmd_init_scenario(args) -> int:
 
 
 def cmd_agents(args) -> int:
+    if not args.scenario.exists():
+        print(f"Scenario file not found: {args.scenario}")
+        return 1
+
     scenario = load_scenario(args.scenario)
 
     if scenario.agents:
