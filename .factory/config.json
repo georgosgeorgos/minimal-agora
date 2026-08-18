@@ -27,11 +27,24 @@
   },
   "target_branch": "main",
   "smoke_test": "uv run pytest tests/ -v",
-  "project_eval": [],
+  "project_eval": [
+    {
+      "name": "test_suite",
+      "command": "uv run python eval/test_suite.py",
+      "description": "Run the full pytest test suite",
+      "weight": 1.0
+    },
+    {
+      "name": "test_coverage",
+      "command": "uv run python eval/test_coverage.py",
+      "description": "Measure test coverage percentage",
+      "weight": 1.0
+    }
+  ],
   "eval_weights": {
-    "hygiene": 0.5,
-    "growth": 0.5,
-    "project": 0.0
+    "hygiene": 0.3,
+    "growth": 0.2,
+    "project": 0.5
   },
   "research_target": null,
   "inner_loop": null,
