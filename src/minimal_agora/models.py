@@ -133,6 +133,7 @@ class Scenario(BaseModel):
     wildcards_enabled: bool = False
     description: str = ""
     max_concurrent_agents: int = Field(default=8, ge=1)
+    review_interval: int = Field(default=1, ge=1)
 
 
 class Proposal(BaseModel):
