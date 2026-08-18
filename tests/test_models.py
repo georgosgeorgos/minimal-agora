@@ -511,6 +511,66 @@ def test_load_market_scenario():
     assert "population" in cap_rule.applies_to
 
 
+def test_semaphore_limits_peak_concurrency():
+    import asyncio
+
+    from minimal_agora.loop import _invoke_with_semaphore
+
+    peak = 0
+    current = 0
+
+    async def mock_invoke_with_retry(agent, workspace, step_num, prompt, timeout, max_retries=1):
+        nonlocal peak, current
+        current += 1
+        peak = max(peak, current)
+        await asyncio.sleep(0.05)
+        current -= 1
+
+    import minimal_agora.loop as loop_module
+    original = loop_module._invoke_with_retry
+    loop_module._invoke_with_retry = mock_invoke_with_retry
+
+    try:
+        max_concurrent = 2
+
+        class FakeAgent:
+            name = "test"
+
+        async def run_all():
+            semaphore = asyncio.Semaphore(max_concurrent)
+            agents = [FakeAgent() for _ in range(6)]
+            tasks = [
+                _invoke_with_semaphore(
+                    semaphore, a, Path("/tmp"), 0, "prompt", 60, max_concurrent,
+                )
+                for a in agents
+            ]
+            await asyncio.gather(*tasks)
+
+        asyncio.run(run_all())
+        assert peak <= max_concurrent, f"Peak concurrency {peak} exceeded limit {max_concurrent}"
+        assert peak == max_concurrent, f"Expected peak {max_concurrent}, got {peak}"
+    finally:
+        loop_module._invoke_with_retry = original
+
+
+def test_max_concurrent_agents_default():
+    scenario = Scenario(
+        name="test", mode=SimMode.COUNTERFACTUAL,
+        initial_state={"x": 0}, step_budget=5,
+    )
+    assert scenario.max_concurrent_agents == 8
+
+
+def test_max_concurrent_agents_configurable():
+    scenario = Scenario(
+        name="test", mode=SimMode.COUNTERFACTUAL,
+        initial_state={"x": 0}, step_budget=5,
+        max_concurrent_agents=4,
+    )
+    assert scenario.max_concurrent_agents == 4
+
+
 def test_convergence_detection():
     from minimal_agora.analysis import detect_convergence
 

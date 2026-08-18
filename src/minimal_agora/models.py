@@ -126,6 +126,7 @@ class Scenario(BaseModel):
     wildcards: list[WildcardEvent] = Field(default_factory=list)
     wildcards_enabled: bool = False
     description: str = ""
+    max_concurrent_agents: int = 8
 
 
 class Proposal(BaseModel):

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from pathlib import Path
 
 import matplotlib
@@ -97,9 +98,9 @@ def plot_field_timelines(
                     ax.plot(t_steps, t_vals, marker="o", markersize=3,
                             color=color, alpha=0.6, label=f"traj {t.trajectory_id}")
 
-            means = []
-            for step in steps:
-                vals = [v for v in field_data[step] if isinstance(v, (int, float))]
+            means: list[float | None] = []
+            for step_num in steps:
+                vals = [v for v in field_data[step_num] if isinstance(v, (int, float))]
                 if vals:
                     means.append(sum(vals) / len(vals))
                 else:
@@ -111,15 +112,15 @@ def plot_field_timelines(
                 ax.plot(valid_steps, valid_means, "k-", linewidth=2, label="mean", zorder=10)
         else:
             for t_idx, t in enumerate(trajectories):
-                t_vals = []
-                t_steps = []
+                cat_vals: list[str] = []
+                cat_steps: list[int] = []
                 for step in t.steps:
                     val = _get_nested(step.state_after, field)
                     if val is not None:
-                        t_vals.append(str(val))
-                        t_steps.append(step.step_number)
-                if t_vals:
-                    ax.scatter(t_steps, t_vals, marker="o", s=30,
+                        cat_vals.append(str(val))
+                        cat_steps.append(step.step_number)
+                if cat_vals:
+                    ax.scatter(cat_steps, cat_vals, marker="o", s=30,
                                color=COLORS[t_idx % len(COLORS)], alpha=0.6)
 
         ax.set_title(field, fontsize=11, fontweight="bold")
@@ -153,7 +154,7 @@ def plot_step_distribution(
     labels = sorted(steps_by_outcome.keys())
 
     for i, label in enumerate(labels):
-        vals = steps_by_outcome[label]
+        vals: Sequence[float | int] = steps_by_outcome[label]
         stats = compute_statistics(vals)
         ax.bar(
             i, stats.get("mean", 0), color=COLORS[i % len(COLORS)],

@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import asyncio
-import logging
 import random
 from copy import deepcopy
 from pathlib import Path
 
-logger = logging.getLogger(__name__)
+import structlog
+
+logger = structlog.stdlib.get_logger(__name__)
 
 from minimal_agora.agents import (
     build_interaction_context,
@@ -43,6 +44,22 @@ async def _invoke_with_retry(
                 logger.warning("Agent %s failed (attempt %d), retrying: %s", agent.name, attempt + 1, e)
             else:
                 logger.error("Agent %s failed after %d attempts: %s", agent.name, attempt + 1, e)
+
+
+async def _invoke_with_semaphore(
+    semaphore: asyncio.Semaphore,
+    agent,
+    workspace: Path,
+    step_num: int,
+    prompt: str,
+    timeout: int,
+    max_concurrent: int,
+) -> None:
+    if semaphore.locked():
+        logger.debug("agent.throttled", agent=agent.name, waiting=True)
+    async with semaphore:
+        logger.debug("agent.semaphore_acquired", agent=agent.name, max_concurrent=max_concurrent)
+        await _invoke_with_retry(agent, workspace, step_num, prompt, timeout)
 
 
 def _detect_resume_point(workspace: Path) -> int:
@@ -84,10 +101,13 @@ async def run_trajectory(
     agent_timeout: int = 300,
 ) -> Trajectory:
     board = Board(workspace)
+    agent_semaphore = asyncio.Semaphore(scenario.max_concurrent_agents)
+
+    tlog = logger.bind(trajectory_id=trajectory_id)
 
     existing = _load_completed_trajectory(workspace)
     if existing is not None:
-        print(f"  [trajectory {trajectory_id}] already complete, skipping")
+        tlog.info("trajectory.skip", reason="already_complete")
         return existing
 
     resume_from = _detect_resume_point(workspace)
@@ -97,7 +117,7 @@ async def run_trajectory(
     )
 
     if resume_from > 0:
-        print(f"  [trajectory {trajectory_id}] resuming from step {resume_from}")
+        tlog.info("trajectory.resume", from_step=resume_from)
         trajectory.steps = _restore_checkpoint(workspace, resume_from, board)
 
     max_steps = scenario.termination.get("max_steps", scenario.step_budget)
@@ -107,35 +127,36 @@ async def run_trajectory(
     plateau_threshold = scenario.termination.get("plateau_threshold", 0.01)
 
     for step_num in range(resume_from, max_steps):
+        slog = tlog.bind(step=step_num, max_steps=max_steps)
         wildcard = _roll_wildcard(scenario.wildcards, max_steps) if scenario.wildcards_enabled else None
         if wildcard:
-            print(f"  [trajectory {trajectory_id}] step {step_num}/{max_steps} — WILDCARD: {wildcard.name}")
+            slog.info("step.start", wildcard=wildcard.name)
             board.write_wildcard(wildcard, step_num)
             if wildcard.state_impact:
                 state = board.read_state()
                 _deep_merge(state, wildcard.state_impact)
                 board.write_state(state)
         else:
-            print(f"  [trajectory {trajectory_id}] step {step_num}/{max_steps}")
+            slog.info("step.start")
             board.clear_wildcard(step_num)
 
-        step = await _run_step(scenario, board, step_num, agent_timeout, trajectory_id)
+        step = await _run_step(scenario, board, step_num, agent_timeout, trajectory_id, agent_semaphore)
         trajectory.steps.append(step)
 
         if scenario.fitness:
             score = _evaluate_fitness(step.state_after, scenario.fitness)
             fitness_history.append(score)
             if score is not None:
-                print(f"  [trajectory {trajectory_id}] fitness: {score:.4f}")
+                slog.info("step.fitness", score=score)
 
         if _check_termination(step.state_after, conditions):
-            print(f"  [trajectory {trajectory_id}] terminated at step {step_num}")
+            slog.info("trajectory.terminated", reason="condition_met")
             break
 
         if scenario.mode == SimMode.OPEN_ENDED and scenario.fitness and _check_plateau(
             fitness_history, plateau_window, plateau_threshold,
         ):
-            print(f"  [trajectory {trajectory_id}] fitness plateau at step {step_num}")
+            slog.info("trajectory.terminated", reason="fitness_plateau")
             break
 
     final_state = board.read_state()
@@ -163,12 +184,13 @@ async def _run_step(
     step_num: int,
     timeout: int,
     trajectory_id: int = 0,
+    agent_semaphore: asyncio.Semaphore | None = None,
 ) -> Step:
     state_before = deepcopy(board.read_state())
 
     if scenario.entities:
-        return await _run_entity_step(scenario, board, step_num, timeout, state_before, trajectory_id)
-    return await _run_flat_step(scenario, board, step_num, timeout, state_before, trajectory_id)
+        return await _run_entity_step(scenario, board, step_num, timeout, state_before, trajectory_id, agent_semaphore)
+    return await _run_flat_step(scenario, board, step_num, timeout, state_before, trajectory_id, agent_semaphore)
 
 
 async def _run_flat_step(
@@ -178,14 +200,20 @@ async def _run_flat_step(
     timeout: int,
     state_before: dict,
     trajectory_id: int = 0,
+    agent_semaphore: asyncio.Semaphore | None = None,
 ) -> Step:
     actors = [a for a in scenario.agents if a.role == AgentRole.ACTOR]
     critics = [a for a in scenario.agents if a.role == AgentRole.CRITIC]
     judges = [a for a in scenario.agents if a.role == AgentRole.JUDGE]
 
+    max_concurrent = scenario.max_concurrent_agents
     rules = scenario.rules
     actor_tasks = [
-        _invoke_with_retry(
+        _invoke_with_semaphore(
+            agent_semaphore, a, board.workspace, step_num,
+            build_prompt(a, step_num, rules, trajectory_id=trajectory_id),
+            timeout, max_concurrent,
+        ) if agent_semaphore else _invoke_with_retry(
             a, board.workspace, step_num,
             build_prompt(a, step_num, rules, trajectory_id=trajectory_id),
             timeout,
@@ -204,7 +232,12 @@ async def _run_flat_step(
     critiques = []
     if critics:
         critic_tasks = [
-            _invoke_with_retry(c, board.workspace, step_num, build_prompt(c, step_num, rules), timeout)
+            _invoke_with_semaphore(
+                agent_semaphore, c, board.workspace, step_num,
+                build_prompt(c, step_num, rules), timeout, max_concurrent,
+            ) if agent_semaphore else _invoke_with_retry(
+                c, board.workspace, step_num, build_prompt(c, step_num, rules), timeout,
+            )
             for c in critics
         ]
         await asyncio.gather(*critic_tasks, return_exceptions=True)
@@ -246,8 +279,10 @@ async def _run_entity_step(
     timeout: int,
     state_before: dict,
     trajectory_id: int = 0,
+    agent_semaphore: asyncio.Semaphore | None = None,
 ) -> Step:
     rules = scenario.rules
+    max_concurrent = scenario.max_concurrent_agents
     proposals = []
     critiques = []
 
@@ -260,7 +295,11 @@ async def _run_entity_step(
     force_agents = [a for e in force_entities for a in e.agents]
     if force_agents:
         force_tasks = [
-            _invoke_with_retry(
+            _invoke_with_semaphore(
+                agent_semaphore, a, board.workspace, step_num,
+                build_prompt(a, step_num, rules, trajectory_id=trajectory_id),
+                timeout, max_concurrent,
+            ) if agent_semaphore else _invoke_with_retry(
                 a, board.workspace, step_num,
                 build_prompt(a, step_num, rules, trajectory_id=trajectory_id),
                 timeout,
@@ -286,7 +325,11 @@ async def _run_entity_step(
     pop_agents = [a for e in pop_entities for a in e.agents]
     if pop_agents:
         pop_tasks = [
-            _invoke_with_retry(
+            _invoke_with_semaphore(
+                agent_semaphore, a, board.workspace, step_num,
+                build_prompt(a, step_num, rules, entity_interaction.get(a.name, ""), trajectory_id=trajectory_id),
+                timeout, max_concurrent,
+            ) if agent_semaphore else _invoke_with_retry(
                 a, board.workspace, step_num,
                 build_prompt(a, step_num, rules, entity_interaction.get(a.name, ""), trajectory_id=trajectory_id),
                 timeout,
@@ -304,7 +347,12 @@ async def _run_entity_step(
     critic_agents = [a for e in critic_entities for a in e.agents]
     if critic_agents:
         critic_tasks = [
-            _invoke_with_retry(c, board.workspace, step_num, build_prompt(c, step_num, rules), timeout)
+            _invoke_with_semaphore(
+                agent_semaphore, c, board.workspace, step_num,
+                build_prompt(c, step_num, rules), timeout, max_concurrent,
+            ) if agent_semaphore else _invoke_with_retry(
+                c, board.workspace, step_num, build_prompt(c, step_num, rules), timeout,
+            )
             for c in critic_agents
         ]
         await asyncio.gather(*critic_tasks, return_exceptions=True)
