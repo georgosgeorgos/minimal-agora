@@ -16,7 +16,7 @@ from minimal_agora.agents import (
     parse_proposal,
     parse_resolution,
 )
-from minimal_agora.board import Board, _deep_merge
+from minimal_agora.board import Board, _deep_merge, evaluate_trigger_conditions
 from minimal_agora.models import (
     AgentRole,
     FitnessConfig,
@@ -107,7 +107,11 @@ async def run_trajectory(
     plateau_threshold = scenario.termination.get("plateau_threshold", 0.01)
 
     for step_num in range(resume_from, max_steps):
-        wildcard = _roll_wildcard(scenario.wildcards, max_steps) if scenario.wildcards_enabled else None
+        if scenario.wildcards_enabled:
+            current_state = board.read_state()
+            wildcard = _roll_wildcard(scenario.wildcards, max_steps, current_state)
+        else:
+            wildcard = None
         if wildcard:
             print(f"  [trajectory {trajectory_id}] step {step_num}/{max_steps} — WILDCARD: {wildcard.name}")
             board.write_wildcard(wildcard, step_num)
@@ -395,8 +399,15 @@ def _classify_outcome(state: dict, scenario: Scenario) -> str:
     return "unclassified"
 
 
-def _roll_wildcard(wildcards: list[WildcardEvent], max_steps: int = 1) -> WildcardEvent | None:
+def _roll_wildcard(
+    wildcards: list[WildcardEvent], max_steps: int = 1, state: dict | None = None,
+) -> WildcardEvent | None:
     for event in wildcards:
+        if event.trigger_conditions:
+            if state is None or not evaluate_trigger_conditions(event.trigger_conditions, state):
+                logger.debug("wildcard %s skipped: trigger conditions not met", event.name)
+                continue
+            logger.debug("wildcard %s: trigger conditions met, rolling probability", event.name)
         per_step = min(event.probability / max_steps, 1.0)
         if random.random() < per_step:
             return event

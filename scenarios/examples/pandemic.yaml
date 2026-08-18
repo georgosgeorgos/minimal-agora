@@ -126,6 +126,10 @@ wildcards:
     description: >
       A large gathering (religious event, sporting event, political rally)
       causes a massive spike in cases in one region.
+    trigger_conditions:
+      - field: disease.transmissibility
+        operator: gte
+        threshold: 0.5
     state_impact:
       disease:
         transmissibility: 0.85
@@ -144,6 +148,10 @@ wildcards:
     description: >
       A major misinformation campaign undermines public health messaging.
       Compliance with measures drops across all regions.
+    trigger_conditions:
+      - field: regions.americas.social_cohesion
+        operator: lt
+        threshold: 50
     state_impact:
       global:
         information_quality: degraded

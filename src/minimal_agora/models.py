@@ -94,6 +94,22 @@ class SimRule(BaseModel):
     applies_to: list[str] = Field(default_factory=list)
 
 
+class ConditionOperator(str, Enum):
+    GT = "gt"
+    LT = "lt"
+    EQ = "eq"
+    GTE = "gte"
+    LTE = "lte"
+
+
+class TriggerCondition(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    field: str
+    operator: ConditionOperator
+    threshold: float
+
+
 class WildcardEvent(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -101,6 +117,7 @@ class WildcardEvent(BaseModel):
     probability: float = 0.1
     description: str = ""
     state_impact: dict[str, Any] = Field(default_factory=dict)
+    trigger_conditions: list[TriggerCondition] = Field(default_factory=list)
 
 
 class FitnessConfig(BaseModel):

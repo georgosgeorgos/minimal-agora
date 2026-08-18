@@ -1,9 +1,20 @@
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 
-from minimal_agora.models import Critique, Proposal, Resolution, Step, WildcardEvent
+from minimal_agora.models import (
+    ConditionOperator,
+    Critique,
+    Proposal,
+    Resolution,
+    Step,
+    TriggerCondition,
+    WildcardEvent,
+)
+
+logger = logging.getLogger(__name__)
 
 
 class Board:
@@ -115,3 +126,47 @@ def _deep_merge(base: dict, overlay: dict) -> None:
             _deep_merge(base[key], value)
         else:
             base[key] = value
+
+
+def _get_nested(d: dict, path: str):
+    keys = path.split(".")
+    current = d
+    for key in keys:
+        if not isinstance(current, dict) or key not in current:
+            return None
+        current = current[key]
+    return current
+
+
+_CONDITION_OPS = {
+    ConditionOperator.GT: lambda v, t: v > t,
+    ConditionOperator.LT: lambda v, t: v < t,
+    ConditionOperator.EQ: lambda v, t: float(v) == t,
+    ConditionOperator.GTE: lambda v, t: v >= t,
+    ConditionOperator.LTE: lambda v, t: v <= t,
+}
+
+
+def evaluate_trigger_conditions(conditions: list[TriggerCondition], state: dict) -> bool:
+    for cond in conditions:
+        value = _get_nested(state, cond.field)
+        if value is None or not isinstance(value, (int, float)):
+            logger.debug(
+                "trigger_condition field=%s not found or not numeric, condition fails",
+                cond.field,
+            )
+            return False
+
+        op_fn = _CONDITION_OPS[cond.operator]
+        passed = op_fn(value, cond.threshold)
+
+        logger.debug(
+            "trigger_condition field=%s op=%s threshold=%s value=%s → %s",
+            cond.field, cond.operator.value, cond.threshold, value,
+            "passed" if passed else "failed",
+        )
+        if not passed:
+            return False
+
+    logger.debug("all trigger_conditions satisfied (%d conditions)", len(conditions))
+    return True
