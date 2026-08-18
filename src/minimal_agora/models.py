@@ -212,3 +212,18 @@ class AggregateResult(BaseModel):
     outcomes: dict[str, int] = Field(default_factory=dict)
     outcome_rates: dict[str, float] = Field(default_factory=dict)
     mean_steps_per_outcome: dict[str, float] = Field(default_factory=dict)
+    outcome_rates_ci: dict[str, tuple[float, float]] | None = None
+    monte_carlo_se: dict[str, float] | None = None
+
+
+class CrossRunComparison(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    run_a_name: str
+    run_b_name: str
+    n_trajectories_a: int
+    n_trajectories_b: int
+    outcome_comparisons: list[dict[str, Any]] = Field(default_factory=list)
+    metric_comparisons: list[dict[str, Any]] = Field(default_factory=list)
+    effect_sizes: dict[str, Any] = Field(default_factory=dict)
+    summary: str = ""

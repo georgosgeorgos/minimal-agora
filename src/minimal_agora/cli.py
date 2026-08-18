@@ -7,6 +7,7 @@ from pathlib import Path
 
 from minimal_agora.analysis import (
     aggregate_outcomes,
+    compare_runs,
     detect_convergence,
     format_report,
     load_trajectories,
@@ -60,6 +61,15 @@ def main() -> int:
     agents_parser = subparsers.add_parser("agents", help="List agents/entities from a scenario")
     agents_parser.add_argument("scenario", type=Path, help="Path to scenario YAML/JSON")
 
+    compare_parser = subparsers.add_parser("compare", help="Compare outcomes from two runs")
+    compare_parser.add_argument("dir_a", type=Path, help="Path to first run directory")
+    compare_parser.add_argument("dir_b", type=Path, help="Path to second run directory")
+    compare_parser.add_argument("--alpha", type=float, default=0.05, help="Significance level")
+    compare_parser.add_argument(
+        "--format", dest="output_format", choices=["text", "json"], default="text",
+        help="Output format",
+    )
+
     subparsers.add_parser("version", help="Show version info")
 
     args = parser.parse_args()
@@ -79,6 +89,8 @@ def main() -> int:
         return cmd_init_scenario(args)
     elif args.command == "agents":
         return cmd_agents(args)
+    elif args.command == "compare":
+        return cmd_compare(args)
     elif args.command == "version":
         return cmd_version()
     else:
@@ -290,6 +302,47 @@ def cmd_agents(args) -> int:
             print(f"  - {e.name} ({e.type.value})")
             for a in e.agents:
                 print(f"      {a.name} ({a.role.value})")
+    return 0
+
+
+def cmd_compare(args) -> int:
+    traj_a = load_trajectories(args.dir_a)
+    traj_b = load_trajectories(args.dir_b)
+
+    if not traj_a:
+        print(f"No trajectories found in {args.dir_a}")
+        return 1
+    if not traj_b:
+        print(f"No trajectories found in {args.dir_b}")
+        return 1
+
+    result = compare_runs(
+        traj_a, traj_b,
+        name_a=args.dir_a.name,
+        name_b=args.dir_b.name,
+        alpha=args.alpha,
+    )
+
+    if args.output_format == "json":
+        print(result.model_dump_json(indent=2))
+    else:
+        print("=== Cross-Run Comparison ===")
+        print(f"{result.run_a_name} (n={result.n_trajectories_a}) vs "
+              f"{result.run_b_name} (n={result.n_trajectories_b})")
+        print()
+        print("Outcome comparisons:")
+        for c in result.outcome_comparisons:
+            sig = " *" if c["significant"] else ""
+            print(f"  {c['category']}: {c['rate_a']:.1%} vs {c['rate_b']:.1%} "
+                  f"(p={c['p_value']:.4f}){sig}")
+        if result.metric_comparisons:
+            print()
+            print("Metric comparisons:")
+            for m in result.metric_comparisons:
+                print(f"  {m['metric']}: {m['mean_a']:.2f} vs {m['mean_b']:.2f} "
+                      f"(d={m['cohens_d']:.3f}, {m['interpretation']})")
+        print()
+        print(result.summary)
     return 0
 
 
