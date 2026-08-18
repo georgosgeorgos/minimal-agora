@@ -183,6 +183,20 @@ wildcards:
       world:
         trade_connectivity: "disrupted"
 
+resampling:
+  interval: 3
+  criteria:
+    - 'Did a new political faction or movement emerge?'
+    - 'Did power dynamics shift significantly?'
+    - 'Is there meaningful ideological conflict?'
+    - 'Did public opinion change on a key issue?'
+    - 'Was there institutional reform or constitutional change?'
+    - 'Did an external crisis affect domestic politics?'
+    - 'Are there coalition dynamics creating unexpected alliances?'
+    - 'Is democratic participation increasing or decreasing?'
+    - 'Did a leader or movement gain or lose legitimacy?'
+    - 'Are there tensions between democratic norms and political realities?'
+
 termination:
   max_steps: 1000
   conditions:

@@ -187,6 +187,20 @@ wildcards:
       environment:
         biodiversity: "minimal"
 
+resampling:
+  interval: 5
+  criteria:
+    - 'Did biological complexity increase this period?'
+    - 'Did a novel metabolic pathway or energy strategy emerge?'
+    - 'Did a mass extinction create new ecological opportunities?'
+    - 'Is there meaningful competition between life forms?'
+    - 'Did the environment change in ways that create new selection pressures?'
+    - 'Are there surprising or non-obvious interactions between systems?'
+    - 'Is this trajectory on a unique evolutionary path?'
+    - 'Did a key innovation occur (photosynthesis, multicellularity, nervous system)?'
+    - 'Is biodiversity trending upward?'
+    - 'Are there unresolved tensions that could drive future change?'
+
 termination:
   max_steps: 500
   conditions:
