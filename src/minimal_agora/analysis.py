@@ -80,6 +80,7 @@ def extract_field_timelines(
 
 
 def compute_statistics(values: Sequence[float | int]) -> dict[str, float]:
+    logger.debug("analysis.compute_statistics", n_values=len(values))
     if not values:
         return {}
     n = len(values)
@@ -292,7 +293,9 @@ def cohens_d(
     else:
         d_val = (mean_a - mean_b) / pooled_std
 
-    return {"d": d_val, "interpretation": _interpret_cohens_d(d_val)}
+    interpretation = _interpret_cohens_d(d_val)
+    logger.debug("analysis.cohens_d", effect_size=d_val, interpretation=interpretation)
+    return {"d": d_val, "interpretation": interpretation}
 
 
 def compare_runs(
@@ -304,6 +307,13 @@ def compare_runs(
 ) -> CrossRunComparison:
     n_a = len(trajectories_a)
     n_b = len(trajectories_b)
+    logger.info(
+        "analysis.compare_runs",
+        run_a=name_a,
+        run_b=name_b,
+        n_trajectories_a=n_a,
+        n_trajectories_b=n_b,
+    )
 
     counts_a: dict[str, int] = defaultdict(int)
     counts_b: dict[str, int] = defaultdict(int)
@@ -368,6 +378,7 @@ def compare_runs(
             f"{name_a} (n={n_a}) and {name_b} (n={n_b}) at alpha={alpha}."
         )
 
+    logger.info("analysis.compare_runs.done", n_significant_differences=len(sig_diffs))
     return CrossRunComparison(
         run_a_name=name_a,
         run_b_name=name_b,

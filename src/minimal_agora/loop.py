@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import random
+import time
 from copy import deepcopy
 from datetime import UTC, datetime
 from pathlib import Path
@@ -31,6 +32,13 @@ from minimal_agora.models import (
     TrajectoryType,
     WildcardEvent,
 )
+
+
+async def _safe_invoke(coro) -> None:
+    try:
+        await coro
+    except Exception as e:  # noqa: BLE001
+        logger.warning("agent.task_failed", error=str(e))
 
 
 async def _invoke_with_retry(
@@ -213,19 +221,28 @@ async def _run_flat_step(
 
     max_concurrent = scenario.max_concurrent_agents
     rules = scenario.rules
-    actor_tasks = [
-        _invoke_with_semaphore(
-            agent_semaphore, a, board.workspace, step_num,
-            build_prompt(a, step_num, rules, trajectory_id=trajectory_id),
-            timeout, max_concurrent,
-        ) if agent_semaphore else _invoke_with_retry(
-            a, board.workspace, step_num,
-            build_prompt(a, step_num, rules, trajectory_id=trajectory_id),
-            timeout,
-        )
-        for a in actors
-    ]
-    await asyncio.gather(*actor_tasks, return_exceptions=True)
+
+    logger.debug("flat_step.propose_start", step=step_num, n_actors=len(actors))
+    t0 = time.monotonic()
+    try:
+        async with asyncio.TaskGroup() as tg:
+            for a in actors:
+                coro = (
+                    _invoke_with_semaphore(
+                        agent_semaphore, a, board.workspace, step_num,
+                        build_prompt(a, step_num, rules, trajectory_id=trajectory_id),
+                        timeout, max_concurrent,
+                    ) if agent_semaphore else _invoke_with_retry(
+                        a, board.workspace, step_num,
+                        build_prompt(a, step_num, rules, trajectory_id=trajectory_id),
+                        timeout,
+                    )
+                )
+                tg.create_task(_safe_invoke(coro))
+    except ExceptionGroup as eg:
+        for exc in eg.exceptions:
+            logger.error("flat_step.propose.unhandled_failure", step=step_num, error=str(exc))
+    logger.debug("flat_step.propose_done", step=step_num, duration_s=round(time.monotonic() - t0, 3))
 
     proposals = []
     for a in actors:
@@ -245,16 +262,30 @@ async def _run_flat_step(
 
     if is_review_step:
         if critics:
-            critic_tasks = [
-                _invoke_with_semaphore(
-                    agent_semaphore, c, board.workspace, step_num,
-                    build_prompt(c, step_num, rules), timeout, max_concurrent,
-                ) if agent_semaphore else _invoke_with_retry(
-                    c, board.workspace, step_num, build_prompt(c, step_num, rules), timeout,
-                )
-                for c in critics
-            ]
-            await asyncio.gather(*critic_tasks, return_exceptions=True)
+            logger.debug("flat_step.critique_start", step=step_num, n_critics=len(critics))
+            t1 = time.monotonic()
+            try:
+                async with asyncio.TaskGroup() as tg:
+                    for c in critics:
+                        coro = (
+                            _invoke_with_semaphore(
+                                agent_semaphore, c, board.workspace, step_num,
+                                build_prompt(c, step_num, rules), timeout, max_concurrent,
+                            ) if agent_semaphore else _invoke_with_retry(
+                                c, board.workspace, step_num, build_prompt(c, step_num, rules),
+                                timeout,
+                            )
+                        )
+                        tg.create_task(_safe_invoke(coro))
+            except ExceptionGroup as eg:
+                for exc in eg.exceptions:
+                    logger.error(
+                        "flat_step.critique.unhandled_failure", step=step_num, error=str(exc),
+                    )
+            logger.debug(
+                "flat_step.critique_done", step=step_num,
+                duration_s=round(time.monotonic() - t1, 3),
+            )
 
             for c in critics:
                 cr = parse_critique(board.workspace, c.name, step_num)
@@ -263,9 +294,17 @@ async def _run_flat_step(
                     board.save_critique(cr, step_num)
 
         if judges:
+            logger.debug("flat_step.resolve_start", step=step_num)
+            t2 = time.monotonic()
             judge = judges[0]
-            await _invoke_with_retry(judge, board.workspace, step_num, build_prompt(judge, step_num, rules), timeout)
+            await _invoke_with_retry(
+                judge, board.workspace, step_num, build_prompt(judge, step_num, rules), timeout,
+            )
             resolution = parse_resolution(board.workspace, step_num)
+            logger.debug(
+                "flat_step.resolve_done", step=step_num,
+                duration_s=round(time.monotonic() - t2, 3),
+            )
 
         if resolution is None:
             resolution = _fallback_resolution(proposals)
@@ -327,22 +366,44 @@ async def _run_entity_step(
     critic_entities = [e for e in scenario.entities if e.type == TrajectoryType.CRITIC]
     eval_entities = [e for e in scenario.entities if e.type == TrajectoryType.EVALUATOR]
 
+    logger.debug(
+        "entity_step.order",
+        step=step_num,
+        n_forces=len(force_entities),
+        n_populations=len(pop_entities),
+        n_critics=len(critic_entities),
+        n_evaluators=len(eval_entities),
+    )
+
     # Phase 1: Forces propose world-level changes
     force_agents = [a for e in force_entities for a in e.agents]
     if force_agents:
-        force_tasks = [
-            _invoke_with_semaphore(
-                agent_semaphore, a, board.workspace, step_num,
-                build_prompt(a, step_num, rules, trajectory_id=trajectory_id),
-                timeout, max_concurrent,
-            ) if agent_semaphore else _invoke_with_retry(
-                a, board.workspace, step_num,
-                build_prompt(a, step_num, rules, trajectory_id=trajectory_id),
-                timeout,
-            )
-            for a in force_agents
-        ]
-        await asyncio.gather(*force_tasks, return_exceptions=True)
+        logger.debug("entity_step.forces_start", step=step_num, n_agents=len(force_agents))
+        t0 = time.monotonic()
+        try:
+            async with asyncio.TaskGroup() as tg:
+                for a in force_agents:
+                    coro = (
+                        _invoke_with_semaphore(
+                            agent_semaphore, a, board.workspace, step_num,
+                            build_prompt(a, step_num, rules, trajectory_id=trajectory_id),
+                            timeout, max_concurrent,
+                        ) if agent_semaphore else _invoke_with_retry(
+                            a, board.workspace, step_num,
+                            build_prompt(a, step_num, rules, trajectory_id=trajectory_id),
+                            timeout,
+                        )
+                    )
+                    tg.create_task(_safe_invoke(coro))
+        except ExceptionGroup as eg:
+            for exc in eg.exceptions:
+                logger.error(
+                    "entity_step.forces.unhandled_failure", step=step_num, error=str(exc),
+                )
+        logger.debug(
+            "entity_step.forces_done", step=step_num,
+            duration_s=round(time.monotonic() - t0, 3),
+        )
         for a in force_agents:
             p = parse_proposal(board.workspace, a.name, step_num)
             if p:
@@ -350,7 +411,6 @@ async def _run_entity_step(
                 board.save_proposal(p, step_num)
 
     # Phase 2: Populations propose their changes (in parallel)
-    # Build interaction context per entity so agents see neighbor state
     current_state = board.read_state()
     entity_interaction: dict[str, str] = {}
     for entity in pop_entities:
@@ -360,19 +420,38 @@ async def _run_entity_step(
 
     pop_agents = [a for e in pop_entities for a in e.agents]
     if pop_agents:
-        pop_tasks = [
-            _invoke_with_semaphore(
-                agent_semaphore, a, board.workspace, step_num,
-                build_prompt(a, step_num, rules, entity_interaction.get(a.name, ""), trajectory_id=trajectory_id),
-                timeout, max_concurrent,
-            ) if agent_semaphore else _invoke_with_retry(
-                a, board.workspace, step_num,
-                build_prompt(a, step_num, rules, entity_interaction.get(a.name, ""), trajectory_id=trajectory_id),
-                timeout,
-            )
-            for a in pop_agents
-        ]
-        await asyncio.gather(*pop_tasks, return_exceptions=True)
+        logger.debug("entity_step.populations_start", step=step_num, n_agents=len(pop_agents))
+        t1 = time.monotonic()
+        try:
+            async with asyncio.TaskGroup() as tg:
+                for a in pop_agents:
+                    coro = (
+                        _invoke_with_semaphore(
+                            agent_semaphore, a, board.workspace, step_num,
+                            build_prompt(
+                                a, step_num, rules, entity_interaction.get(a.name, ""),
+                                trajectory_id=trajectory_id,
+                            ),
+                            timeout, max_concurrent,
+                        ) if agent_semaphore else _invoke_with_retry(
+                            a, board.workspace, step_num,
+                            build_prompt(
+                                a, step_num, rules, entity_interaction.get(a.name, ""),
+                                trajectory_id=trajectory_id,
+                            ),
+                            timeout,
+                        )
+                    )
+                    tg.create_task(_safe_invoke(coro))
+        except ExceptionGroup as eg:
+            for exc in eg.exceptions:
+                logger.error(
+                    "entity_step.populations.unhandled_failure", step=step_num, error=str(exc),
+                )
+        logger.debug(
+            "entity_step.populations_done", step=step_num,
+            duration_s=round(time.monotonic() - t1, 3),
+        )
         for a in pop_agents:
             p = parse_proposal(board.workspace, a.name, step_num)
             if p:
@@ -382,16 +461,30 @@ async def _run_entity_step(
     # Phase 3: Critics evaluate all proposals
     critic_agents = [a for e in critic_entities for a in e.agents]
     if critic_agents:
-        critic_tasks = [
-            _invoke_with_semaphore(
-                agent_semaphore, c, board.workspace, step_num,
-                build_prompt(c, step_num, rules), timeout, max_concurrent,
-            ) if agent_semaphore else _invoke_with_retry(
-                c, board.workspace, step_num, build_prompt(c, step_num, rules), timeout,
-            )
-            for c in critic_agents
-        ]
-        await asyncio.gather(*critic_tasks, return_exceptions=True)
+        logger.debug("entity_step.critics_start", step=step_num, n_agents=len(critic_agents))
+        t2 = time.monotonic()
+        try:
+            async with asyncio.TaskGroup() as tg:
+                for c in critic_agents:
+                    coro = (
+                        _invoke_with_semaphore(
+                            agent_semaphore, c, board.workspace, step_num,
+                            build_prompt(c, step_num, rules), timeout, max_concurrent,
+                        ) if agent_semaphore else _invoke_with_retry(
+                            c, board.workspace, step_num,
+                            build_prompt(c, step_num, rules), timeout,
+                        )
+                    )
+                    tg.create_task(_safe_invoke(coro))
+        except ExceptionGroup as eg:
+            for exc in eg.exceptions:
+                logger.error(
+                    "entity_step.critics.unhandled_failure", step=step_num, error=str(exc),
+                )
+        logger.debug(
+            "entity_step.critics_done", step=step_num,
+            duration_s=round(time.monotonic() - t2, 3),
+        )
         for c in critic_agents:
             cr = parse_critique(board.workspace, c.name, step_num)
             if cr:
@@ -402,9 +495,17 @@ async def _run_entity_step(
     resolution = None
     eval_agents = [a for e in eval_entities for a in e.agents if a.role == AgentRole.JUDGE]
     if eval_agents:
+        logger.debug("entity_step.resolve_start", step=step_num)
+        t3 = time.monotonic()
         judge = eval_agents[0]
-        await _invoke_with_retry(judge, board.workspace, step_num, build_prompt(judge, step_num, rules), timeout)
+        await _invoke_with_retry(
+            judge, board.workspace, step_num, build_prompt(judge, step_num, rules), timeout,
+        )
         resolution = parse_resolution(board.workspace, step_num)
+        logger.debug(
+            "entity_step.resolve_done", step=step_num,
+            duration_s=round(time.monotonic() - t3, 3),
+        )
 
     if resolution is None:
         resolution = _fallback_resolution(proposals)
@@ -443,18 +544,30 @@ def _check_termination(state: dict, conditions: list[dict]) -> bool:
         field = cond.get("field", "")
         value = _get_nested(state, field)
         if value is None:
+            logger.debug("termination.condition_skip", field=field, reason="field_not_found")
             continue
         if "equals" in cond and value == cond["equals"]:
+            logger.debug("termination.condition_met", field=field, op="equals", value=value)
             return True
         if "greater_than" in cond and isinstance(value, (int, float)) and value > cond["greater_than"]:
+            logger.debug(
+                "termination.condition_met", field=field, op="greater_than",
+                value=value, threshold=cond["greater_than"],
+            )
             return True
         if "less_than" in cond and isinstance(value, (int, float)) and value < cond["less_than"]:
+            logger.debug(
+                "termination.condition_met", field=field, op="less_than",
+                value=value, threshold=cond["less_than"],
+            )
             return True
+        logger.debug("termination.condition_not_met", field=field, value=value)
     return False
 
 
 def _classify_outcome(state: dict, scenario: Scenario) -> str:
     if scenario.outcome is None:
+        logger.debug("classify.skip", reason="no_outcome_config")
         return "unclassified"
 
     for oc in scenario.outcome.classifier:
@@ -466,16 +579,21 @@ def _classify_outcome(state: dict, scenario: Scenario) -> str:
         if value is None:
             continue
         if oc.condition.equals is not None and value == oc.condition.equals:
+            logger.info("classify.result", classification=oc.name)
             return oc.name
         if oc.condition.greater_than is not None and isinstance(value, (int, float)) and value > oc.condition.greater_than:
+            logger.info("classify.result", classification=oc.name)
             return oc.name
         if oc.condition.less_than is not None and isinstance(value, (int, float)) and value < oc.condition.less_than:
+            logger.info("classify.result", classification=oc.name)
             return oc.name
 
     for oc in scenario.outcome.classifier:
         if oc.default:
+            logger.info("classify.result", classification=oc.name, default=True)
             return oc.name
 
+    logger.info("classify.result", classification="unclassified", default=True)
     return "unclassified"
 
 
