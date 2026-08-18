@@ -3,7 +3,11 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import structlog
+
 from minimal_agora.models import Critique, Proposal, Resolution, Step, WildcardEvent
+
+logger = structlog.stdlib.get_logger(__name__)
 
 
 class Board:
@@ -25,20 +29,24 @@ class Board:
         return self.board_dir / "scenario.md"
 
     def read_state(self) -> dict:
+        logger.debug("board.read_state", path=str(self.state_path))
         with open(self.state_path) as f:
             return json.load(f)
 
     def write_state(self, state: dict) -> None:
+        logger.debug("board.write_state", path=str(self.state_path))
         with open(self.state_path, "w") as f:
             json.dump(state, f, indent=2)
 
     def snapshot_state(self, step: int) -> None:
         state = self.read_state()
         path = self.workspace / "history" / f"step_{step:03d}_state.json"
+        logger.info("board.snapshot_state", step=step, path=str(path))
         with open(path, "w") as f:
             json.dump(state, f, indent=2)
 
     def apply_resolution(self, resolution: Resolution, step: int) -> dict:
+        logger.info("board.apply_resolution", step=step, delta_keys=list(resolution.state_delta.keys()))
         state = self.read_state()
         _deep_merge(state, resolution.state_delta)
         self.write_state(state)
@@ -90,6 +98,7 @@ class Board:
 
     def write_wildcard(self, event: WildcardEvent, step: int) -> Path:
         path = self.workspace / "board" / f"wildcard_step_{step:03d}.json"
+        logger.info("board.write_wildcard", step=step, wildcard=event.name)
         with open(path, "w") as f:
             json.dump(event.model_dump(), f, indent=2)
         return path
@@ -100,6 +109,7 @@ class Board:
             path.unlink()
 
     def _append_narrative(self, text: str, step: int) -> None:
+        logger.debug("board.append_narrative", step=step, length=len(text))
         with open(self.narrative_path, "a") as f:
             f.write(f"\n## Step {step + 1}\n\n")
             f.write(text)

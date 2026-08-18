@@ -5,10 +5,15 @@ import math
 from collections import defaultdict
 from pathlib import Path
 
+import structlog
+
 from minimal_agora.models import AggregateResult, Trajectory
+
+logger = structlog.stdlib.get_logger(__name__)
 
 
 def aggregate_outcomes(trajectories: list[Trajectory], question: str = "") -> AggregateResult:
+    logger.info("analysis.aggregate_outcomes", n_trajectories=len(trajectories))
     counts: dict[str, int] = defaultdict(int)
     steps_per_outcome: dict[str, list[int]] = defaultdict(list)
 
@@ -28,7 +33,7 @@ def aggregate_outcomes(trajectories: list[Trajectory], question: str = "") -> Ag
         k: sum(v) / len(v) for k, v in steps_per_outcome.items() if v
     }
 
-    return AggregateResult(
+    result = AggregateResult(
         scenario_name=scenario_name,
         question=question,
         n_trajectories=n,
@@ -36,6 +41,8 @@ def aggregate_outcomes(trajectories: list[Trajectory], question: str = "") -> Ag
         outcome_rates=rates,
         mean_steps_per_outcome=mean_steps,
     )
+    logger.info("analysis.aggregate_outcomes.done", outcomes=dict(counts))
+    return result
 
 
 def extract_field_timelines(
@@ -93,6 +100,7 @@ def format_report(result: AggregateResult) -> str:
 
 
 def save_report(result: AggregateResult, output_dir: Path) -> Path:
+    logger.info("analysis.save_report", output_dir=str(output_dir))
     output_dir.mkdir(parents=True, exist_ok=True)
 
     path = output_dir / "report.json"
@@ -140,6 +148,7 @@ def save_artifacts(trajectories: list[Trajectory], output_dir: Path) -> Path:
 
 
 def load_trajectories(output_dir: Path) -> list[Trajectory]:
+    logger.info("analysis.load_trajectories", output_dir=str(output_dir))
     trajectories = []
     for traj_dir in sorted(output_dir.glob("trajectory_*")):
         traj_file = traj_dir / "trajectory.json"
@@ -155,6 +164,7 @@ def detect_convergence(
     if len(trajectories) < 3:
         return []
 
+    logger.debug("analysis.detect_convergence", n_trajectories=len(trajectories), threshold=threshold)
     warnings = []
     counts: dict[str, int] = defaultdict(int)
     n = len(trajectories)

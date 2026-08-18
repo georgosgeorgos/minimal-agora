@@ -13,12 +13,14 @@ from minimal_agora.analysis import (
     save_artifacts,
     save_report,
 )
+from minimal_agora.logging_config import configure_logging
 from minimal_agora.runner import run_batch
 from minimal_agora.scenario import load_scenario
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="minimal-agora — counterfactual world simulation")
+    parser.add_argument("-v", "--verbose", action="store_true", help="Enable DEBUG level logging")
     subparsers = parser.add_subparsers(dest="command")
 
     run_parser = subparsers.add_parser("run", help="Run a simulation scenario")
@@ -47,6 +49,7 @@ def main() -> int:
     dash_parser.add_argument("--scores", nargs="+", default=None, help="Score fields for populations")
 
     args = parser.parse_args()
+    configure_logging(verbose=args.verbose)
 
     if args.command == "run":
         return cmd_run(args)

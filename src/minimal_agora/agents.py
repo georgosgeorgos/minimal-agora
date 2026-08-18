@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import asyncio
-import logging
 from pathlib import Path
 
-logger = logging.getLogger(__name__)
+import structlog
+
+logger = structlog.stdlib.get_logger(__name__)
 
 from minimal_agora.models import (
     AgentConfig,
