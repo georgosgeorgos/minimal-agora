@@ -6,6 +6,7 @@ from minimal_agora.models import AgentConfig, EntityConfig, Scenario, Trajectory
 from minimal_agora.providers import (
     AgentInvocationResult,
     AgentProvider,
+    AnthropicAPIProvider,
     ClaudeSubprocessProvider,
     MockProvider,
 )
@@ -16,6 +17,7 @@ __all__ = [
     "AgentConfig",
     "AgentInvocationResult",
     "AgentProvider",
+    "AnthropicAPIProvider",
     "ClaudeSubprocessProvider",
     "EntityConfig",
     "MockProvider",
