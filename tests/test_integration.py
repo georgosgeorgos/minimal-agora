@@ -33,8 +33,8 @@ pytestmark = pytest.mark.integration
 
 
 class FileWritingMockProvider:
-    """Mock provider that writes proposal/critique/resolution JSON files to disk,
-    mimicking how the real subprocess provider operates."""
+    """Mock provider that returns JSON in stdout for inline parsing,
+    and also writes files to disk as a fallback path."""
 
     def __init__(self) -> None:
         self.call_count: int = 0
@@ -47,8 +47,14 @@ class FileWritingMockProvider:
         name_match = re.search(r"You are \*\*(\w+)\*\*", prompt)
         agent_name = name_match.group(1) if name_match else "unknown"
 
-        step_match = re.search(r"step_(\d{3})", prompt)
+        step_match = (
+            re.search(r"Simulation Step (\d+)", prompt)
+            or re.search(r"Proposals for Step (\d+)", prompt)
+            or re.search(r"step_(\d{3})", prompt)
+        )
         step_num = int(step_match.group(1)) if step_match else 0
+
+        output = "mock"
 
         if "an actor agent" in prompt:
             proposal = Proposal(
@@ -58,9 +64,7 @@ class FileWritingMockProvider:
                 reasoning=f"Mock evolution at step {step_num}",
                 confidence=0.8,
             )
-            path = workspace / "proposals" / f"step_{step_num:03d}_{agent_name}.json"
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(proposal.model_dump_json(indent=2))
+            output = proposal.model_dump_json(indent=2)
 
         elif "a critic agent" in prompt:
             critique = Critique(
@@ -70,9 +74,7 @@ class FileWritingMockProvider:
                 plausibility=0.85,
                 issues=[],
             )
-            path = workspace / "critiques" / f"step_{step_num:03d}_{agent_name}.json"
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(critique.model_dump_json(indent=2))
+            output = critique.model_dump_json(indent=2)
 
         elif "the judge agent" in prompt:
             resolution = Resolution(
@@ -80,11 +82,9 @@ class FileWritingMockProvider:
                 narrative=f"Step {step_num}: Mock changes applied.",
                 reasoning="All proposals deemed plausible.",
             )
-            path = workspace / "resolutions" / f"step_{step_num:03d}_resolution.json"
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(resolution.model_dump_json(indent=2))
+            output = resolution.model_dump_json(indent=2)
 
-        return AgentInvocationResult(output="mock", tokens_used=100, model="mock-model")
+        return AgentInvocationResult(output=output, tokens_used=100, model="mock-model")
 
 
 @pytest.fixture()

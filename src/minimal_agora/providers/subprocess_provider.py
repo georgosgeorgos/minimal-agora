@@ -15,7 +15,7 @@ class ClaudeSubprocessProvider:
 
     def __init__(
         self,
-        max_turns: int = 5,
+        max_turns: int = 1,
         output_format: str = "text",
     ) -> None:
         self.max_turns = max_turns
