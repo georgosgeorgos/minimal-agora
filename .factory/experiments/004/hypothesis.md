@@ -1,0 +1,1 @@
+Visualization improvements — new plot types for trajectory comparison, wildcard impact, and simulation analytics

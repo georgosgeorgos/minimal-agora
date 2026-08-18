@@ -1,0 +1,1 @@
+Narrative compression — summarize old steps to keep prompts bounded (Issue #29)

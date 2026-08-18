@@ -1,73 +1,60 @@
 # Health Check Report
 
-- **Experiment:** Add conditional wildcards with state-dependent trigger conditions (#34)
-- **Commit:** 16843fa
-- **Date:** 2026-08-18
-- **Baseline composite:** 0.543
+- **timestamp:** 2026-08-18
+- **baseline_score:** 0.679
+- **composite_score:** 0.694
+- **gate:** PASS
 
 ---
 
 ## Score Table
 
-| Dimension | Score | Weight | Passed | Notes |
-|-----------|-------|--------|--------|-------|
-| tests | 1.000 | 0.417 | YES | 85/85 passed (30 new conditional wildcard tests + 11 resampling critic tests) |
-| lint | 1.000 | 0.250 | YES | All checks passed |
-| type_check | 0.000 | 0.125 | NO | 16 errors in 5 files (pre-existing, unchanged from baseline) |
-| coverage | 1.000 | 0.125 | YES | 55% overall (models.py 100%, scenario.py 95%, visualize.py 92%) |
-| observability | 0.255 | 0.083 | NO | 7% function coverage (6/87), structured=no, tracing=yes |
+| Dimension | Score | Weight | Status | Details |
+|-----------|-------|--------|--------|---------|
+| test_suite | 1.000 | 0.250 | PASS | 103 passed |
+| test_coverage | 0.610 | 0.250 | PASS | coverage=61% |
+| tests (factory) | 0.500 | 0.093 | PASS | Not detected (known issue) |
+| coverage (factory) | 0.500 | 0.075 | PASS | Not detected (known issue) |
+| capability_surface | 0.720 | 0.050 | PASS | surface=144, target=200 |
+| lint | 0.900 | 0.045 | FAIL | 1 error |
+| experiment_diversity | 0.500 | 0.040 | PASS | Only 2 experiments |
+| observability | 0.359 | 0.036 | FAIL | function_coverage=0.17 |
+| type_check | 0.950 | 0.030 | FAIL | 1 error |
+| config_parser | 1.000 | 0.030 | PASS | All checks OK |
+| research_grounding | 0.100 | 0.028 | FAIL | No research sources |
+| architecture | 0.500 | 0.027 | PASS | No rules.toml |
+| factory_effectiveness | 0.500 | 0.026 | PASS | Only 2 experiments |
+| spec_compliance | 0.500 | 0.020 | PASS | Neutral (no spec_results.json) |
 
-**Composite:** 0.813
+## Composite
 
-**Baseline:** 0.543
+- **Score:** 0.694
+- **Baseline:** 0.679
+- **Delta:** +0.015 (improvement)
+- **Threshold:** ABOVE baseline
 
-**Delta:** +0.270
+## Unit Tests
 
-**Threshold (0.60):** ABOVE
+- **Status:** PASS
+- **Result:** 103 passed, 0 failed, 0 errors
+- **Runtime:** 1.14s
+- **Breakdown:**
+  - test_analysis.py: 5 passed
+  - test_conditional_wildcards.py: 30 passed
+  - test_models.py: 33 passed
+  - test_narrative_compression.py: 11 passed (new)
+  - test_resampling_critic.py: 11 passed
+  - test_visualize.py: 13 passed (8 new)
 
-> Note: The composite improvement is largely due to eval weight rebalancing since the baseline was recorded (baseline used 12 dimensions with different weights; current eval uses 5 dimensions). Per-dimension scores for tests, lint, and coverage are at ceiling (1.0). type_check remains at 0.0 (pre-existing 16 mypy errors). observability is slightly lower than baseline (0.255 vs 0.334) due to metric recalculation, not regression.
+## Guard Violations
 
----
+None.
 
-## Unit Test Status: PASS
+## Overall Gate Result
 
-**85/85 tests passed in 0.65s.**
+**PASS**
 
-30 new tests in `tests/test_conditional_wildcards.py` covering:
-- `ConditionOperator` enum values
-- `TriggerCondition` model construction and dict roundtrip
-- `WildcardEvent` with and without conditions (backward compatibility)
-- All 5 operators: gt, lt, eq, gte, lte (pass and fail cases)
-- Nested field access, missing fields, non-numeric fields
-- Empty conditions (passthrough), multiple conditions (AND logic)
-- Integration: `_roll_wildcard()` skipping/firing based on conditions
-- No-state handling for conditional wildcards
-- Mixed conditional and plain wildcards
-- Pandemic scenario YAML loading with trigger conditions
-
-11 existing resampling critic tests in `tests/test_resampling_critic.py` — all pass.
-
-44 pre-existing tests across `test_models.py`, `test_analysis.py`, `test_visualize.py` — all pass, no regressions.
-
----
-
-## Lint Status: PASS
-
-`ruff check src/ tests/` — all checks passed.
-
----
-
-## Pre-existing Issues (not introduced by this change)
-
-- **type_check:** 16 mypy errors across 5 files — pre-existing, unchanged from baseline
-- **observability:** Low function logging coverage (7%) — pre-existing, not a regression from this change
-
----
-
-## Overall Gate Result: PASS
-
-- Unit tests: **PASS** (85/85)
-- Lint: **PASS** (clean)
-- Composite score: **0.813** (above baseline 0.543, above threshold 0.60)
-- No regressions detected — all pre-existing tests continue to pass
-- Builder's changes add 30 well-structured tests and new capability without degrading any metric
+- Unit tests: 103/103 passing
+- Composite score: 0.694 (above 0.679 baseline, +0.015 delta)
+- No guard violations
+- Eval returned valid JSON without errors

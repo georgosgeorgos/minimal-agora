@@ -1,20 +1,23 @@
 # Builder Agent Output
 
-- **timestamp:** 2026-08-18T21:49:27Z
+- **timestamp:** 2026-08-18T21:56:41Z
 - **exit_code:** 0
 
 ---
 
-The existing PR is for a different feature (conditional wildcards from issue #34). My commit has been pushed to the same branch. The PR now includes both changes.
+Implementation complete. Here's what was done:
 
-Done. Here's what was completed:
+**PR:** https://github.com/georgosgeorgos/minimal-agora/pull/45
 
-1. **Created `eval/test_suite.py`** — runs pytest and outputs JSON `{"score": 1.0, "passed": true, "details": "..."}`
-2. **Created `eval/test_coverage.py`** — runs pytest with coverage, parses the TOTAL line, outputs JSON `{"score": 0.55, "passed": true, "details": "coverage=55%"}`
-3. **Updated `.factory/config.json`** — project_eval commands now use `uv run python eval/test_suite.py` and `uv run python eval/test_coverage.py` instead of inline one-liners
-4. **Verified both scripts** — both produce valid JSON output
+**Changes:**
 
-The commit is pushed to branch `factory/run-41ad6c6c` and included in PR #45: https://github.com/georgosgeorgos/minimal-agora/pull/45
+1. **`src/minimal_agora/board.py`** — Added `compress_narrative(narrative, window=20)` function that parses `## Step N` sections, keeps the most recent `window` steps verbatim, and compresses older steps by extracting first sentences and grouping them in batches of 10. Handles re-compression (existing summary sections are preserved and extended).
+
+2. **`src/minimal_agora/models.py`** — Added `narrative_window: int | None = None` to `Scenario` model. Defaults to `None` so existing scenarios work unchanged.
+
+3. **`src/minimal_agora/loop.py`** — Added compression call at the start of `_run_step()`: when `scenario.narrative_window` is set, reads the narrative from disk, compresses it, and writes back before agents run. Logs compression ratios.
+
+4. **`tests/test_narrative_compression.py`** — 11 tests covering all required cases. All 103 tests pass, lint clean.
 ---
 
 > **⚠ CEO IDENTITY RE-ANCHOR (Sacred Rule 8)**

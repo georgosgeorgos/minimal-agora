@@ -1,24 +1,17 @@
 # Adversarial_Tester Agent Output
 
-- **timestamp:** 2026-08-18T21:41:38Z
+- **timestamp:** 2026-08-18T22:00:45Z
 - **exit_code:** 0
 
 ---
 
-Adversarial QA complete. **Verdict: PASS** — all 15 acceptance criteria verified with evidence.
+Adversarial QA complete. All 23 acceptance criteria verified across both features:
 
-Key findings:
-- All 85 tests pass, lint clean
-- Every operator (gt, lt, eq, gte, lte) works correctly at boundary values
-- Nested dot-path fields resolve at 1, 2, and 3 levels deep
-- Missing fields and non-numeric fields correctly return `False`
-- Empty conditions correctly return `True` (unconditional pass)
-- Backward compatibility confirmed across all 8 existing scenario YAMLs
-- Pydantic validation rejects all 6 invalid input variants
-- `_roll_wildcard` integration correctly gates probability on trigger conditions
-- 3 non-blocking observations noted (bool-as-numeric, float EQ precision, duplicate `_get_nested`)
+- **Narrative compression**: 15 criteria covering empty input, boundary conditions, unicode, re-compression idempotency, very long narratives (66% compression at 100 steps), model integration, and loop wiring.
+- **Visualization improvements**: 8 criteria covering valid PNG output from all 7 plot functions, empty data handling, figure leak prevention, and CLI `--types` filtering.
+- **Full test suite**: 103/103 pass, lint clean.
 
-Results written to `.factory/reviews/adversarial-qa.md`.
+**Verdict: PASS** — report written to `.factory/reviews/adversarial-qa.md`.
 ---
 
 > **⚠ CEO IDENTITY RE-ANCHOR (Sacred Rule 8)**

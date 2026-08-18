@@ -1,5 +1,5 @@
 {
-  "total": 0.6792360000000001,
+  "total": 0.693724,
   "results": [
     {
       "name": "tests",
@@ -45,10 +45,10 @@
     },
     {
       "name": "capability_surface",
-      "score": 0.68,
+      "score": 0.72,
       "weight": 0.05,
       "passed": true,
-      "details": "surface=136 (modules=20, public_fns=108, entry_points=8), target=200"
+      "details": "surface=144 (modules=20, public_fns=116, entry_points=8), target=200"
     },
     {
       "name": "experiment_diversity",
@@ -59,17 +59,17 @@
     },
     {
       "name": "observability",
-      "score": 0.351,
+      "score": 0.359,
       "weight": 0.036,
       "passed": false,
-      "details": "observability_score=0.35, function_coverage=0.16, structured_logging=False"
+      "details": "observability_score=0.36, function_coverage=0.17, structured_logging=False"
     },
     {
       "name": "research_grounding",
-      "score": 0.2,
+      "score": 0.1,
       "weight": 0.028000000000000004,
       "passed": false,
-      "details": "sources=0 (archive), utilization=0.00, research_report=no, doc_ratio=1.00 (2/2), citation_ratio=0.00"
+      "details": "sources=0 (archive), utilization=0.00, research_report=no, doc_ratio=0.50 (2/4), citation_ratio=0.00"
     },
     {
       "name": "factory_effectiveness",
@@ -90,14 +90,14 @@
       "score": 1.0,
       "weight": 0.25,
       "passed": true,
-      "details": "_scores PASSED              [ 98%]\ntests/test_visualize.py::test_generate_all_plots_with_synthetic_data PASSED [100%]\n\n============================== 85 passed in 0.62s ==============================\n"
+      "details": "ots_with_synthetic_data PASSED [ 99%]\ntests/test_visualize.py::test_generate_all_plots_with_type_filter PASSED [100%]\n\n============================= 103 passed in 1.05s ==============================\n"
     },
     {
       "name": "test_coverage",
-      "score": 0.55,
+      "score": 0.61,
       "weight": 0.25,
       "passed": true,
-      "details": "coverage=55%"
+      "details": "coverage=61%"
     }
   ],
   "guard_violations": [],
