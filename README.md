@@ -1,5 +1,9 @@
 # minimal-agora
 
+<p align='center'>
+  <img src='assets/minima-agora-image.jpeg' alt='Minimal Agora — LLM agents debate in a Greek agora' width='800'>
+</p>
+
 A world simulation engine where LLM agents debate and interact to explore
 counterfactual hypotheses and population dynamics.
 
@@ -105,6 +109,44 @@ Each step follows the same loop regardless of mode:
 In population mode, the propose phase runs in order:
 **forces → populations → critics → evaluator**.
 
+## Architecture
+
+### Core Loop
+
+Every simulation step follows the same adversarial loop:
+
+```
+WILDCARD → PROPOSE → CRITIQUE → RESOLVE → UPDATE → CHECK
+```
+
+Agents are stateless subprocesses communicating through a filesystem board.
+The board holds current state, narrative history, and proposals. Each phase
+reads the board, does its work, and writes back — no shared memory, no
+message passing between agents.
+
+### Particle Filter Variant
+
+For trajectory-level exploration, the runner supports sequential importance
+resampling (particle filtering):
+
+```
+Run N trajectories → Every K steps: score trajectories →
+Resample (kill boring, fork interesting) → Continue
+```
+
+Low-weight trajectories are pruned and replaced with copies of high-weight
+ones, concentrating compute on the most promising branches of the simulation.
+
+### Key Components
+
+| Component | Purpose |
+|-----------|---------|
+| **AgentProvider** | Protocol for LLM backends (ClaudeSubprocessProvider, MockProvider) |
+| **Board** | Filesystem-backed state management with atomic checkpointing |
+| **Loop** | Single-trajectory orchestrator (flat step + entity step) |
+| **Runner** | Batch runner with concurrency control and particle filtering |
+| **Analysis** | Outcome classification, z-test, bootstrap CIs, Cohen's d |
+
 ## Scenario Configuration
 
 Scenarios are YAML files that define everything domain-specific:
@@ -183,6 +225,21 @@ minimal-agora run scenario.yaml [options]
 # Generate report from completed run
 minimal-agora report runs/my-scenario/
 
+# Validate a scenario file
+minimal-agora validate scenario.yaml
+
+# Generate a starter scenario YAML
+minimal-agora init-scenario
+
+# List agents/entities from a scenario
+minimal-agora agents scenario.yaml
+
+# Show version info
+minimal-agora version
+
+# Compare outcomes from two runs
+minimal-agora compare runs/run-a/ runs/run-b/ [--alpha 0.05] [--format table|json]
+
 # Examples
 minimal-agora run scenarios/examples/intelligence.yaml -n 5
 minimal-agora run scenarios/examples/mediterranean.yaml -n 3 -m population
@@ -203,6 +260,26 @@ minimal-agora run scenarios/examples/intelligence.yaml -n 30 --steps 10  # quick
 | nuclear_war | counterfactual | 500 | 1 month | ~42 years | Does nuclear war occur? |
 
 Use `--steps 10` for quick test runs.
+
+## Features
+
+- **Provider abstraction** — `AgentProvider` protocol decouples the engine from
+  any specific LLM backend. Ships with `ClaudeSubprocessProvider` (production)
+  and `MockProvider` (testing). Swap providers without changing simulation code.
+
+- **Atomic checkpointing** — crash-safe state writes using temp-file-then-rename.
+  If the process dies mid-step, the last committed checkpoint is intact.
+
+- **Statistical analysis** — z-test for outcome proportions, bootstrap confidence
+  intervals, Cohen's d effect size, and cross-run comparison (`minimal-agora compare`).
+
+- **Review interval** — skip critic/judge evaluation on non-review steps to reduce
+  LLM calls. Configure `review_interval` in the scenario to run critique every
+  N steps instead of every step.
+
+- **Particle filtering** — sequential importance resampling across trajectories.
+  Score trajectories every K steps, prune low-weight runs, and fork high-weight
+  ones to focus compute on the most interesting branches.
 
 ## Requirements
 
