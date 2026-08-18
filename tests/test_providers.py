@@ -64,7 +64,7 @@ class TestMockProvider:
 class TestClaudeSubprocessProvider:
     def test_build_command_defaults(self) -> None:
         provider = ClaudeSubprocessProvider()
-        cmd = provider.build_command("test prompt")
+        cmd = provider.build_command("test prompt", Path("/tmp/workspace"))
         assert cmd == [
             "claude",
             "-p",
@@ -73,15 +73,28 @@ class TestClaudeSubprocessProvider:
             "text",
             "--max-turns",
             "5",
+            "--allowedTools",
+            "Read,Write,Bash",
+            "--add-dir",
+            "/tmp/workspace",
         ]
 
     def test_build_command_custom(self) -> None:
         provider = ClaudeSubprocessProvider(max_turns=10, output_format="json")
-        cmd = provider.build_command("hello")
+        cmd = provider.build_command("hello", Path("/tmp/ws"))
         assert "--max-turns" in cmd
         assert cmd[cmd.index("--max-turns") + 1] == "10"
         assert "--output-format" in cmd
         assert cmd[cmd.index("--output-format") + 1] == "json"
+
+    def test_build_command_includes_tool_permissions(self) -> None:
+        provider = ClaudeSubprocessProvider()
+        workspace = Path("/tmp/test-workspace")
+        cmd = provider.build_command("prompt", workspace)
+        assert "--allowedTools" in cmd
+        assert cmd[cmd.index("--allowedTools") + 1] == "Read,Write,Bash"
+        assert "--add-dir" in cmd
+        assert cmd[cmd.index("--add-dir") + 1] == str(workspace)
 
     def test_satisfies_protocol(self) -> None:
         assert isinstance(ClaudeSubprocessProvider(), AgentProvider)

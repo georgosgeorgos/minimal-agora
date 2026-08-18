@@ -21,7 +21,7 @@ class ClaudeSubprocessProvider:
         self.max_turns = max_turns
         self.output_format = output_format
 
-    def build_command(self, prompt: str) -> list[str]:
+    def build_command(self, prompt: str, workspace: Path) -> list[str]:
         return [
             "claude",
             "-p",
@@ -30,6 +30,10 @@ class ClaudeSubprocessProvider:
             self.output_format,
             "--max-turns",
             str(self.max_turns),
+            "--allowedTools",
+            "Read,Write,Bash",
+            "--add-dir",
+            str(workspace),
         ]
 
     async def invoke(
@@ -38,7 +42,7 @@ class ClaudeSubprocessProvider:
         workspace: Path,
         timeout: int = 300,
     ) -> AgentInvocationResult:
-        cmd = self.build_command(prompt)
+        cmd = self.build_command(prompt, workspace)
 
         logger.debug("provider.invoke", provider="claude-subprocess", workspace=str(workspace))
 
