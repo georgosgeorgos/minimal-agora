@@ -7,6 +7,7 @@ from minimal_agora.models import AgentConfig, AgentRole
 from minimal_agora.providers import (
     AgentInvocationResult,
     AgentProvider,
+    AnthropicAPIProvider,
     ClaudeSubprocessProvider,
     MockProvider,
 )
@@ -59,6 +60,30 @@ class TestMockProvider:
 
     def test_satisfies_protocol(self) -> None:
         assert isinstance(MockProvider(), AgentProvider)
+
+
+class TestAnthropicAPIProvider:
+    def test_default_params(self) -> None:
+        provider = AnthropicAPIProvider()
+        assert provider.model == "claude-sonnet-4-20250514"
+        assert provider.max_tokens == 4096
+        assert provider.temperature == 1.0
+        assert provider.max_retries == 2
+
+    def test_custom_params(self) -> None:
+        provider = AnthropicAPIProvider(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=1024,
+            temperature=0.5,
+            max_retries=5,
+        )
+        assert provider.model == "claude-haiku-4-5-20251001"
+        assert provider.max_tokens == 1024
+        assert provider.temperature == 0.5
+        assert provider.max_retries == 5
+
+    def test_satisfies_protocol(self) -> None:
+        assert isinstance(AnthropicAPIProvider(), AgentProvider)
 
 
 class TestClaudeSubprocessProvider:
@@ -144,12 +169,19 @@ class TestTopLevelExports:
         assert hasattr(minimal_agora, "MockProvider")
         assert hasattr(minimal_agora, "set_default_provider")
 
+    def test_api_provider_export(self) -> None:
+        import minimal_agora
+
+        assert hasattr(minimal_agora, "AnthropicAPIProvider")
+        assert minimal_agora.AnthropicAPIProvider is AnthropicAPIProvider
+
     def test_all_contains_provider_names(self) -> None:
         import minimal_agora
 
         expected = {
             "AgentProvider",
             "AgentInvocationResult",
+            "AnthropicAPIProvider",
             "ClaudeSubprocessProvider",
             "MockProvider",
             "set_default_provider",

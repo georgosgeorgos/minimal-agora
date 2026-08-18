@@ -12,6 +12,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+api = [
+    "anthropic>=0.40.0",
+]
 viz = [
     "matplotlib>=3.8",
 ]
