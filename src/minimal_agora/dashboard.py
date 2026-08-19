@@ -6,7 +6,12 @@ from functools import partial
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
 
-from minimal_agora.analysis import compute_statistics, extract_field_timelines, load_trajectories
+from minimal_agora.analysis import (
+    _get_nested,
+    compute_statistics,
+    extract_field_timelines,
+    load_trajectories,
+)
 
 
 class DashboardHandler(SimpleHTTPRequestHandler):
@@ -92,6 +97,7 @@ def _collect_data(
     }
 
     timelines = {}
+    trajectory_timelines: dict[str, dict[str, list[dict]]] = {}
     if fields:
         raw = extract_field_timelines(trajectories, fields)
         for field, step_data in raw.items():
@@ -102,6 +108,18 @@ def _collect_data(
                     stats = compute_statistics(vals)
                     series.append({"step": step_num, **stats})
             timelines[field] = series
+
+        for field in fields:
+            trajectory_timelines[field] = {}
+            for t in trajectories:
+                tid = str(t.trajectory_id)
+                pts = []
+                for step in t.steps:
+                    val = _get_nested(step.state_after, field)
+                    if isinstance(val, (int, float)):
+                        pts.append({"step": step.step_number, "value": val})
+                if pts:
+                    trajectory_timelines[field][tid] = pts
 
     pop_data = {}
     if populations and score_fields:
@@ -132,6 +150,7 @@ def _collect_data(
         "n_trajectories": n,
         "outcomes": outcome_data,
         "timelines": timelines,
+        "trajectory_timelines": trajectory_timelines,
         "populations": pop_data,
         "fitness": fitness_data,
         "events": events,
@@ -152,7 +171,9 @@ def _collect_events(trajectories: list, run_dir: Path) -> list[dict]:
                     "text": step.resolution.narrative,
                 })
 
+            delta_keys = set(step.resolution.state_delta.keys()) if step.resolution else set()
             for p in step.proposals:
+                accepted = bool(delta_keys & set(p.proposed_changes.keys())) if delta_keys else False
                 if p.reasoning:
                     events.append({
                         "trajectory": tid,
@@ -160,6 +181,7 @@ def _collect_events(trajectories: list, run_dir: Path) -> list[dict]:
                         "type": "proposal",
                         "agent": p.agent,
                         "text": p.reasoning[:200],
+                        "accepted": accepted,
                     })
 
         # Check for wildcards in board directory
@@ -174,6 +196,7 @@ def _collect_events(trajectories: list, run_dir: Path) -> list[dict]:
                         "trajectory": tid,
                         "step": step_num,
                         "type": "wildcard",
+                        "name": wc.get("name", "unknown"),
                         "text": f"{wc.get('name', 'unknown')}: {wc.get('description', '')[:150]}",
                     })
                 except (ValueError, OSError, KeyError):
@@ -232,6 +255,20 @@ def _build_html() -> str:
   .outcome-bar .bar-label { position: absolute; right: 8px; top: 3px; font-size: 0.75rem;
                              color: #fff; font-weight: 600; }
   canvas { max-height: 300px; }
+  .field-select { background: #1a1a1a; color: #ccc; border: 1px solid #333; border-radius: 4px;
+                  padding: 4px 8px; font-size: 0.8rem; margin-bottom: 8px; }
+  .wc-heatmap { width: 100%; border-collapse: collapse; margin-bottom: 12px; }
+  .wc-heatmap td, .wc-heatmap th { padding: 2px 4px; font-size: 0.7rem; text-align: center; }
+  .wc-heatmap th { color: #888; font-weight: 400; }
+  .wc-heatmap .wc-cell { width: 18px; height: 18px; border-radius: 3px; cursor: default; }
+  .wc-heatmap .wc-hit { background: #fbbf24; }
+  .wc-heatmap .wc-miss { background: #1a1a1a; }
+  .wc-heatmap .traj-label { text-align: right; color: #888; padding-right: 6px; }
+  .wc-tooltip { position: relative; }
+  .wc-tooltip:hover::after { content: attr(data-tip); position: absolute; bottom: 120%;
+    left: 50%; transform: translateX(-50%); background: #222; color: #fbbf24; padding: 3px 8px;
+    border-radius: 4px; font-size: 0.7rem; white-space: nowrap; z-index: 10;
+    pointer-events: none; }
   .empty { color: #555; font-style: italic; padding: 40px; text-align: center; }
   .event-log { background: #141414; border: 1px solid #222; border-radius: 8px;
                padding: 16px; height: calc(100vh - 120px); overflow-y: auto;
@@ -289,6 +326,24 @@ def _build_html() -> str:
     </div>
   </div>
   <div class="grid" id="pop-grid"></div>
+  <div class="grid">
+    <div class="card" id="traj-compare-card" style="display:none">
+      <h2>Trajectory Comparison</h2>
+      <select class="field-select" id="traj-field-select"></select>
+      <canvas id="traj-compare-chart"></canvas>
+    </div>
+    <div class="card" id="agent-activity-card" style="display:none">
+      <h2>Agent Activity</h2>
+      <canvas id="agent-activity-chart"></canvas>
+    </div>
+  </div>
+  <div class="grid">
+    <div class="card" id="wildcard-impact-card" style="display:none">
+      <h2>Wildcard Impact</h2>
+      <div id="wc-heatmap-container"></div>
+      <canvas id="wc-histogram-chart"></canvas>
+    </div>
+  </div>
 </div>
 <div class="event-log" id="event-log">
   <h2>Simulation Log</h2>
@@ -473,6 +528,131 @@ function renderPopulations(data) {
   });
 }
 
+function renderTrajectoryComparison(data) {
+  const tt = data.trajectory_timelines || {};
+  const fields = Object.keys(tt);
+  if (!fields.length) return;
+
+  document.getElementById('traj-compare-card').style.display = '';
+  const sel = document.getElementById('traj-field-select');
+  const prev = sel.value;
+  sel.innerHTML = fields.map(f => `<option value="${f}"${f === prev ? ' selected' : ''}>${f}</option>`).join('');
+  const field = sel.value || fields[0];
+  const trajData = tt[field] || {};
+  const tids = Object.keys(trajData);
+  if (!tids.length) return;
+
+  const datasets = tids.map((tid, i) => ({
+    label: 'T' + tid,
+    data: trajData[tid].map(p => ({ x: p.step, y: p.value })),
+    borderColor: COLORS[i % COLORS.length],
+    fill: false, tension: 0.3, pointRadius: 2, borderWidth: 2
+  }));
+
+  initChart('traj-compare-chart', {
+    type: 'line',
+    data: { datasets },
+    options: {
+      responsive: true,
+      scales: { x: { type: 'linear', title: { display: true, text: 'step', color: '#888' },
+                      grid: { color: '#222' }, ticks: { color: '#888' } },
+                y: { title: { display: true, text: field, color: '#888' },
+                     grid: { color: '#222' }, ticks: { color: '#888' } } },
+      plugins: { legend: { labels: { color: '#ccc' } } }
+    }
+  });
+}
+
+function renderWildcardImpact(data) {
+  const events = (data.events || []).filter(e => e.type === 'wildcard');
+  if (!events.length) return;
+
+  document.getElementById('wildcard-impact-card').style.display = '';
+
+  const tids = [...new Set(events.map(e => e.trajectory))].sort((a,b) => a - b);
+  const maxStep = Math.max(...events.map(e => e.step));
+  const steps = Array.from({length: maxStep + 1}, (_, i) => i);
+
+  const wcMap = {};
+  events.forEach(e => { wcMap[e.trajectory + '-' + e.step] = e.name || e.text.split(':')[0]; });
+
+  const headerCells = steps.map(s => `<th>${s}</th>`).join('');
+  const rows = tids.map(tid => {
+    const cells = steps.map(s => {
+      const key = tid + '-' + s;
+      const name = wcMap[key];
+      if (name) return `<td><div class="wc-cell wc-hit wc-tooltip" data-tip="${escapeHtml(name)}"></div></td>`;
+      return `<td><div class="wc-cell wc-miss"></div></td>`;
+    }).join('');
+    return `<tr><td class="traj-label">T${tid}</td>${cells}</tr>`;
+  }).join('');
+
+  document.getElementById('wc-heatmap-container').innerHTML =
+    `<div style="overflow-x:auto"><table class="wc-heatmap"><tr><th></th>${headerCells}</tr>${rows}</table></div>`;
+
+  const freq = new Array(maxStep + 1).fill(0);
+  events.forEach(e => { freq[e.step] = (freq[e.step] || 0) + 1; });
+
+  initChart('wc-histogram-chart', {
+    type: 'bar',
+    data: {
+      labels: steps.map(s => 'Step ' + s),
+      datasets: [{
+        label: 'Wildcards fired',
+        data: freq,
+        backgroundColor: '#fbbf2499',
+        borderColor: '#fbbf24',
+        borderWidth: 1
+      }]
+    },
+    options: {
+      responsive: true,
+      scales: { y: { title: { display: true, text: 'count', color: '#888' },
+                      grid: { color: '#222' }, ticks: { color: '#888', stepSize: 1 } },
+                x: { grid: { color: '#222' }, ticks: { color: '#888' } } },
+      plugins: { legend: { display: false } }
+    }
+  });
+}
+
+function renderAgentActivity(data) {
+  const proposals = (data.events || []).filter(e => e.type === 'proposal');
+  if (!proposals.length) return;
+
+  document.getElementById('agent-activity-card').style.display = '';
+
+  const agentStats = {};
+  proposals.forEach(e => {
+    if (!agentStats[e.agent]) agentStats[e.agent] = { total: 0, accepted: 0 };
+    agentStats[e.agent].total++;
+    if (e.accepted) agentStats[e.agent].accepted++;
+  });
+
+  const agents = Object.keys(agentStats).sort();
+  const totals = agents.map(a => agentStats[a].total);
+  const accepted = agents.map(a => agentStats[a].accepted);
+
+  initChart('agent-activity-chart', {
+    type: 'bar',
+    data: {
+      labels: agents,
+      datasets: [
+        { label: 'Total proposals', data: totals,
+          backgroundColor: '#2196F399', borderColor: '#2196F3', borderWidth: 1 },
+        { label: 'Accepted', data: accepted,
+          backgroundColor: '#4CAF5099', borderColor: '#4CAF50', borderWidth: 1 }
+      ]
+    },
+    options: {
+      indexAxis: 'y', responsive: true,
+      scales: { x: { title: { display: true, text: 'count', color: '#888' },
+                      grid: { color: '#222' }, ticks: { color: '#888', stepSize: 1 } },
+                y: { grid: { color: '#222' }, ticks: { color: '#ccc' } } },
+      plugins: { legend: { labels: { color: '#ccc' } } }
+    }
+  });
+}
+
 let activeFilters = new Set(['narrative', 'wildcard', 'outcome']);
 let allEvents = [];
 
@@ -536,7 +716,10 @@ document.getElementById('event-filter').addEventListener('click', (e) => {
   renderEvents({ events: allEvents });
 });
 
+let lastData = {};
+
 function render(data) {
+  lastData = data;
   document.getElementById('title').textContent = data.scenario || 'minimal-agora dashboard';
   document.getElementById('subtitle').textContent = `${data.n_trajectories || 0} trajectories`;
   renderStats(data);
@@ -545,8 +728,15 @@ function render(data) {
   renderTimelines(data);
   renderFitness(data);
   renderPopulations(data);
+  renderTrajectoryComparison(data);
+  renderWildcardImpact(data);
+  renderAgentActivity(data);
   renderEvents(data);
 }
+
+document.getElementById('traj-field-select').addEventListener('change', () => {
+  if (lastData.trajectory_timelines) renderTrajectoryComparison(lastData);
+});
 
 // Connect via SSE for live updates
 const evtSource = new EventSource('/api/stream');
