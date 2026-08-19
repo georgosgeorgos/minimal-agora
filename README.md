@@ -32,18 +32,15 @@ no agent frameworks — just prompts, roles, and domain rules.
 
 Each step follows the same loop regardless of mode:
 
-```
-┌─────────────────────────────────────────────────────┐
-│                  Simulation Step                     │
-│                                                      │
-│  WILDCARD ──→ PROPOSE ──→ CRITIQUE ──→ RESOLVE ──→  │
-│  (random       (actors      (critic      (judge      │
-│   shocks)      in parallel)  scores)     synthesizes)│
-│                                                      │
-│  ──→ UPDATE ──→ CHECK TERMINATION                    │
-│      (merge      (convergence,                       │
-│       state)      extinction)                        │
-└─────────────────────────────────────────────────────┘
+```mermaid
+flowchart LR
+    W["🎲 Wildcard"] --> P["💬 Propose"]
+    P --> C["🔍 Critique"]
+    C --> R["⚖️ Resolve"]
+    R --> U["📝 Update"]
+    U --> T{Terminate?}
+    T -->|No| W
+    T -->|Yes| E["📊 Classify"]
 ```
 
 In population mode, the propose phase runs in order:
@@ -53,26 +50,57 @@ In population mode, the propose phase runs in order:
 
 Skip critic/judge on routine steps for 2–3× speedup:
 
-```
-Step 0:  WILDCARD → PROPOSE → CRITIQUE → RESOLVE → UPDATE  (full review)
-Step 1:  WILDCARD → PROPOSE → auto-merge                    (fast)
-Step 2:  WILDCARD → PROPOSE → auto-merge                    (fast)
-Step 3:  WILDCARD → PROPOSE → CRITIQUE → RESOLVE → UPDATE  (full review)
-...
+```mermaid
+sequenceDiagram
+    participant S as Step
+    participant W as Wildcard
+    participant P as Propose
+    participant C as Critique
+    participant R as Resolve
+    participant U as Update
+
+    Note over S: Step 0 (full review)
+    S->>W: 🎲 Roll wildcards
+    W->>P: 💬 Actors propose
+    P->>C: 🔍 Critics evaluate
+    C->>R: ⚖️ Judge resolves
+    R->>U: 📝 Merge state
+
+    Note over S: Steps 1–2 (fast)
+    S->>W: 🎲 Roll wildcards
+    W->>P: 💬 Actors propose
+    P->>U: 📝 Auto-merge
+
+    Note over S: Step 3 (full review)
+    S->>W: 🎲 Roll wildcards
+    W->>P: 💬 Actors propose
+    P->>C: 🔍 Critics evaluate
+    C->>R: ⚖️ Judge resolves
+    R->>U: 📝 Merge state
 ```
 
 ### Particle Filter (Sequential Importance Resampling)
 
 Focus compute on the most interesting trajectories:
 
-```
- Trajectory 1:  ●──●──●──●──●──┐
- Trajectory 2:  ●──●──●──●──●──┤  Score &    ●──●──●──●──●
- Trajectory 3:  ●──●──●──●──●──┤  Resample → ●──●──●──●──●
- Trajectory 4:  ●──●──●──●──●──┘             ●──●──●──●──●
-                                              ↑
-                              boring trajectories killed,
-                              interesting ones forked
+```mermaid
+flowchart LR
+    subgraph Before["⏳ Before Resampling"]
+        T1["Trajectory 1"]
+        T2["Trajectory 2"]
+        T3["Trajectory 3 ⭐"]
+        T4["Trajectory 4"]
+    end
+
+    Before --> SC["📊 Score &\nResample"]
+
+    subgraph After["✅ After Resampling"]
+        R1["Trajectory 1 → pruned"]
+        R2["Trajectory 2 → kept"]
+        R3["Trajectory 3 → forked ×2"]
+    end
+
+    SC --> After
 ```
 
 ## Features
@@ -101,10 +129,20 @@ classified and aggregated.
 **Use for:** "How frequently does intelligence emerge?" "In what fraction of
 runs does Rome fall before 200 AD?"
 
-```
-world₁  world₂  world₃  ...  worldₙ     (isolated, same setup)
-  ↓       ↓       ↓           ↓
-out₁    out₂    out₃        outₙ        → statistics
+```mermaid
+flowchart TB
+    S["📋 Same Scenario"] --> W1["🌍 World 1"]
+    S --> W2["🌍 World 2"]
+    S --> W3["🌍 World 3"]
+    S --> WN["🌍 World N"]
+    W1 --> O1["out₁"]
+    W2 --> O2["out₂"]
+    W3 --> O3["out₃"]
+    WN --> ON["outₙ"]
+    O1 --> ST["📊 Statistics"]
+    O2 --> ST
+    O3 --> ST
+    ON --> ST
 ```
 
 ```bash
@@ -124,12 +162,16 @@ dominate?"). Each run is a full multi-entity simulation.
 **Use for:** "What happens when Rome, Greece, and Persia compete for 1000
 years?" "Which civilization dominates under different starting conditions?"
 
-```
-         shared world state
-         ┌──────┼──────┐
-       pop₁   pop₂   pop₃      (interact via shared board)
-         └──────┼──────┘
-            resolution          → narrative + scores
+```mermaid
+flowchart TB
+    WS["🌐 Shared World State"]
+    WS <--> P1["👥 Pop 1"]
+    WS <--> P2["👥 Pop 2"]
+    WS <--> P3["👥 Pop 3"]
+    P1 --> RES["⚖️ Resolution"]
+    P2 --> RES
+    P3 --> RES
+    RES --> N["📝 Narrative + Scores"]
 ```
 
 Entity types:
@@ -294,6 +336,19 @@ Use `--steps 10` for quick test runs.
 - **Particle filtering** — sequential importance resampling across trajectories.
   Score trajectories every K steps, prune low-weight runs, and fork high-weight
   ones to focus compute on the most interesting branches.
+
+## Data Flow
+
+```mermaid
+flowchart LR
+    YAML["📄 Scenario\nYAML"] --> RUN["🚀 Runner"]
+    RUN --> BOARD["📂 Board\n(filesystem)"]
+    BOARD --> TRAJ["🔀 Trajectories"]
+    TRAJ --> ANA["📊 Analysis"]
+    ANA --> REP["📝 Report"]
+    ANA --> PLT["📈 Plots"]
+    ANA --> DASH["🖥️ Dashboard"]
+```
 
 ## Requirements
 
