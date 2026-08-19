@@ -5,6 +5,7 @@ import time
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
 from typing import Any
+from urllib.parse import parse_qs, urlparse
 
 from minimal_agora.analysis import (
     _get_nested,
@@ -16,16 +17,21 @@ from minimal_agora.analysis import (
 
 class DashboardHandler(SimpleHTTPRequestHandler):
     run_dir: Path
+    runs_root: Path
     fields: list[str]
     populations: list[str]
     score_fields: list[str]
 
     def do_GET(self):
-        if self.path == "/":
+        parsed = urlparse(self.path)
+        path = parsed.path
+        if path == "/":
             self._serve_html()
-        elif self.path == "/api/data":
+        elif path == "/api/data":
             self._serve_data()
-        elif self.path == "/api/stream":
+        elif path == "/api/runs":
+            self._serve_runs()
+        elif path == "/api/stream":
             self._serve_sse()
         else:
             self.send_error(404)
@@ -38,9 +44,30 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(html.encode())
 
+    def _resolve_run_dir(self) -> Path:
+        parsed = urlparse(self.path)
+        params = parse_qs(parsed.query)
+        run_name = params.get("run", [None])[0]
+        if run_name and self.runs_root:
+            candidate = self.runs_root / run_name
+            if candidate.is_dir():
+                return candidate
+        return self.run_dir
+
     def _serve_data(self):
-        data = _collect_data(self.run_dir, self.fields, self.populations, self.score_fields)
+        run_dir = self._resolve_run_dir()
+        data = _collect_data(run_dir, self.fields, self.populations, self.score_fields)
+        data["run_dir"] = run_dir.name
         body = json.dumps(data).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _serve_runs(self):
+        runs = _list_runs(self.runs_root, self.run_dir)
+        body = json.dumps(runs).encode()
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
@@ -70,6 +97,34 @@ class DashboardHandler(SimpleHTTPRequestHandler):
 
     def log_message(self, format, *args):
         pass
+
+
+def _list_runs(runs_root: Path, current_run_dir: Path) -> list[dict]:
+    runs = []
+    if not runs_root or not runs_root.is_dir():
+        return [{"dirname": current_run_dir.name, "scenario": current_run_dir.name,
+                 "n_trajectories": 0, "current": True}]
+    for d in sorted(runs_root.iterdir()):
+        if not d.is_dir():
+            continue
+        traj_dirs = list(d.glob("trajectory_*"))
+        scenario = d.name
+        for td in traj_dirs[:1]:
+            tj = td / "trajectory.json"
+            if tj.exists():
+                try:
+                    meta = json.loads(tj.read_text())
+                    scenario = meta.get("scenario_name", d.name)
+                except (json.JSONDecodeError, OSError):
+                    pass
+                break
+        runs.append({
+            "dirname": d.name,
+            "scenario": scenario,
+            "n_trajectories": len(traj_dirs),
+            "current": d.resolve() == current_run_dir.resolve(),
+        })
+    return runs
 
 
 def _collect_data(
@@ -222,7 +277,7 @@ def _mean(vals: list) -> float:
 
 def _build_html() -> str:
     return """<!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -230,59 +285,85 @@ def _build_html() -> str:
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3"></script>
 <style>
+  :root[data-theme="dark"] {
+    --bg: #0a0a0a; --card-bg: #141414; --card-bg-alt: #1a1a1a;
+    --text: #e0e0e0; --text-heading: #fff; --text-muted: #888; --text-secondary: #aaa;
+    --text-tertiary: #ccc; --border: #222; --border-light: #333;
+    --grid: #222; --tooltip-bg: rgba(20,20,20,0.95); --tooltip-border: #333;
+    --event-gradient-end: #141414; --event-bg-alt: #0f0f0f;
+    --status-live-bg: #1a3a1a; --status-done-bg: #1a2a3a;
+    --crosshair: rgba(255,255,255,0.12);
+  }
+  :root[data-theme="light"] {
+    --bg: #f5f5f5; --card-bg: #fff; --card-bg-alt: #f0f0f0;
+    --text: #333; --text-heading: #111; --text-muted: #777; --text-secondary: #555;
+    --text-tertiary: #444; --border: #ddd; --border-light: #ccc;
+    --grid: #e5e5e5; --tooltip-bg: rgba(255,255,255,0.97); --tooltip-border: #ccc;
+    --event-gradient-end: #fff; --event-bg-alt: #f8f8f8;
+    --status-live-bg: #d4edda; --status-done-bg: #d6eaf8;
+    --crosshair: rgba(0,0,0,0.08);
+  }
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
-         background: #0a0a0a; color: #e0e0e0; padding: 20px; }
-  h1 { font-size: 1.4rem; margin-bottom: 4px; color: #fff; }
-  .subtitle { color: #888; font-size: 0.85rem; margin-bottom: 20px; }
+         background: var(--bg); color: var(--text); padding: 20px; transition: background 0.3s, color 0.3s; }
+  h1 { font-size: 1.4rem; margin-bottom: 4px; color: var(--text-heading); }
+  .subtitle { color: var(--text-muted); font-size: 0.85rem; margin-bottom: 20px; }
+  .header-bar { display: flex; align-items: center; gap: 12px; margin-bottom: 4px; flex-wrap: wrap; }
+  .header-controls { display: flex; align-items: center; gap: 8px; margin-left: auto; }
   .status { display: inline-block; padding: 2px 8px; border-radius: 4px;
             font-size: 0.75rem; font-weight: 600; }
-  .status.live { background: #1a3a1a; color: #4ade80; animation: pulse 2s ease-in-out infinite; }
-  .status.done { background: #1a2a3a; color: #60a5fa; }
+  .status.live { background: var(--status-live-bg); color: #4ade80; animation: pulse 2s ease-in-out infinite; }
+  .status.done { background: var(--status-done-bg); color: #60a5fa; }
   @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
+  .run-select, .theme-toggle { background: var(--card-bg-alt); color: var(--text);
+    border: 1px solid var(--border-light); border-radius: 4px; padding: 4px 8px;
+    font-size: 0.8rem; cursor: pointer; }
+  .theme-toggle { font-size: 1rem; line-height: 1; padding: 4px 6px; }
   .page-layout { display: grid; grid-template-columns: 1fr 360px; gap: 20px; }
   @media (max-width: 1000px) { .page-layout { grid-template-columns: 1fr; } }
   .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
           gap: 16px; margin-bottom: 20px; }
-  .card { background: #141414; border: 1px solid #222; border-radius: 8px; padding: 16px;
-          box-shadow: 0 2px 8px rgba(0,0,0,0.3); border-top: 2px solid #4e79a7; }
-  .card h2 { font-size: 0.9rem; color: #aaa; margin-bottom: 12px; text-transform: uppercase;
+  .card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px; padding: 16px;
+          box-shadow: 0 2px 8px rgba(0,0,0,0.1); border-top: 2px solid #4e79a7;
+          transition: background 0.3s, border-color 0.3s; }
+  .card h2 { font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 12px; text-transform: uppercase;
              letter-spacing: 0.05em; }
   .stats-row { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 16px; }
-  .stat { background: #1a1a1a; border-radius: 6px; padding: 12px 16px; min-width: 100px;
-          box-shadow: 0 2px 8px rgba(0,0,0,0.3); border-top: 2px solid #4e79a7; }
-  .stat .value { font-size: 1.8rem; font-weight: 700; color: #fff; }
-  .stat .label { font-size: 0.75rem; color: #888; margin-top: 2px; }
+  .stat { background: var(--card-bg-alt); border-radius: 6px; padding: 12px 16px; min-width: 100px;
+          box-shadow: 0 2px 8px rgba(0,0,0,0.1); border-top: 2px solid #4e79a7;
+          transition: background 0.3s; }
+  .stat .value { font-size: 1.8rem; font-weight: 700; color: var(--text-heading); }
+  .stat .label { font-size: 0.75rem; color: var(--text-muted); margin-top: 2px; }
   .outcome-bar { display: flex; align-items: center; margin: 6px 0; }
-  .outcome-bar .name { width: 120px; font-size: 0.85rem; color: #ccc; }
-  .outcome-bar .bar-bg { flex: 1; height: 24px; background: #1a1a1a; border-radius: 6px;
+  .outcome-bar .name { width: 120px; font-size: 0.85rem; color: var(--text-tertiary); }
+  .outcome-bar .bar-bg { flex: 1; height: 24px; background: var(--card-bg-alt); border-radius: 6px;
                           overflow: hidden; position: relative; }
   .outcome-bar .bar-fill { height: 100%; border-radius: 6px; transition: width 0.5s ease; }
   .outcome-bar .bar-label { position: absolute; right: 8px; top: 3px; font-size: 0.75rem;
                              color: #fff; font-weight: 600; }
   canvas { max-height: 350px; }
-  .field-select { background: #1a1a1a; color: #ccc; border: 1px solid #333; border-radius: 4px;
-                  padding: 4px 8px; font-size: 0.8rem; margin-bottom: 8px; }
+  .field-select { background: var(--card-bg-alt); color: var(--text-tertiary); border: 1px solid var(--border-light);
+                  border-radius: 4px; padding: 4px 8px; font-size: 0.8rem; margin-bottom: 8px; }
   .wc-heatmap { width: 100%; border-collapse: collapse; margin-bottom: 12px; }
   .wc-heatmap td, .wc-heatmap th { padding: 2px 4px; font-size: 0.7rem; text-align: center; }
-  .wc-heatmap th { color: #888; font-weight: 400; }
+  .wc-heatmap th { color: var(--text-muted); font-weight: 400; }
   .wc-heatmap .wc-cell { width: 22px; height: 22px; border-radius: 3px; cursor: default; }
   .wc-heatmap .wc-hit { background: #edc948; }
-  .wc-heatmap .wc-miss { background: #1a1a1a; }
-  .wc-heatmap .traj-label { text-align: right; color: #888; padding-right: 6px; }
+  .wc-heatmap .wc-miss { background: var(--card-bg-alt); }
+  .wc-heatmap .traj-label { text-align: right; color: var(--text-muted); padding-right: 6px; }
   .wc-tooltip { position: relative; }
   .wc-tooltip:hover::after { content: attr(data-tip); position: absolute; bottom: 120%;
-    left: 50%; transform: translateX(-50%); background: #222; color: #edc948; padding: 3px 8px;
+    left: 50%; transform: translateX(-50%); background: var(--border); color: #edc948; padding: 3px 8px;
     border-radius: 4px; font-size: 0.7rem; white-space: nowrap; z-index: 10;
     pointer-events: none; }
   .empty { color: #555; font-style: italic; padding: 40px; text-align: center; }
-  .event-log { background: #141414; border: 1px solid #222; border-radius: 8px;
+  .event-log { background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px;
                padding: 16px; height: calc(100vh - 120px); overflow-y: auto;
-               position: sticky; top: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-               border-top: 2px solid #4e79a7; }
-  .event-log h2 { font-size: 0.9rem; color: #aaa; margin-bottom: 12px;
+               position: sticky; top: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+               border-top: 2px solid #4e79a7; transition: background 0.3s, border-color 0.3s; }
+  .event-log h2 { font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 12px;
                    text-transform: uppercase; letter-spacing: 0.05em; }
-  .event { margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid #1a1a1a; }
+  .event { margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid var(--card-bg-alt); }
   .event:last-child { border-bottom: none; }
   .event .meta { font-size: 0.7rem; color: #666; margin-bottom: 3px; display: flex;
                  align-items: center; gap: 6px; }
@@ -292,26 +373,26 @@ def _build_html() -> str:
   .tag.proposal { background: #1a3a2a; color: #4ade80; font-size: 0.7rem; font-weight: 700; }
   .tag.wildcard { background: #3a2a1a; color: #edc948; }
   .tag.outcome { background: #2a1a3a; color: #c084fc; }
-  .event .text { font-size: 0.8rem; color: #ccc; line-height: 1.4;
+  .event .text { font-size: 0.8rem; color: var(--text-tertiary); line-height: 1.4;
     max-height: 2.8em; overflow: hidden; cursor: pointer; position: relative; }
   .event .text.expanded { max-height: none; }
   .event .text:not(.expanded)::after { content: '... click to expand'; position: absolute;
-    right: 0; bottom: 0; background: linear-gradient(to right, transparent, #141414 40%);
+    right: 0; bottom: 0; background: linear-gradient(to right, transparent, var(--event-gradient-end) 40%);
     padding-left: 20px; color: #666; font-size: 0.7rem; }
   .event-filter { display: flex; gap: 6px; margin-bottom: 12px; flex-wrap: wrap; }
-  .event-filter button { background: #1a1a1a; border: 1px solid #333; color: #888;
+  .event-filter button { background: var(--card-bg-alt); border: 1px solid var(--border-light); color: var(--text-muted);
                           padding: 3px 10px; border-radius: 4px; cursor: pointer;
                           font-size: 0.7rem; }
-  .event-filter button.active { border-color: #555; color: #fff; }
-  .proposal-fields { margin: 4px 0; font-size: 0.75rem; color: #888; }
+  .event-filter button.active { border-color: #555; color: var(--text-heading); }
+  .proposal-fields { margin: 4px 0; font-size: 0.75rem; color: var(--text-muted); }
   .proposal-fields code { background: #1a2a1a; padding: 1px 5px; border-radius: 3px;
                            font-size: 0.7rem; color: #4ade80; margin-right: 4px; }
-  .proposal-reasoning { margin: 6px 0 0 0; padding: 6px 10px; border-left: 3px solid #333;
-                         font-size: 0.78rem; color: #aaa; line-height: 1.5;
-                         background: #0f0f0f; border-radius: 0 4px 4px 0; }
+  .proposal-reasoning { margin: 6px 0 0 0; padding: 6px 10px; border-left: 3px solid var(--border-light);
+                         font-size: 0.78rem; color: var(--text-secondary); line-height: 1.5;
+                         background: var(--event-bg-alt); border-radius: 0 4px 4px 0; }
   .proposal-status { margin-left: auto; font-weight: 600; font-size: 0.75rem; }
   .wc-legend { display: flex; gap: 12px; align-items: center; margin-top: 8px;
-               font-size: 0.7rem; color: #888; }
+               font-size: 0.7rem; color: var(--text-muted); }
   .wc-legend-swatch { display: inline-block; width: 14px; height: 14px; border-radius: 3px;
                        vertical-align: middle; margin-right: 4px; }
   .stat .icon { font-size: 1rem; margin-bottom: 4px; }
@@ -319,9 +400,13 @@ def _build_html() -> str:
 </style>
 </head>
 <body>
-<div style="display:flex; align-items:center; gap:12px; margin-bottom:4px;">
+<div class="header-bar">
   <h1 id="title">minimal-agora dashboard</h1>
   <span class="status live" id="status">connecting...</span>
+  <div class="header-controls">
+    <select class="run-select" id="run-select" title="Switch simulation run"></select>
+    <button class="theme-toggle" id="theme-toggle" title="Toggle light/dark mode">&#9790;</button>
+  </div>
 </div>
 <p class="subtitle" id="subtitle"></p>
 
@@ -340,7 +425,8 @@ def _build_html() -> str:
   </div>
   <div class="grid">
     <div class="card" id="timelines-card" style="display:none">
-      <h2>Field Timelines</h2>
+      <h2 id="timelines-title">Field Timelines</h2>
+      <select class="field-select" id="timeline-field-select" style="display:none"></select>
       <canvas id="timelines-chart"></canvas>
     </div>
     <div class="card" id="fitness-card" style="display:none">
@@ -380,24 +466,43 @@ def _build_html() -> str:
   <div id="events"><div class="empty">waiting for events...</div></div>
 </div>
 </div>
-<div class="footer">minimal-agora v0.1 • powered by Chart.js</div>
+<div class="footer">minimal-agora v0.1 &bull; powered by Chart.js</div>
 
 <script>
 const COLORS = ['#4e79a7','#f28e2b','#e15759','#76b7b2','#59a14f',
                 '#edc948','#b07aa1','#ff9da7','#9c755f','#bab0ac'];
 const charts = {};
 
-Chart.defaults.animation.duration = 800;
-Chart.defaults.animation.easing = 'easeOutQuart';
-Chart.defaults.interaction.mode = 'index';
-Chart.defaults.interaction.intersect = false;
-Chart.defaults.plugins.tooltip.backgroundColor = 'rgba(20,20,20,0.95)';
-Chart.defaults.plugins.tooltip.borderColor = '#333';
-Chart.defaults.plugins.tooltip.borderWidth = 1;
-Chart.defaults.plugins.tooltip.titleColor = '#fff';
-Chart.defaults.plugins.tooltip.bodyColor = '#ccc';
-Chart.defaults.plugins.tooltip.padding = 10;
-Chart.defaults.plugins.tooltip.cornerRadius = 6;
+function getThemeColors() {
+  const cs = getComputedStyle(document.documentElement);
+  return {
+    grid: cs.getPropertyValue('--grid').trim(),
+    text: cs.getPropertyValue('--text').trim(),
+    textMuted: cs.getPropertyValue('--text-muted').trim(),
+    textSecondary: cs.getPropertyValue('--text-secondary').trim(),
+    textTertiary: cs.getPropertyValue('--text-tertiary').trim(),
+    textHeading: cs.getPropertyValue('--text-heading').trim(),
+    tooltipBg: cs.getPropertyValue('--tooltip-bg').trim(),
+    tooltipBorder: cs.getPropertyValue('--tooltip-border').trim(),
+    crosshair: cs.getPropertyValue('--crosshair').trim(),
+  };
+}
+
+function applyChartDefaults() {
+  const tc = getThemeColors();
+  Chart.defaults.animation.duration = 800;
+  Chart.defaults.animation.easing = 'easeOutQuart';
+  Chart.defaults.interaction.mode = 'index';
+  Chart.defaults.interaction.intersect = false;
+  Chart.defaults.plugins.tooltip.backgroundColor = tc.tooltipBg;
+  Chart.defaults.plugins.tooltip.borderColor = tc.tooltipBorder;
+  Chart.defaults.plugins.tooltip.borderWidth = 1;
+  Chart.defaults.plugins.tooltip.titleColor = tc.textHeading;
+  Chart.defaults.plugins.tooltip.bodyColor = tc.textTertiary;
+  Chart.defaults.plugins.tooltip.padding = 10;
+  Chart.defaults.plugins.tooltip.cornerRadius = 6;
+}
+applyChartDefaults();
 
 Chart.register({
   id: 'crosshair',
@@ -412,7 +517,7 @@ Chart.register({
       ctx.moveTo(x, top);
       ctx.lineTo(x, bottom);
       ctx.lineWidth = 1;
-      ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+      ctx.strokeStyle = getThemeColors().crosshair;
       ctx.stroke();
       ctx.restore();
     }
@@ -444,6 +549,19 @@ function lineDataset(label, data, color, fill) {
   };
 }
 
+function themedScales(opts) {
+  const tc = getThemeColors();
+  const result = {};
+  for (const [axis, cfg] of Object.entries(opts)) {
+    result[axis] = Object.assign({}, cfg, {
+      grid: Object.assign({ color: tc.grid }, cfg.grid || {}),
+      ticks: Object.assign({ color: axis === 'x' ? tc.textTertiary : tc.textMuted }, cfg.ticks || {}),
+    });
+    if (cfg.title) result[axis].title = Object.assign({}, cfg.title, { color: tc.textMuted });
+  }
+  return result;
+}
+
 function initChart(id, config) {
   if (charts[id]) charts[id].destroy();
   charts[id] = new Chart(document.getElementById(id), config);
@@ -455,8 +573,8 @@ function renderStats(data) {
   const n = data.n_trajectories || 0;
   const nOutcomes = Object.keys(data.outcomes || {}).length;
   el.innerHTML = `
-    <div class="stat"><div class="icon">📊</div><div class="value">${n}</div><div class="label">trajectories</div></div>
-    <div class="stat"><div class="icon">🎯</div><div class="value">${nOutcomes}</div><div class="label">distinct outcomes</div></div>
+    <div class="stat"><div class="icon">&#x1f4ca;</div><div class="value">${n}</div><div class="label">trajectories</div></div>
+    <div class="stat"><div class="icon">&#x1f3af;</div><div class="value">${nOutcomes}</div><div class="label">distinct outcomes</div></div>
   `;
 }
 
@@ -484,7 +602,7 @@ function renderStepsChart(data) {
   const outcomes = data.outcomes || {};
   const labels = Object.keys(outcomes).sort();
   if (!labels.length) return;
-
+  const tc = getThemeColors();
   const values = labels.map(l => outcomes[l].mean_steps);
   initChart('steps-chart', {
     type: 'bar',
@@ -500,9 +618,10 @@ function renderStepsChart(data) {
     },
     options: {
       responsive: true, plugins: { legend: { display: false } },
-      scales: { y: { title: { display: true, text: 'mean steps', color: '#888' },
-                      grid: { color: '#222' }, ticks: { color: '#888' } },
-                x: { grid: { color: '#222' }, ticks: { color: '#ccc' } } }
+      scales: themedScales({
+        y: { title: { display: true, text: 'mean steps' } },
+        x: {}
+      })
     },
     plugins: [{
       afterDatasetsDraw(chart) {
@@ -510,7 +629,7 @@ function renderStepsChart(data) {
         chart.getDatasetMeta(0).data.forEach((bar, i) => {
           if (values[i] == null) return;
           ctx.save();
-          ctx.fillStyle = '#ccc';
+          ctx.fillStyle = tc.textTertiary;
           ctx.font = '11px -apple-system, system-ui, sans-serif';
           ctx.textAlign = 'center';
           ctx.textBaseline = 'bottom';
@@ -523,28 +642,61 @@ function renderStepsChart(data) {
 }
 
 function renderTimelines(data) {
+  const tt = data.trajectory_timelines || {};
   const timelines = data.timelines || {};
-  const fields = Object.keys(timelines);
+  const fields = Object.keys(tt);
   if (!fields.length) return;
 
   document.getElementById('timelines-card').style.display = '';
+  const sel = document.getElementById('timeline-field-select');
+  if (fields.length > 1) {
+    sel.style.display = '';
+    const prev = sel.value;
+    sel.innerHTML = fields.map(f =>
+      `<option value="${f}"${f === prev ? ' selected' : ''}>${f}</option>`
+    ).join('');
+  } else {
+    sel.style.display = 'none';
+  }
+  const field = sel.value || fields[0];
+  document.getElementById('timelines-title').textContent = 'Field Timelines: ' + field;
+
+  const trajData = tt[field] || {};
+  const tids = Object.keys(trajData);
+  if (!tids.length) return;
+
   const datasets = [];
-  fields.forEach((f, i) => {
-    const series = timelines[f];
+  const tc = getThemeColors();
+
+  tids.forEach((tid, i) => {
     const color = COLORS[i % COLORS.length];
     datasets.push({
-      label: f + ' max', data: series.map(s => ({ x: s.step, y: s.max })),
-      borderColor: color + '44', backgroundColor: color + '15',
-      fill: { target: '+1', above: color + '15' },
-      tension: 0.3, pointRadius: 0, borderWidth: 1, borderDash: [3, 3],
+      label: 'T' + tid + ': ' + field,
+      data: trajData[tid].map(p => ({x: p.step, y: p.value})),
+      borderColor: color + '99',
+      backgroundColor: color + '22',
+      fill: false,
+      tension: 0.3,
+      pointRadius: 1,
+      pointHoverRadius: 5,
+      borderWidth: 1.5,
     });
-    datasets.push({
-      label: '_' + f + ' min', data: series.map(s => ({ x: s.step, y: s.min })),
-      borderColor: color + '44', fill: false,
-      tension: 0.3, pointRadius: 0, borderWidth: 1, borderDash: [3, 3],
-    });
-    datasets.push(lineDataset(f, series.map(s => ({ x: s.step, y: s.mean })), color));
   });
+
+  const meanSeries = timelines[field];
+  if (meanSeries && meanSeries.length) {
+    datasets.push({
+      label: 'mean',
+      data: meanSeries.map(s => ({x: s.step, y: s.mean})),
+      borderColor: '#fff',
+      backgroundColor: 'transparent',
+      fill: false,
+      tension: 0.3,
+      pointRadius: 0,
+      pointHoverRadius: 4,
+      borderWidth: 3,
+    });
+  }
 
   const wcEvents = (data.events || []).filter(e => e.type === 'wildcard');
   const wcSteps = {};
@@ -555,11 +707,10 @@ function renderTimelines(data) {
       type: 'line', xMin: +step, xMax: +step,
       borderColor: '#edc94866', borderWidth: 1.5, borderDash: [5, 3],
       label: { display: true, content: name, position: 'start',
-               color: '#edc948', backgroundColor: '#141414cc',
+               color: '#edc948', backgroundColor: 'rgba(20,20,20,0.8)',
                font: { size: 9 }, padding: 2 }
     };
   });
-
   const hasAnnotations = Object.keys(wcAnnotations).length > 0;
 
   initChart('timelines-chart', {
@@ -567,13 +718,13 @@ function renderTimelines(data) {
     data: { datasets },
     options: {
       responsive: true,
-      scales: { x: { type: 'linear', title: { display: true, text: 'step', color: '#888' },
-                      grid: { color: '#222' }, ticks: { color: '#888',
-                        callback: function(v) { return 'Step ' + v; } } },
-                y: { grid: { color: '#222' }, ticks: { color: '#888' } } },
+      scales: themedScales({
+        x: { type: 'linear', title: { display: true, text: 'step' },
+             ticks: { callback: function(v) { return 'Step ' + v; } } },
+        y: { title: { display: true, text: field } }
+      }),
       plugins: {
-        legend: { labels: { color: '#ccc',
-          filter: (item) => !item.text.startsWith('_') && !item.text.endsWith(' max') } },
+        legend: { labels: { color: tc.textTertiary } },
         annotation: hasAnnotations ? { annotations: wcAnnotations } : undefined
       }
     }
@@ -583,7 +734,7 @@ function renderTimelines(data) {
 function renderFitness(data) {
   const fitness = data.fitness || [];
   if (!fitness.length) return;
-
+  const tc = getThemeColors();
   document.getElementById('fitness-card').style.display = '';
   initChart('fitness-chart', {
     type: 'line',
@@ -599,11 +750,11 @@ function renderFitness(data) {
     },
     options: {
       responsive: true,
-      scales: { x: { type: 'linear', title: { display: true, text: 'step', color: '#888' },
-                      grid: { color: '#222' }, ticks: { color: '#888' } },
-                y: { title: { display: true, text: 'fitness', color: '#888' },
-                     grid: { color: '#222' }, ticks: { color: '#888' } } },
-      plugins: { legend: { labels: { color: '#ccc', filter: (item) => !item.text.startsWith('_') } } }
+      scales: themedScales({
+        x: { type: 'linear', title: { display: true, text: 'step' } },
+        y: { title: { display: true, text: 'fitness' } }
+      }),
+      plugins: { legend: { labels: { color: tc.textTertiary, filter: (item) => !item.text.startsWith('_') } } }
     }
   });
 }
@@ -612,7 +763,7 @@ function renderPopulations(data) {
   const pops = data.populations || {};
   const popNames = Object.keys(pops);
   if (!popNames.length) return;
-
+  const tc = getThemeColors();
   const grid = document.getElementById('pop-grid');
   const scoreFields = new Set();
   popNames.forEach(p => Object.keys(pops[p]).forEach(s => scoreFields.add(s)));
@@ -639,11 +790,11 @@ function renderPopulations(data) {
       data: { datasets },
       options: {
         responsive: true,
-        scales: { x: { type: 'linear', title: { display: true, text: 'step', color: '#888' },
-                        grid: { color: '#222' }, ticks: { color: '#888' } },
-                  y: { title: { display: true, text: sf, color: '#888' },
-                       grid: { color: '#222' }, ticks: { color: '#888' } } },
-        plugins: { legend: { labels: { color: '#ccc' } } }
+        scales: themedScales({
+          x: { type: 'linear', title: { display: true, text: 'step' } },
+          y: { title: { display: true, text: sf } }
+        }),
+        plugins: { legend: { labels: { color: tc.textTertiary } } }
       }
     });
   });
@@ -653,7 +804,7 @@ function renderTrajectoryComparison(data) {
   const tt = data.trajectory_timelines || {};
   const fields = Object.keys(tt);
   if (!fields.length) return;
-
+  const tc = getThemeColors();
   document.getElementById('traj-compare-card').style.display = '';
   const sel = document.getElementById('traj-field-select');
   const prev = sel.value;
@@ -673,11 +824,11 @@ function renderTrajectoryComparison(data) {
     data: { datasets },
     options: {
       responsive: true,
-      scales: { x: { type: 'linear', title: { display: true, text: 'step', color: '#888' },
-                      grid: { color: '#222' }, ticks: { color: '#888' } },
-                y: { title: { display: true, text: field, color: '#888' },
-                     grid: { color: '#222' }, ticks: { color: '#888' } } },
-      plugins: { legend: { labels: { color: '#ccc' } } }
+      scales: themedScales({
+        x: { type: 'linear', title: { display: true, text: 'step' } },
+        y: { title: { display: true, text: field } }
+      }),
+      plugins: { legend: { labels: { color: tc.textTertiary } } }
     }
   });
 }
@@ -709,7 +860,7 @@ function renderWildcardImpact(data) {
   document.getElementById('wc-heatmap-container').innerHTML =
     `<div style="overflow-x:auto"><table class="wc-heatmap"><tr><th></th>${headerCells}</tr>${rows}</table></div>` +
     `<div class="wc-legend"><span><span class="wc-legend-swatch" style="background:#edc948"></span>Wildcard fired</span>` +
-    `<span><span class="wc-legend-swatch" style="background:#1a1a1a;border:1px solid #333"></span>No wildcard</span></div>`;
+    `<span><span class="wc-legend-swatch" style="background:var(--card-bg-alt);border:1px solid var(--border-light)"></span>No wildcard</span></div>`;
 
   const freq = new Array(maxStep + 1).fill(0);
   events.forEach(e => { freq[e.step] = (freq[e.step] || 0) + 1; });
@@ -729,9 +880,10 @@ function renderWildcardImpact(data) {
     },
     options: {
       responsive: true,
-      scales: { y: { title: { display: true, text: 'count', color: '#888' },
-                      grid: { color: '#222' }, ticks: { color: '#888', stepSize: 1 } },
-                x: { grid: { color: '#222' }, ticks: { color: '#888' } } },
+      scales: themedScales({
+        y: { title: { display: true, text: 'count' }, ticks: { stepSize: 1 } },
+        x: {}
+      }),
       plugins: { legend: { display: false } }
     }
   });
@@ -740,7 +892,7 @@ function renderWildcardImpact(data) {
 function renderAgentActivity(data) {
   const proposals = (data.events || []).filter(e => e.type === 'proposal');
   if (!proposals.length) return;
-
+  const tc = getThemeColors();
   document.getElementById('agent-activity-card').style.display = '';
 
   const agentStats = {};
@@ -771,10 +923,11 @@ function renderAgentActivity(data) {
     },
     options: {
       indexAxis: 'y', responsive: true,
-      scales: { x: { title: { display: true, text: 'count', color: '#888' },
-                      grid: { color: '#222' }, ticks: { color: '#888', stepSize: 1 } },
-                y: { grid: { color: '#222' }, ticks: { color: '#ccc' } } },
-      plugins: { legend: { labels: { color: '#ccc' } } }
+      scales: themedScales({
+        x: { title: { display: true, text: 'count' }, ticks: { stepSize: 1 } },
+        y: {}
+      }),
+      plugins: { legend: { labels: { color: tc.textTertiary } } }
     },
     plugins: [{
       afterDatasetsDraw(chart) {
@@ -782,7 +935,7 @@ function renderAgentActivity(data) {
         const ctx = chart.ctx;
         meta.data.forEach((bar, i) => {
           ctx.save();
-          ctx.fillStyle = '#aaa';
+          ctx.fillStyle = tc.textSecondary;
           ctx.font = '11px -apple-system, system-ui, sans-serif';
           ctx.textAlign = 'left';
           ctx.textBaseline = 'middle';
@@ -818,8 +971,8 @@ function renderEvents(data) {
     return g.items.map(e => {
       if (e.type === 'proposal') {
         const status = e.accepted
-          ? '<span class="proposal-status" style="color:#4ade80">✓ accepted</span>'
-          : '<span class="proposal-status" style="color:#f87171">✗ rejected</span>';
+          ? '<span class="proposal-status" style="color:#4ade80">&#x2713; accepted</span>'
+          : '<span class="proposal-status" style="color:#f87171">&#x2717; rejected</span>';
         const fields = (e.proposed_fields || []).map(f =>
           '<code>' + escapeHtml(f) + '</code>').join(' ');
         return `<div class="event">
@@ -877,11 +1030,14 @@ document.getElementById('events').addEventListener('click', (e) => {
 });
 
 let lastData = {};
+let currentRunDir = null;
+let evtSource = null;
 
 function render(data) {
   lastData = data;
   document.getElementById('title').textContent = data.scenario || 'minimal-agora dashboard';
-  document.getElementById('subtitle').textContent = `${data.n_trajectories || 0} trajectories`;
+  document.getElementById('subtitle').textContent =
+    `${data.n_trajectories || 0} trajectories` + (data.run_dir ? ` \\u2014 ${data.run_dir}` : '');
   renderStats(data);
   renderOutcomes(data);
   renderStepsChart(data);
@@ -894,22 +1050,77 @@ function render(data) {
   renderEvents(data);
 }
 
+function reRenderAll() {
+  applyChartDefaults();
+  if (lastData && lastData.n_trajectories) render(lastData);
+}
+
+// Theme toggle
+function setTheme(theme) {
+  document.documentElement.setAttribute('data-theme', theme);
+  document.getElementById('theme-toggle').textContent = theme === 'dark' ? '\\u263e' : '\\u2600';
+  try { localStorage.setItem('agora-theme', theme); } catch(e) {}
+  reRenderAll();
+}
+(function initTheme() {
+  let saved = null;
+  try { saved = localStorage.getItem('agora-theme'); } catch(e) {}
+  setTheme(saved || 'dark');
+})();
+document.getElementById('theme-toggle').addEventListener('click', () => {
+  const current = document.documentElement.getAttribute('data-theme');
+  setTheme(current === 'dark' ? 'light' : 'dark');
+});
+
+// Timeline field selector
+document.getElementById('timeline-field-select').addEventListener('change', () => {
+  if (lastData.trajectory_timelines) renderTimelines(lastData);
+});
+
 document.getElementById('traj-field-select').addEventListener('change', () => {
   if (lastData.trajectory_timelines) renderTrajectoryComparison(lastData);
 });
 
-// Connect via SSE for live updates
-const evtSource = new EventSource('/api/stream');
-evtSource.onmessage = (e) => {
-  const data = JSON.parse(e.data);
-  document.getElementById('status').textContent = 'live';
-  document.getElementById('status').className = 'status live';
-  render(data);
-};
-evtSource.onerror = () => {
-  document.getElementById('status').textContent = 'disconnected';
+// Simulation switcher
+function loadRuns() {
+  fetch('/api/runs').then(r => r.json()).then(runs => {
+    const sel = document.getElementById('run-select');
+    sel.innerHTML = runs.map(r =>
+      `<option value="${r.dirname}"${r.current ? ' selected' : ''}>${r.scenario} (${r.n_trajectories} traj)</option>`
+    ).join('');
+    const current = runs.find(r => r.current);
+    if (current) currentRunDir = current.dirname;
+  }).catch(() => {});
+}
+loadRuns();
+
+document.getElementById('run-select').addEventListener('change', (e) => {
+  const dirname = e.target.value;
+  currentRunDir = dirname;
+  if (evtSource) { evtSource.close(); evtSource = null; }
+  document.getElementById('status').textContent = 'loading...';
   document.getElementById('status').className = 'status done';
-};
+  fetch('/api/data?run=' + encodeURIComponent(dirname))
+    .then(r => r.json())
+    .then(render)
+    .catch(() => {});
+});
+
+// Connect via SSE for live updates
+function connectSSE() {
+  evtSource = new EventSource('/api/stream');
+  evtSource.onmessage = (e) => {
+    const data = JSON.parse(e.data);
+    document.getElementById('status').textContent = 'live';
+    document.getElementById('status').className = 'status live';
+    render(data);
+  };
+  evtSource.onerror = () => {
+    document.getElementById('status').textContent = 'disconnected';
+    document.getElementById('status').className = 'status done';
+  };
+}
+connectSSE();
 
 // Also fetch once immediately
 fetch('/api/data').then(r => r.json()).then(render).catch(() => {});
@@ -929,6 +1140,7 @@ def start_dashboard(
         pass
 
     ConfiguredHandler.run_dir = run_dir
+    ConfiguredHandler.runs_root = run_dir.parent
     ConfiguredHandler.fields = fields or []
     ConfiguredHandler.populations = populations or []
     ConfiguredHandler.score_fields = score_fields or []
