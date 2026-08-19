@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections import defaultdict
 from pathlib import Path
 
 from minimal_agora.logging import get_logger
@@ -10,6 +11,8 @@ logger = get_logger(__name__)
 from minimal_agora.models import (
     AgentConfig,
     AgentRole,
+    Conflict,
+    ConflictSource,
     Critique,
     EntityConfig,
     Proposal,
@@ -151,6 +154,46 @@ def _diversity_prefix(trajectory_id: int) -> str:
     return f"**Exploration lens (trajectory {trajectory_id})**: {lens}"
 
 
+def _flatten_keys(d: dict, prefix: str = "") -> dict[str, object]:
+    items: dict[str, object] = {}
+    for k, v in d.items():
+        key = f"{prefix}.{k}" if prefix else k
+        if isinstance(v, dict):
+            items.update(_flatten_keys(v, key))
+        else:
+            items[key] = v
+    return items
+
+
+def detect_conflicts(proposals: list[Proposal]) -> list[Conflict]:
+    field_sources: dict[str, list[ConflictSource]] = defaultdict(list)
+    for p in proposals:
+        for field, value in _flatten_keys(p.proposed_changes).items():
+            field_sources[field].append(
+                ConflictSource(agent_name=p.agent, proposed_value=value)
+            )
+    return [
+        Conflict(field=field, sources=sources)
+        for field, sources in field_sources.items()
+        if len(sources) > 1
+    ]
+
+
+def _format_conflicts(conflicts: list[Conflict]) -> str:
+    lines = [
+        "## Conflicts Requiring Resolution",
+        "",
+    ]
+    for c in conflicts:
+        lines.append(f"**{c.field}**: Contested by {len(c.sources)} actors")
+        for s in c.sources:
+            lines.append(f"  - {s.agent_name} proposes: {s.proposed_value}")
+        lines.append("")
+    lines.append("You MUST explicitly resolve each conflict above.")
+    lines.append("")
+    return "\n".join(lines)
+
+
 def build_actor_prompt(agent: AgentConfig, step: int, rules: list[SimRule] | None = None, interaction_context: str = "", trajectory_id: int | None = None) -> str:
     rules_block = _format_rules(rules or [], agent.name, agent.role.value)
     interaction_block = f"\n{interaction_context}\n" if interaction_context else ""
@@ -228,14 +271,15 @@ The JSON must have this structure:
 """
 
 
-def build_judge_prompt(agent: AgentConfig, step: int, rules: list[SimRule] | None = None) -> str:
+def build_judge_prompt(agent: AgentConfig, step: int, rules: list[SimRule] | None = None, conflicts: list[Conflict] | None = None) -> str:
     rules_block = _format_rules(rules or [], agent.name, agent.role.value)
+    conflicts_block = f"\n{_format_conflicts(conflicts)}\n" if conflicts else ""
     return f"""You are **{agent.name}**, the judge agent in a world simulation.
 
 ## Your Perspective
 {agent.perspective}
 
-{rules_block}
+{rules_block}{conflicts_block}
 ## Instructions
 1. Read the current world state from `board/state.json`
 2. Read the narrative history from `board/narrative.md`
@@ -269,14 +313,14 @@ not a technical description.
 """
 
 
-def build_prompt(agent: AgentConfig, step: int, rules: list[SimRule] | None = None, interaction_context: str = "", trajectory_id: int | None = None) -> str:
+def build_prompt(agent: AgentConfig, step: int, rules: list[SimRule] | None = None, interaction_context: str = "", trajectory_id: int | None = None, conflicts: list[Conflict] | None = None) -> str:
     logger.debug("build_prompt", agent=agent.name, role=agent.role.value, step=step)
     if agent.role == AgentRole.ACTOR:
         return build_actor_prompt(agent, step, rules, interaction_context, trajectory_id)
     elif agent.role == AgentRole.CRITIC:
         return build_critic_prompt(agent, step, rules)
     elif agent.role == AgentRole.JUDGE:
-        return build_judge_prompt(agent, step, rules)
+        return build_judge_prompt(agent, step, rules, conflicts)
     raise ValueError(f"Unknown role: {agent.role}")
 
 

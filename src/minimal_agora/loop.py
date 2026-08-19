@@ -12,6 +12,7 @@ logger = get_logger(__name__)
 from minimal_agora.agents import (
     build_interaction_context,
     build_prompt,
+    detect_conflicts,
     invoke_agent,
     parse_critique,
     parse_proposal,
@@ -224,10 +225,14 @@ async def _run_flat_step(
                 critiques.append(cr)
                 board.save_critique(cr, step_num)
 
+    conflicts = detect_conflicts(proposals)
+    if conflicts:
+        logger.info("conflicts_detected", step=step_num, fields=[c.field for c in conflicts])
+
     resolution = None
     if judges:
         judge = judges[0]
-        await _invoke_with_retry(judge, board.workspace, step_num, build_prompt(judge, step_num, rules), timeout)
+        await _invoke_with_retry(judge, board.workspace, step_num, build_prompt(judge, step_num, rules, conflicts=conflicts), timeout)
         resolution = parse_resolution(board.workspace, step_num)
 
     if resolution is None:
@@ -326,12 +331,16 @@ async def _run_entity_step(
                 critiques.append(cr)
                 board.save_critique(cr, step_num)
 
-    # Phase 4: Evaluator resolves everything
+    # Phase 4: Detect conflicts and resolve
+    conflicts = detect_conflicts(proposals)
+    if conflicts:
+        logger.info("conflicts_detected", step=step_num, fields=[c.field for c in conflicts])
+
     resolution = None
     eval_agents = [a for e in eval_entities for a in e.agents if a.role == AgentRole.JUDGE]
     if eval_agents:
         judge = eval_agents[0]
-        await _invoke_with_retry(judge, board.workspace, step_num, build_prompt(judge, step_num, rules), timeout)
+        await _invoke_with_retry(judge, board.workspace, step_num, build_prompt(judge, step_num, rules, conflicts=conflicts), timeout)
         resolution = parse_resolution(board.workspace, step_num)
 
     if resolution is None:

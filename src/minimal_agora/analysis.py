@@ -6,10 +6,14 @@ from collections import defaultdict
 from collections.abc import Sequence
 from pathlib import Path
 
+from minimal_agora.logging import get_logger
 from minimal_agora.models import AggregateResult, Trajectory
+
+logger = get_logger(__name__)
 
 
 def aggregate_outcomes(trajectories: list[Trajectory], question: str = "") -> AggregateResult:
+    logger.info("aggregate_outcomes", n_trajectories=len(trajectories))
     counts: dict[str, int] = defaultdict(int)
     steps_per_outcome: dict[str, list[int]] = defaultdict(list)
 
@@ -42,6 +46,7 @@ def aggregate_outcomes(trajectories: list[Trajectory], question: str = "") -> Ag
 def extract_field_timelines(
     trajectories: list[Trajectory], fields: list[str],
 ) -> dict[str, dict[int, list]]:
+    logger.debug("extract_field_timelines", fields=fields, n_trajectories=len(trajectories))
     timelines: dict[str, dict[int, list]] = {f: defaultdict(list) for f in fields}
     for t in trajectories:
         for step in t.steps:
@@ -53,6 +58,7 @@ def extract_field_timelines(
 
 
 def compute_statistics(values: Sequence[float | int]) -> dict[str, float]:
+    logger.debug("compute_statistics", n_values=len(values))
     if not values:
         return {}
     n = len(values)
@@ -76,6 +82,7 @@ def compute_statistics(values: Sequence[float | int]) -> dict[str, float]:
 
 
 def format_report(result: AggregateResult) -> str:
+    logger.debug("format_report", scenario=result.scenario_name)
     lines = [
         f"=== {result.scenario_name} ===",
         f"Question: {result.question}",
@@ -108,6 +115,7 @@ def save_report(result: AggregateResult, output_dir: Path) -> Path:
 
 
 def save_artifacts(trajectories: list[Trajectory], output_dir: Path) -> Path:
+    logger.info("save_artifacts", output_dir=str(output_dir), n_trajectories=len(trajectories))
     artifacts_dir = output_dir / "artifacts"
     artifacts_dir.mkdir(parents=True, exist_ok=True)
 

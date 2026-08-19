@@ -7,21 +7,28 @@ from pathlib import Path
 import yaml
 
 from minimal_agora.board import _deep_merge
+from minimal_agora.logging import get_logger
 from minimal_agora.models import Scenario
+
+logger = get_logger(__name__)
 
 
 def load_scenario(path: str | Path) -> Scenario:
     path = Path(path)
+    logger.info("load_scenario", path=str(path))
     with open(path) as f:
         if path.suffix in (".yaml", ".yml"):
             data = yaml.safe_load(f)
         else:
             data = json.load(f)
-    return Scenario.model_validate(data)
+    scenario = Scenario.model_validate(data)
+    logger.info("scenario_loaded", name=scenario.name, mode=scenario.mode.value)
+    return scenario
 
 
 def setup_workspace(scenario: Scenario, workspace: Path, trajectory_id: int = 0) -> Path:
     workspace = workspace / f"trajectory_{trajectory_id:03d}"
+    logger.info("setup_workspace", workspace=str(workspace), trajectory_id=trajectory_id)
     workspace.mkdir(parents=True, exist_ok=True)
 
     board = workspace / "board"
@@ -83,6 +90,7 @@ def setup_workspace(scenario: Scenario, workspace: Path, trajectory_id: int = 0)
 
 
 def teardown_workspace(workspace: Path) -> None:
+    logger.debug("teardown_workspace", workspace=str(workspace))
     if workspace.exists():
         shutil.rmtree(workspace)
 
