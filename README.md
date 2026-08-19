@@ -86,13 +86,13 @@ Focus compute on the most interesting trajectories:
 
 ## Simulation Modes
 
+![Simulation Modes](assets/diagrams/simulation-modes.png)
+
 ### `counterfactual`
 
 Run the **same scenario N times independently** to answer statistical questions.
 Wildcards fire stochastically, producing different paths. Outcomes are classified
 and aggregated.
-
-![Simulation Modes](assets/diagrams/simulation-modes.png)
 
 **Use for:** "How frequently does intelligence emerge?" "In what fraction of
 runs does Rome fall before 200 AD?"
