@@ -228,6 +228,7 @@ def _build_html() -> str:
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>minimal-agora dashboard</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3"></script>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
@@ -288,10 +289,15 @@ def _build_html() -> str:
   .event .meta .tag { padding: 1px 6px; border-radius: 3px; font-weight: 600;
                        font-size: 0.65rem; text-transform: uppercase; }
   .tag.narrative { background: #1a2a3a; color: #60a5fa; }
-  .tag.proposal { background: #1a3a2a; color: #4ade80; }
+  .tag.proposal { background: #1a3a2a; color: #4ade80; font-size: 0.7rem; font-weight: 700; }
   .tag.wildcard { background: #3a2a1a; color: #edc948; }
   .tag.outcome { background: #2a1a3a; color: #c084fc; }
-  .event .text { font-size: 0.8rem; color: #ccc; line-height: 1.4; }
+  .event .text { font-size: 0.8rem; color: #ccc; line-height: 1.4;
+    max-height: 2.8em; overflow: hidden; cursor: pointer; position: relative; }
+  .event .text.expanded { max-height: none; }
+  .event .text:not(.expanded)::after { content: '... click to expand'; position: absolute;
+    right: 0; bottom: 0; background: linear-gradient(to right, transparent, #141414 40%);
+    padding-left: 20px; color: #666; font-size: 0.7rem; }
   .event-filter { display: flex; gap: 6px; margin-bottom: 12px; flex-wrap: wrap; }
   .event-filter button { background: #1a1a1a; border: 1px solid #333; color: #888;
                           padding: 3px 10px; border-radius: 4px; cursor: pointer;
@@ -369,7 +375,7 @@ def _build_html() -> str:
     <button class="active" data-type="narrative">Narrative</button>
     <button class="active" data-type="wildcard">Wildcards</button>
     <button class="active" data-type="outcome">Outcomes</button>
-    <button data-type="proposal">Proposals</button>
+    <button class="active" data-type="proposal">Proposals</button>
   </div>
   <div id="events"><div class="empty">waiting for events...</div></div>
 </div>
@@ -522,11 +528,39 @@ function renderTimelines(data) {
   if (!fields.length) return;
 
   document.getElementById('timelines-card').style.display = '';
-  const datasets = fields.map((f, i) => {
+  const datasets = [];
+  fields.forEach((f, i) => {
     const series = timelines[f];
     const color = COLORS[i % COLORS.length];
-    return lineDataset(f, series.map(s => ({ x: s.step, y: s.mean })), color);
+    datasets.push({
+      label: f + ' max', data: series.map(s => ({ x: s.step, y: s.max })),
+      borderColor: color + '44', backgroundColor: color + '15',
+      fill: { target: '+1', above: color + '15' },
+      tension: 0.3, pointRadius: 0, borderWidth: 1, borderDash: [3, 3],
+    });
+    datasets.push({
+      label: '_' + f + ' min', data: series.map(s => ({ x: s.step, y: s.min })),
+      borderColor: color + '44', fill: false,
+      tension: 0.3, pointRadius: 0, borderWidth: 1, borderDash: [3, 3],
+    });
+    datasets.push(lineDataset(f, series.map(s => ({ x: s.step, y: s.mean })), color));
   });
+
+  const wcEvents = (data.events || []).filter(e => e.type === 'wildcard');
+  const wcSteps = {};
+  wcEvents.forEach(e => { wcSteps[e.step] = e.name || 'wildcard'; });
+  const wcAnnotations = {};
+  Object.entries(wcSteps).forEach(([step, name]) => {
+    wcAnnotations['wc' + step] = {
+      type: 'line', xMin: +step, xMax: +step,
+      borderColor: '#edc94866', borderWidth: 1.5, borderDash: [5, 3],
+      label: { display: true, content: name, position: 'start',
+               color: '#edc948', backgroundColor: '#141414cc',
+               font: { size: 9 }, padding: 2 }
+    };
+  });
+
+  const hasAnnotations = Object.keys(wcAnnotations).length > 0;
 
   initChart('timelines-chart', {
     type: 'line',
@@ -534,9 +568,14 @@ function renderTimelines(data) {
     options: {
       responsive: true,
       scales: { x: { type: 'linear', title: { display: true, text: 'step', color: '#888' },
-                      grid: { color: '#222' }, ticks: { color: '#888' } },
+                      grid: { color: '#222' }, ticks: { color: '#888',
+                        callback: function(v) { return 'Step ' + v; } } },
                 y: { grid: { color: '#222' }, ticks: { color: '#888' } } },
-      plugins: { legend: { labels: { color: '#ccc' } } }
+      plugins: {
+        legend: { labels: { color: '#ccc',
+          filter: (item) => !item.text.startsWith('_') && !item.text.endsWith(' max') } },
+        annotation: hasAnnotations ? { annotations: wcAnnotations } : undefined
+      }
     }
   });
 }
@@ -755,7 +794,7 @@ function renderAgentActivity(data) {
   });
 }
 
-let activeFilters = new Set(['narrative', 'wildcard', 'outcome']);
+let activeFilters = new Set(['narrative', 'wildcard', 'outcome', 'proposal']);
 let allEvents = [];
 
 function renderEvents(data) {
@@ -790,7 +829,7 @@ function renderEvents(data) {
             ${status}
           </div>
           ${fields ? '<div class="proposal-fields">Proposed: ' + fields + '</div>' : ''}
-          <div class="proposal-reasoning">${escapeHtml(e.text)}</div>
+          <div class="proposal-reasoning"><strong>${escapeHtml(e.agent)}</strong>: ${escapeHtml(e.text)}</div>
         </div>`;
       }
       return `<div class="event">
@@ -830,6 +869,11 @@ document.getElementById('event-filter').addEventListener('click', (e) => {
     }
   });
   renderEvents({ events: allEvents });
+});
+
+document.getElementById('events').addEventListener('click', (e) => {
+  const textEl = e.target.closest('.event .text');
+  if (textEl) textEl.classList.toggle('expanded');
 });
 
 let lastData = {};
