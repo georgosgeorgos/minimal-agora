@@ -42,6 +42,7 @@ from minimal_agora.models import (
     TrajectoryType,
     WildcardEvent,
 )
+from minimal_agora.schema import infer_schema, validate_state_delta
 
 
 async def _safe_invoke(coro) -> None:
@@ -143,6 +144,10 @@ async def run_trajectory(
         trajectory.metadata["resume_from_step"] = resume_from
         trajectory.metadata["resume_timestamp"] = datetime.now(UTC).isoformat()
 
+    state_schema = infer_schema(scenario.initial_state)
+    if state_schema:
+        tlog.info("trajectory.schema_inferred", n_fields=len(state_schema))
+
     max_steps = scenario.termination.get("max_steps", scenario.step_budget)
     conditions = scenario.termination.get("conditions", [])
     fitness_history: list[float | None] = []
@@ -170,7 +175,7 @@ async def run_trajectory(
             slog.info("step.start")
             board.clear_wildcard(step_num)
 
-        step = await _run_step(scenario, board, step_num, agent_timeout, trajectory_id, agent_semaphore, max_steps)
+        step = await _run_step(scenario, board, step_num, agent_timeout, trajectory_id, agent_semaphore, max_steps, state_schema)
         trajectory.steps.append(step)
 
         if scenario.fitness:
@@ -214,6 +219,7 @@ async def _run_step(
     trajectory_id: int = 0,
     agent_semaphore: asyncio.Semaphore | None = None,
     max_steps: int = 1,
+    state_schema: dict | None = None,
 ) -> Step:
     if scenario.narrative_window is not None:
         raw = board.narrative_path.read_text()
@@ -225,8 +231,8 @@ async def _run_step(
     state_before = deepcopy(board.read_state())
 
     if scenario.entities:
-        return await _run_entity_step(scenario, board, step_num, timeout, state_before, trajectory_id, agent_semaphore)
-    return await _run_flat_step(scenario, board, step_num, timeout, state_before, trajectory_id, agent_semaphore, max_steps)
+        return await _run_entity_step(scenario, board, step_num, timeout, state_before, trajectory_id, agent_semaphore, state_schema)
+    return await _run_flat_step(scenario, board, step_num, timeout, state_before, trajectory_id, agent_semaphore, max_steps, state_schema)
 
 
 def _read_narrative(board: Board) -> str:
@@ -291,6 +297,7 @@ async def _run_flat_step(
     trajectory_id: int = 0,
     agent_semaphore: asyncio.Semaphore | None = None,
     max_steps: int = 1,
+    state_schema: dict | None = None,
 ) -> Step:
     actors = [a for a in scenario.agents if a.role == AgentRole.ACTOR]
     critics = [a for a in scenario.agents if a.role == AgentRole.CRITIC]
@@ -418,6 +425,12 @@ async def _run_flat_step(
         if resolution is None:
             resolution = _fallback_resolution(proposals)
 
+        if state_schema and resolution.state_delta:
+            warnings = validate_state_delta(resolution.state_delta, state_schema)
+            if warnings:
+                logger.warning("state_delta.validation", step=step_num, warnings=warnings)
+                resolution.validation_warnings = warnings
+
         board.save_resolution(resolution, step_num)
         state_after = board.apply_resolution(resolution, step_num)
     else:
@@ -464,6 +477,7 @@ async def _run_entity_step(
     state_before: dict,
     trajectory_id: int = 0,
     agent_semaphore: asyncio.Semaphore | None = None,
+    state_schema: dict | None = None,
 ) -> Step:
     rules = scenario.rules
     max_concurrent = scenario.max_concurrent_agents
@@ -649,6 +663,12 @@ async def _run_entity_step(
 
     if resolution is None:
         resolution = _fallback_resolution(proposals)
+
+    if state_schema and resolution.state_delta:
+        warnings = validate_state_delta(resolution.state_delta, state_schema)
+        if warnings:
+            logger.warning("state_delta.validation", step=step_num, warnings=warnings)
+            resolution.validation_warnings = warnings
 
     board.save_resolution(resolution, step_num)
     state_after = board.apply_resolution(resolution, step_num)

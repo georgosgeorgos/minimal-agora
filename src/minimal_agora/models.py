@@ -228,6 +228,7 @@ class Resolution(BaseModel):
     state_delta: dict[str, Any] = Field(default_factory=dict)
     narrative: str = ""
     reasoning: str = ""
+    validation_warnings: list[str] = Field(default_factory=list)
 
 
 class Evaluation(BaseModel):

@@ -227,6 +227,15 @@ def _collect_events(trajectories: list, run_dir: Path) -> list[dict]:
                     "text": step.resolution.narrative,
                 })
 
+            if step.resolution and step.resolution.validation_warnings:
+                for warning in step.resolution.validation_warnings:
+                    events.append({
+                        "trajectory": tid,
+                        "step": step.step_number,
+                        "type": "validation",
+                        "text": warning,
+                    })
+
             delta_keys = set(step.resolution.state_delta.keys()) if step.resolution else set()
             for p in step.proposals:
                 accepted = bool(delta_keys & set(p.proposed_changes.keys())) if delta_keys else False
@@ -373,6 +382,7 @@ def _build_html() -> str:
   .tag.proposal { background: #1a3a2a; color: #4ade80; font-size: 0.7rem; font-weight: 700; }
   .tag.wildcard { background: #3a2a1a; color: #edc948; }
   .tag.outcome { background: #2a1a3a; color: #c084fc; }
+  .tag.validation { background: #3a3a1a; color: #edc948; }
   .event .text { font-size: 0.8rem; color: var(--text-tertiary); line-height: 1.4;
     max-height: 2.8em; overflow: hidden; cursor: pointer; position: relative; }
   .event .text.expanded { max-height: none; }
@@ -462,6 +472,7 @@ def _build_html() -> str:
     <button class="active" data-type="wildcard">Wildcards</button>
     <button class="active" data-type="outcome">Outcomes</button>
     <button class="active" data-type="proposal">Proposals</button>
+    <button class="active" data-type="validation">Validation</button>
   </div>
   <div id="events"><div class="empty">waiting for events...</div></div>
 </div>
@@ -572,9 +583,15 @@ function renderStats(data) {
   const el = document.getElementById('stats');
   const n = data.n_trajectories || 0;
   const nOutcomes = Object.keys(data.outcomes || {}).length;
+  const nValidation = (data.events || []).filter(e => e.type === 'validation').length;
+  let validationStat = '';
+  if (nValidation > 0) {
+    validationStat = `<div class="stat"><div class="icon">&#x26a0;</div><div class="value" style="color:#edc948">${nValidation}</div><div class="label">validation warnings</div></div>`;
+  }
   el.innerHTML = `
     <div class="stat"><div class="icon">&#x1f4ca;</div><div class="value">${n}</div><div class="label">trajectories</div></div>
     <div class="stat"><div class="icon">&#x1f3af;</div><div class="value">${nOutcomes}</div><div class="label">distinct outcomes</div></div>
+    ${validationStat}
   `;
 }
 
@@ -947,7 +964,7 @@ function renderAgentActivity(data) {
   });
 }
 
-let activeFilters = new Set(['narrative', 'wildcard', 'outcome', 'proposal']);
+let activeFilters = new Set(['narrative', 'wildcard', 'outcome', 'proposal', 'validation']);
 let allEvents = [];
 
 function renderEvents(data) {
@@ -1008,15 +1025,15 @@ document.getElementById('event-filter').addEventListener('click', (e) => {
   if (e.target.tagName !== 'BUTTON') return;
   const type = e.target.dataset.type;
   if (type === 'all') {
-    const allActive = ['narrative','wildcard','outcome','proposal'].every(t => activeFilters.has(t));
+    const allActive = ['narrative','wildcard','outcome','proposal','validation'].every(t => activeFilters.has(t));
     if (allActive) { activeFilters.clear(); }
-    else { activeFilters = new Set(['narrative','wildcard','outcome','proposal']); }
+    else { activeFilters = new Set(['narrative','wildcard','outcome','proposal','validation']); }
   } else {
     activeFilters.has(type) ? activeFilters.delete(type) : activeFilters.add(type);
   }
   document.querySelectorAll('#event-filter button').forEach(b => {
     if (b.dataset.type === 'all') {
-      b.classList.toggle('active', activeFilters.size === 4);
+      b.classList.toggle('active', activeFilters.size === 5);
     } else {
       b.classList.toggle('active', activeFilters.has(b.dataset.type));
     }
