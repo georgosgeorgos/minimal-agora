@@ -6,9 +6,15 @@ requires-python = ">=3.12"
 dependencies = [
     "pydantic>=2.0",
     "pyyaml>=6.0",
+    "scipy>=1.11.0",
+    "statsmodels>=0.14.0",
+    "structlog>=26.1.0",
 ]
 
 [project.optional-dependencies]
+api = [
+    "anthropic>=0.40.0",
+]
 viz = [
     "matplotlib>=3.8",
 ]
@@ -20,6 +26,9 @@ dev = [
     "ruff>=0.4",
     "mypy>=1.10",
     "matplotlib>=3.8",
+    "mypy>=2.3.1",
+    "pytest-cov>=7.1.0",
+    "types-pyyaml>=6.0.12.20260815",
 ]
 
 [build-system]

@@ -4,24 +4,38 @@ import json
 import shutil
 from pathlib import Path
 
+import structlog
 import yaml
 
 from minimal_agora.board import _deep_merge
 from minimal_agora.models import Scenario
 
+logger = structlog.stdlib.get_logger(__name__)
+
 
 def load_scenario(path: str | Path) -> Scenario:
+    """Load and validate a scenario from a YAML or JSON file."""
     path = Path(path)
+    logger.info("scenario.load", path=str(path), format=path.suffix)
     with open(path) as f:
         if path.suffix in (".yaml", ".yml"):
             data = yaml.safe_load(f)
         else:
             data = json.load(f)
-    return Scenario.model_validate(data)
+    scenario = Scenario.model_validate(data)
+    logger.info(
+        "scenario.loaded",
+        name=scenario.name,
+        mode=scenario.mode.value,
+        n_agents=len(scenario.agents),
+        n_entities=len(scenario.entities),
+    )
+    return scenario
 
 
 def setup_workspace(scenario: Scenario, workspace: Path, trajectory_id: int = 0) -> Path:
     workspace = workspace / f"trajectory_{trajectory_id:03d}"
+    logger.info("scenario.setup_workspace", trajectory_id=trajectory_id, path=str(workspace))
     workspace.mkdir(parents=True, exist_ok=True)
 
     board = workspace / "board"
@@ -83,6 +97,7 @@ def setup_workspace(scenario: Scenario, workspace: Path, trajectory_id: int = 0)
 
 
 def teardown_workspace(workspace: Path) -> None:
+    logger.info("scenario.teardown_workspace", path=str(workspace))
     if workspace.exists():
         shutil.rmtree(workspace)
 

@@ -6,3 +6,15 @@ __pycache__/
 .pytest_cache/
 runs/
 _references/
+.coverage
+.factory/
+.factory-worktrees/
+*.egg-info/
+dist/
+build/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.venv/
+*.env
+skills/

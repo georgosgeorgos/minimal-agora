@@ -20,6 +20,8 @@ class AgentRole(str, Enum):
 
 
 class AgentConfig(BaseModel):
+    """Configuration for a single LLM agent within a simulation."""
+
     model_config = ConfigDict(extra="forbid")
 
     role: AgentRole
@@ -75,6 +77,8 @@ class InteractionConfig(BaseModel):
 
 
 class EntityConfig(BaseModel):
+    """Configuration for an entity (population, force, critic, or evaluator) in population mode."""
+
     model_config = ConfigDict(extra="forbid")
 
     name: str
@@ -141,7 +145,40 @@ class FitnessConfig(BaseModel):
     direction: str = "maximize"
 
 
+class ResamplingConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    interval: int = Field(default=5, ge=1)
+    criteria: list[str] = Field(default_factory=list)
+    min_particles: int = Field(default=2, ge=1)
+
+
+class ResamplingScore(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    trajectory_id: int
+    scores: list[int]
+    total: int
+    notes: str = ""
+
+
+DEFAULT_RESAMPLING_CRITERIA = [
+    "Did the system state change meaningfully this period?",
+    "Did a novel entity, force, or dynamic emerge?",
+    "Is there active conflict or tension between forces?",
+    "Did complexity increase (new structures, relationships, or hierarchies)?",
+    "Did an unexpected or surprising event occur?",
+    "Are there unresolved tensions that could drive future change?",
+    "Is this trajectory exploring a unique path compared to the initial state?",
+    "Did the environment or external conditions change significantly?",
+    "Are there second-order effects or cascading consequences unfolding?",
+    "Would continuing this trajectory likely produce new information?",
+]
+
+
 class Scenario(BaseModel):
+    """Top-level simulation scenario defining agents, rules, and termination conditions."""
+
     model_config = ConfigDict(extra="forbid")
 
     name: str
@@ -159,6 +196,9 @@ class Scenario(BaseModel):
     wildcards_enabled: bool = False
     narrative_window: int | None = None
     description: str = ""
+    max_concurrent_agents: int = Field(default=8, ge=1)
+    review_interval: int = Field(default=1, ge=1)
+    resampling: ResamplingConfig | None = None
 
 
 class Proposal(BaseModel):
@@ -218,6 +258,8 @@ class TrajectoryOutcome(BaseModel):
 
 
 class Trajectory(BaseModel):
+    """Record of a single simulation run including steps and final outcome."""
+
     model_config = ConfigDict(extra="forbid")
 
     scenario_name: str
@@ -236,3 +278,18 @@ class AggregateResult(BaseModel):
     outcomes: dict[str, int] = Field(default_factory=dict)
     outcome_rates: dict[str, float] = Field(default_factory=dict)
     mean_steps_per_outcome: dict[str, float] = Field(default_factory=dict)
+    outcome_rates_ci: dict[str, tuple[float, float]] | None = None
+    monte_carlo_se: dict[str, float] | None = None
+
+
+class CrossRunComparison(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    run_a_name: str
+    run_b_name: str
+    n_trajectories_a: int
+    n_trajectories_b: int
+    outcome_comparisons: list[dict[str, Any]] = Field(default_factory=list)
+    metric_comparisons: list[dict[str, Any]] = Field(default_factory=list)
+    effect_sizes: dict[str, Any] = Field(default_factory=dict)
+    summary: str = ""

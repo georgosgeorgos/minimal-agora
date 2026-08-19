@@ -1,7 +1,7 @@
 # minimal-agora
 
-<p align='center'>
-  <img src='assets/minima-agora-image.jpeg' alt='Minimal Agora — LLM agents debate in a Greek agora' width='800'>
+<p align="center">
+  <img src="assets/minima-agora-image.jpeg" alt="Minimal Agora — LLM agents debate in a Greek agora" width="800">
 </p>
 
 A world simulation engine where LLM agents debate and interact to explore
@@ -25,6 +25,67 @@ they affect state.
 Agents are stateless `claude -p` subprocesses. They share context through a
 filesystem board (state, narrative, proposals). No fine-tuning, no memory,
 no agent frameworks — just prompts, roles, and domain rules.
+
+## Architecture
+
+### Core Simulation Loop
+
+Each step follows the same loop regardless of mode:
+
+```
+┌─────────────────────────────────────────────────────┐
+│                  Simulation Step                     │
+│                                                      │
+│  WILDCARD ──→ PROPOSE ──→ CRITIQUE ──→ RESOLVE ──→  │
+│  (random       (actors      (critic      (judge      │
+│   shocks)      in parallel)  scores)     synthesizes)│
+│                                                      │
+│  ──→ UPDATE ──→ CHECK TERMINATION                    │
+│      (merge      (convergence,                       │
+│       state)      extinction)                        │
+└─────────────────────────────────────────────────────┘
+```
+
+In population mode, the propose phase runs in order:
+**forces → populations → critics → evaluator**.
+
+### Review Interval Optimization
+
+Skip critic/judge on routine steps for 2–3× speedup:
+
+```
+Step 0:  WILDCARD → PROPOSE → CRITIQUE → RESOLVE → UPDATE  (full review)
+Step 1:  WILDCARD → PROPOSE → auto-merge                    (fast)
+Step 2:  WILDCARD → PROPOSE → auto-merge                    (fast)
+Step 3:  WILDCARD → PROPOSE → CRITIQUE → RESOLVE → UPDATE  (full review)
+...
+```
+
+### Particle Filter (Sequential Importance Resampling)
+
+Focus compute on the most interesting trajectories:
+
+```
+ Trajectory 1:  ●──●──●──●──●──┐
+ Trajectory 2:  ●──●──●──●──●──┤  Score &    ●──●──●──●──●
+ Trajectory 3:  ●──●──●──●──●──┤  Resample → ●──●──●──●──●
+ Trajectory 4:  ●──●──●──●──●──┘             ●──●──●──●──●
+                                              ↑
+                              boring trajectories killed,
+                              interesting ones forked
+```
+
+## Features
+
+- **Three simulation modes** — `counterfactual` (N independent runs, statistical answers), `population` (interacting entities in a shared world), `open_ended` (single run optimizing fitness/complexity)
+- **Pluggable providers** — `ClaudeSubprocessProvider` (default, uses `claude -p`), `AnthropicAPIProvider` (direct API access), `MockProvider` (deterministic testing)
+- **Atomic checkpointing** — crash-safe writes via `tempfile` + `fsync` + `rename`
+- **Statistical analysis** — z-test, bootstrap CIs, Cohen's d, cross-run comparison
+- **Review interval** — skip critic/judge on routine steps for 2–3× speedup
+- **Particle filtering** — sequential importance resampling to focus compute on interesting trajectories
+- **Structured logging** — `structlog` with JSON/console rendering
+- **Live dashboard** — WebSocket-based web dashboard for monitoring running simulations
+- **Visualization** — matplotlib plots for state fields and population scores over time
 
 ## Simulation Modes
 
@@ -92,60 +153,6 @@ flat agents or entities.
 
 **Use for:** "Evolve the most complex ecosystem possible." "Generate the most
 interesting geopolitical timeline."
-
-## Step Loop
-
-Each step follows the same loop regardless of mode:
-
-```
-1. WILDCARD  — roll for catastrophic events (asteroid, plague, war)
-2. PROPOSE   — actor agents read the board, write proposals
-3. CRITIQUE  — critic agents evaluate proposals for plausibility
-4. RESOLVE   — judge agent synthesizes into a single resolution
-5. UPDATE    — resolution applied to state, narrative appended
-6. CHECK     — evaluate termination conditions
-```
-
-In population mode, the propose phase runs in order:
-**forces → populations → critics → evaluator**.
-
-## Architecture
-
-### Core Loop
-
-Every simulation step follows the same adversarial loop:
-
-```
-WILDCARD → PROPOSE → CRITIQUE → RESOLVE → UPDATE → CHECK
-```
-
-Agents are stateless subprocesses communicating through a filesystem board.
-The board holds current state, narrative history, and proposals. Each phase
-reads the board, does its work, and writes back — no shared memory, no
-message passing between agents.
-
-### Particle Filter Variant
-
-For trajectory-level exploration, the runner supports sequential importance
-resampling (particle filtering):
-
-```
-Run N trajectories → Every K steps: score trajectories →
-Resample (kill boring, fork interesting) → Continue
-```
-
-Low-weight trajectories are pruned and replaced with copies of high-weight
-ones, concentrating compute on the most promising branches of the simulation.
-
-### Key Components
-
-| Component | Purpose |
-|-----------|---------|
-| **AgentProvider** | Protocol for LLM backends (ClaudeSubprocessProvider, MockProvider) |
-| **Board** | Filesystem-backed state management with atomic checkpointing |
-| **Loop** | Single-trajectory orchestrator (flat step + entity step) |
-| **Runner** | Batch runner with concurrency control and particle filtering |
-| **Analysis** | Outcome classification, z-test, bootstrap CIs, Cohen's d |
 
 ## Scenario Configuration
 
@@ -220,25 +227,32 @@ minimal-agora run scenario.yaml [options]
   -c, --concurrency N       Max parallel trajectories (default: 2)
   --steps N                 Override step budget
   --timeout N               Agent timeout in seconds (default: 300)
+  --dry-run                 Validate and summarize scenario without running
   -o, --output DIR          Output directory (default: runs/)
 
 # Generate report from completed run
-minimal-agora report runs/my-scenario/
+minimal-agora report runs/my-scenario/ [--format text|json]
+
+# Generate plots from completed run
+minimal-agora visualize runs/my-scenario/ [--fields field1 field2] [--populations pop1] [--scores score1]
+
+# Launch live web dashboard
+minimal-agora dashboard runs/my-scenario/ [-p PORT] [--fields field1] [--populations pop1] [--scores score1]
 
 # Validate a scenario file
 minimal-agora validate scenario.yaml
 
-# Generate a starter scenario YAML
-minimal-agora init-scenario
+# Generate a template scenario
+minimal-agora init-scenario my-scenario [--mode counterfactual|population|open_ended] [--force]
 
 # List agents/entities from a scenario
 minimal-agora agents scenario.yaml
 
+# Compare outcomes from two runs
+minimal-agora compare runs/run-a/ runs/run-b/ [--alpha 0.05] [--format text|json]
+
 # Show version info
 minimal-agora version
-
-# Compare outcomes from two runs
-minimal-agora compare runs/run-a/ runs/run-b/ [--alpha 0.05] [--format table|json]
 
 # Examples
 minimal-agora run scenarios/examples/intelligence.yaml -n 5
