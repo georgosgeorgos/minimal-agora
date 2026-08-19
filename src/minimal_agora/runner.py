@@ -20,7 +20,11 @@ from minimal_agora.models import (
     Trajectory,
     TrajectoryOutcome,
 )
-from minimal_agora.resampling import resample_particles
+from minimal_agora.resampling import (
+    effective_sample_size,
+    resample_particles,
+    score_particles,
+)
 from minimal_agora.scenario import setup_workspace
 
 logger = structlog.stdlib.get_logger(__name__)
@@ -107,6 +111,8 @@ async def run_particle_filter(
     workspaces = [setup_workspace(scenario, output_dir, i) for i in range(n)]
     boards = [Board(ws) for ws in workspaces]
     all_steps: list[list[Step]] = [[] for _ in range(n)]
+    ess_history: list[float] = []
+    ess_thresh = resample_cfg.ess_threshold
 
     for step_num in range(max_steps):
         for i in range(n):
@@ -147,17 +153,31 @@ async def run_particle_filter(
             for exc in eg.exceptions:
                 logger.error("filter.step.unhandled_failure", step=step_num, error=str(exc))
 
-        if (
-            step_num > 0
-            and step_num % resample_cfg.interval == 0
-            and not is_last
-            and n > resample_cfg.min_particles
-        ):
-            logger.info("filter.resample", step=step_num)
-            workspaces = await resample_particles(
+        if step_num > 0 and not is_last and n > resample_cfg.min_particles:
+            weights = await score_particles(
                 scenario, workspaces, step_num, agent_timeout, agent_sem,
             )
-            boards = [Board(ws) for ws in workspaces]
+            ess = effective_sample_size(weights)
+            ess_history.append(ess)
+            threshold_value = ess_thresh * n
+            triggered = ess < threshold_value
+
+            logger.debug(
+                "filter.ess",
+                step=step_num,
+                ess=round(ess, 4),
+                threshold=round(threshold_value, 4),
+                resampling_triggered=triggered,
+            )
+
+            if triggered:
+                logger.info("filter.resample", step=step_num, ess=round(ess, 4))
+                workspaces = await resample_particles(
+                    scenario, workspaces, step_num, agent_timeout, agent_sem,
+                )
+                boards = [Board(ws) for ws in workspaces]
+        else:
+            ess_history.append(float(n))
 
     trajectories = []
     for i in range(n):
@@ -173,6 +193,7 @@ async def run_particle_filter(
                 final_step=final_step,
                 final_state=final_state,
             ),
+            metadata={"ess_history": ess_history},
         )
         trajectories.append(traj)
 

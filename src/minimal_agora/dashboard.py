@@ -190,6 +190,24 @@ def _collect_data(
                         series.append({"step": step_num, "mean": _mean(vals), "min": min(vals), "max": max(vals)})
                 pop_data[pop][sf] = series
 
+    ess_data: list[dict[str, Any]] = []
+    for t in trajectories:
+        if "ess_history" in t.metadata:
+            for step_idx, ess_val in enumerate(t.metadata["ess_history"]):
+                if step_idx >= len(ess_data):
+                    ess_data.append({"step": step_idx, "values": []})
+                ess_data[step_idx]["values"].append(ess_val)
+    ess_timeline: list[dict[str, Any]] = []
+    for entry in ess_data:
+        vals = entry["values"]
+        if vals:
+            ess_timeline.append({
+                "step": entry["step"],
+                "mean": _mean(vals),
+                "min": min(vals),
+                "max": max(vals),
+            })
+
     fitness_data = []
     if all_fitness:
         max_len = max(len(h) for h in all_fitness)
@@ -214,6 +232,7 @@ def _collect_data(
         "events": events,
         "token_summary": token_summary,
         "token_timeline": token_timeline,
+        "ess_timeline": ess_timeline,
     }
 
 
@@ -509,6 +528,10 @@ def _build_html() -> str:
     </div>
   </div>
   <div class="grid">
+    <div class="card" id="ess-card" style="display:none">
+      <h2>Effective Sample Size (ESS)</h2>
+      <canvas id="ess-chart"></canvas>
+    </div>
     <div class="card" id="token-usage-card" style="display:none">
       <h2>Token Usage</h2>
       <canvas id="token-usage-chart"></canvas>
@@ -1033,6 +1056,44 @@ function renderAgentActivity(data) {
   });
 }
 
+function renderESSChart(data) {
+  const ess = data.ess_timeline || [];
+  if (!ess.length) return;
+  document.getElementById('ess-card').style.display = '';
+  const tc = getThemeColors();
+  const n = data.n_trajectories || 1;
+  const threshold = n * 0.5;
+  initChart('ess-chart', {
+    type: 'line',
+    data: {
+      datasets: [
+        Object.assign(lineDataset('ESS', ess.map(e => ({x: e.step, y: e.mean})), '#76b7b2'), {}),
+      ]
+    },
+    options: {
+      responsive: true,
+      scales: themedScales({
+        x: { type: 'linear', title: { display: true, text: 'step' } },
+        y: { title: { display: true, text: 'ESS' }, min: 0 }
+      }),
+      plugins: {
+        legend: { labels: { color: tc.textTertiary } },
+        annotation: {
+          annotations: {
+            threshold: {
+              type: 'line', yMin: threshold, yMax: threshold,
+              borderColor: '#e1575966', borderWidth: 2, borderDash: [6, 3],
+              label: { display: true, content: 'threshold (N/2)', position: 'end',
+                       color: '#e15759', backgroundColor: 'rgba(20,20,20,0.8)',
+                       font: { size: 10 }, padding: 3 }
+            }
+          }
+        }
+      }
+    }
+  });
+}
+
 function renderTokenUsage(data) {
   const timeline = data.token_timeline || [];
   const summary = data.token_summary || {};
@@ -1171,6 +1232,7 @@ function render(data) {
   renderFitness(data);
   renderPopulations(data);
   renderTrajectoryComparison(data);
+  renderESSChart(data);
   renderTokenUsage(data);
   renderWildcardImpact(data);
   renderAgentActivity(data);
