@@ -17,6 +17,7 @@ api = [
 ]
 viz = [
     "matplotlib>=3.8",
+    "manim>=0.18",
 ]
 
 [dependency-groups]

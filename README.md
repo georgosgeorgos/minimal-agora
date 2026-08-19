@@ -63,16 +63,7 @@ See [docs/guide.md](docs/guide.md) for the full design guide with detailed archi
 
 Each step follows the same loop regardless of mode:
 
-```mermaid
-flowchart LR
-    A[Wildcard] --> B[Propose]
-    B --> C[Critique]
-    C --> D[Resolve]
-    D --> E[Update State]
-    E --> F{Done?}
-    F -- No --> A
-    F -- Yes --> G[Classify Outcome]
-```
+![Core Simulation Loop](assets/diagrams/core-loop.png)
 
 In population mode, the propose phase runs in order:
 **forces → populations → critics → evaluator**.
@@ -81,42 +72,17 @@ In population mode, the propose phase runs in order:
 
 Skip critic/judge on routine steps for 2-3x speedup:
 
-| Step | Wildcard | Propose | Critique | Resolve | Update |
-|------|----------|---------|----------|---------|--------|
-| 0    | yes      | yes     | **yes**  | **yes** | yes    |
-| 1    | yes      | yes     | skip     | skip    | auto   |
-| 2    | yes      | yes     | skip     | skip    | auto   |
-| 3    | yes      | yes     | **yes**  | **yes** | yes    |
+![Review Interval Optimization](assets/diagrams/review-interval.png)
 
 ### Particle Filter (Sequential Importance Resampling)
 
 Focus compute on the most interesting trajectories:
 
-```mermaid
-flowchart LR
-    subgraph before[Before]
-        T1[T1 low]
-        T2[T2 mid]
-        T3[T3 high]
-    end
-    before -->|score & resample| after
-    subgraph after[After]
-        R1[T3 copy]
-        R2[T2 kept]
-        R3[T3 kept]
-    end
-```
+![Particle Filter Resampling](assets/diagrams/particle-filter.png)
 
 ### Data Flow
 
-```mermaid
-flowchart LR
-    A[Scenario YAML] --> B[Runner]
-    B --> C[Board]
-    C --> D[Trajectories]
-    D --> E[Analysis]
-    E --> F[Report] & G[Plots] & H[Dashboard]
-```
+![Data Flow](assets/diagrams/data-flow.png)
 
 ## Simulation Modes
 
@@ -126,11 +92,7 @@ Run the **same scenario N times independently** to answer statistical questions.
 Wildcards fire stochastically, producing different paths. Outcomes are classified
 and aggregated.
 
-```mermaid
-flowchart LR
-    S[Scenario] --> W1[Run 1] & W2[Run 2] & W3[Run N]
-    W1 & W2 & W3 --> ST[Aggregate Statistics]
-```
+![Simulation Modes](assets/diagrams/simulation-modes.png)
 
 **Use for:** "How frequently does intelligence emerge?" "In what fraction of
 runs does Rome fall before 200 AD?"
@@ -144,13 +106,6 @@ minimal-agora run scenarios/examples/intelligence.yaml -n 30 -m counterfactual
 Multiple **interacting entities** (civilizations, species, factions) share a
 single world. Each entity has its own state subtree and agents. Forces modify
 the shared world. Critics check plausibility. Evaluators score and resolve.
-
-```mermaid
-flowchart TB
-    W[World State] <--> P1[Pop A] & P2[Pop B] & P3[Pop C]
-    P1 & P2 & P3 --> J[Judge Resolution]
-    J --> N[Narrative]
-```
 
 Entity types:
 
