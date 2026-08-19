@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import asyncio
-import logging
 from pathlib import Path
 
-logger = logging.getLogger(__name__)
+from minimal_agora.logging import get_logger
+
+logger = get_logger(__name__)
 
 from minimal_agora.models import (
     AgentConfig,
@@ -24,6 +25,7 @@ async def invoke_agent(
     prompt: str,
     timeout: int = 300,
 ) -> str:
+    logger.info("agent_invoke", agent=agent.name, role=agent.role.value, step=step, timeout=timeout)
     cmd = [
         "claude",
         "-p", prompt,
@@ -43,12 +45,15 @@ async def invoke_agent(
     except TimeoutError:
         proc.kill()
         await proc.communicate()
+        logger.warning("agent_timeout", agent=agent.name, timeout=timeout)
         raise TimeoutError(f"Agent {agent.name} timed out after {timeout}s")
 
     if proc.returncode != 0:
         err = stderr.decode() if stderr else "unknown error"
+        logger.warning("agent_error", agent=agent.name, exit_code=proc.returncode)
         raise RuntimeError(f"Agent {agent.name} failed (exit {proc.returncode}): {err}")
 
+    logger.debug("agent_response", agent=agent.name, response_len=len(stdout))
     return stdout.decode().strip()
 
 
@@ -265,6 +270,7 @@ not a technical description.
 
 
 def build_prompt(agent: AgentConfig, step: int, rules: list[SimRule] | None = None, interaction_context: str = "", trajectory_id: int | None = None) -> str:
+    logger.debug("build_prompt", agent=agent.name, role=agent.role.value, step=step)
     if agent.role == AgentRole.ACTOR:
         return build_actor_prompt(agent, step, rules, interaction_context, trajectory_id)
     elif agent.role == AgentRole.CRITIC:
@@ -277,37 +283,43 @@ def build_prompt(agent: AgentConfig, step: int, rules: list[SimRule] | None = No
 def parse_proposal(workspace: Path, agent_name: str, step: int) -> Proposal | None:
     path = workspace / "proposals" / f"step_{step:03d}_{agent_name}.json"
     if not path.exists():
-        logger.warning("Proposal file missing: %s", path)
+        logger.warning("parse_missing", artifact="proposal", agent=agent_name, step=step)
         return None
     try:
         with open(path) as f:
-            return Proposal.model_validate_json(f.read())
+            result = Proposal.model_validate_json(f.read())
+        logger.debug("parse_success", artifact="proposal", agent=agent_name, step=step)
+        return result
     except (ValueError, OSError, KeyError) as e:
-        logger.warning("Failed to parse proposal %s: %s", path.name, e)
+        logger.warning("parse_failure", artifact="proposal", agent=agent_name, step=step, error=str(e))
         return None
 
 
 def parse_critique(workspace: Path, agent_name: str, step: int) -> Critique | None:
     path = workspace / "critiques" / f"step_{step:03d}_{agent_name}.json"
     if not path.exists():
-        logger.warning("Critique file missing: %s", path)
+        logger.warning("parse_missing", artifact="critique", agent=agent_name, step=step)
         return None
     try:
         with open(path) as f:
-            return Critique.model_validate_json(f.read())
+            result = Critique.model_validate_json(f.read())
+        logger.debug("parse_success", artifact="critique", agent=agent_name, step=step)
+        return result
     except (ValueError, OSError, KeyError) as e:
-        logger.warning("Failed to parse critique %s: %s", path.name, e)
+        logger.warning("parse_failure", artifact="critique", agent=agent_name, step=step, error=str(e))
         return None
 
 
 def parse_resolution(workspace: Path, step: int) -> Resolution | None:
     path = workspace / "resolutions" / f"step_{step:03d}_resolution.json"
     if not path.exists():
-        logger.warning("Resolution file missing: %s", path)
+        logger.warning("parse_missing", artifact="resolution", step=step)
         return None
     try:
         with open(path) as f:
-            return Resolution.model_validate_json(f.read())
+            result = Resolution.model_validate_json(f.read())
+        logger.debug("parse_success", artifact="resolution", step=step)
+        return result
     except (ValueError, OSError, KeyError) as e:
-        logger.warning("Failed to parse resolution %s: %s", path.name, e)
+        logger.warning("parse_failure", artifact="resolution", step=step, error=str(e))
         return None

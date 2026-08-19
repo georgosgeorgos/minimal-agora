@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import asyncio
-import logging
 import random
 from copy import deepcopy
 from pathlib import Path
 
-logger = logging.getLogger(__name__)
+from minimal_agora.logging import get_logger, trajectory_context
+
+logger = get_logger(__name__)
 
 from minimal_agora.agents import (
     build_interaction_context,
@@ -37,12 +38,13 @@ async def _invoke_with_retry(
     for attempt in range(1 + max_retries):
         try:
             await invoke_agent(agent, workspace, step_num, prompt, timeout)
+            logger.debug("agent_invoke_success", agent=agent.name, step=step_num, attempt=attempt + 1)
             return
         except (OSError, RuntimeError, TimeoutError) as e:
             if attempt < max_retries:
-                logger.warning("Agent %s failed (attempt %d), retrying: %s", agent.name, attempt + 1, e)
+                logger.warning("agent_retry", agent=agent.name, step=step_num, attempt=attempt + 1, error=str(e))
             else:
-                logger.error("Agent %s failed after %d attempts: %s", agent.name, attempt + 1, e)
+                logger.error("agent_failed", agent=agent.name, step=step_num, attempts=attempt + 1, error=str(e))
 
 
 def _detect_resume_point(workspace: Path) -> int:
@@ -50,6 +52,7 @@ def _detect_resume_point(workspace: Path) -> int:
     if not history_dir.exists():
         return 0
     completed = sorted(history_dir.glob("step_*_full.json"))
+    logger.debug("resume_point_detected", completed_steps=len(completed))
     return len(completed)
 
 
@@ -85,9 +88,12 @@ async def run_trajectory(
 ) -> Trajectory:
     board = Board(workspace)
 
+    token = trajectory_context.set(trajectory_id)
+
     existing = _load_completed_trajectory(workspace)
     if existing is not None:
-        print(f"  [trajectory {trajectory_id}] already complete, skipping")
+        logger.info("trajectory_skip", trajectory_id=trajectory_id, reason="already_complete")
+        trajectory_context.reset(token)
         return existing
 
     resume_from = _detect_resume_point(workspace)
@@ -97,7 +103,7 @@ async def run_trajectory(
     )
 
     if resume_from > 0:
-        print(f"  [trajectory {trajectory_id}] resuming from step {resume_from}")
+        logger.info("trajectory_resume", trajectory_id=trajectory_id, resume_from=resume_from)
         trajectory.steps = _restore_checkpoint(workspace, resume_from, board)
 
     max_steps = scenario.termination.get("max_steps", scenario.step_budget)
@@ -109,14 +115,14 @@ async def run_trajectory(
     for step_num in range(resume_from, max_steps):
         wildcard = _roll_wildcard(scenario.wildcards, max_steps) if scenario.wildcards_enabled else None
         if wildcard:
-            print(f"  [trajectory {trajectory_id}] step {step_num}/{max_steps} — WILDCARD: {wildcard.name}")
+            logger.info("step_start", step=step_num, max_steps=max_steps, wildcard=wildcard.name)
             board.write_wildcard(wildcard, step_num)
             if wildcard.state_impact:
                 state = board.read_state()
                 _deep_merge(state, wildcard.state_impact)
                 board.write_state(state)
         else:
-            print(f"  [trajectory {trajectory_id}] step {step_num}/{max_steps}")
+            logger.info("step_start", step=step_num, max_steps=max_steps)
             board.clear_wildcard(step_num)
 
         step = await _run_step(scenario, board, step_num, agent_timeout, trajectory_id)
@@ -126,16 +132,16 @@ async def run_trajectory(
             score = _evaluate_fitness(step.state_after, scenario.fitness)
             fitness_history.append(score)
             if score is not None:
-                print(f"  [trajectory {trajectory_id}] fitness: {score:.4f}")
+                logger.info("fitness_eval", step=step_num, score=score)
 
         if _check_termination(step.state_after, conditions):
-            print(f"  [trajectory {trajectory_id}] terminated at step {step_num}")
+            logger.info("trajectory_terminated", step=step_num, reason="condition_met")
             break
 
         if scenario.mode == SimMode.OPEN_ENDED and scenario.fitness and _check_plateau(
             fitness_history, plateau_window, plateau_threshold,
         ):
-            print(f"  [trajectory {trajectory_id}] fitness plateau at step {step_num}")
+            logger.info("trajectory_terminated", step=step_num, reason="fitness_plateau")
             break
 
     final_state = board.read_state()
@@ -153,7 +159,9 @@ async def run_trajectory(
     )
     trajectory.metadata = metadata
 
+    logger.info("trajectory_complete", trajectory_id=trajectory_id, steps=len(trajectory.steps), classification=classification)
     _save_trajectory(trajectory, workspace)
+    trajectory_context.reset(token)
     return trajectory
 
 
@@ -200,6 +208,7 @@ async def _run_flat_step(
         if p:
             proposals.append(p)
             board.save_proposal(p, step_num)
+    logger.info("proposals_collected", step=step_num, count=len(proposals))
 
     critiques = []
     if critics:
@@ -222,10 +231,12 @@ async def _run_flat_step(
         resolution = parse_resolution(board.workspace, step_num)
 
     if resolution is None:
+        logger.info("fallback_resolution", step=step_num)
         resolution = _fallback_resolution(proposals)
 
     board.save_resolution(resolution, step_num)
     state_after = board.apply_resolution(resolution, step_num)
+    logger.info("step_complete", step=step_num, proposal_count=len(proposals), critique_count=len(critiques))
 
     step = Step(
         step_number=step_num,
@@ -256,7 +267,8 @@ async def _run_entity_step(
     critic_entities = [e for e in scenario.entities if e.type == TrajectoryType.CRITIC]
     eval_entities = [e for e in scenario.entities if e.type == TrajectoryType.EVALUATOR]
 
-    # Phase 1: Forces propose world-level changes
+    logger.info("entity_step_start", step=step_num, forces=len(force_entities), populations=len(pop_entities), critics=len(critic_entities))
+
     force_agents = [a for e in force_entities for a in e.agents]
     if force_agents:
         force_tasks = [
@@ -323,10 +335,12 @@ async def _run_entity_step(
         resolution = parse_resolution(board.workspace, step_num)
 
     if resolution is None:
+        logger.info("fallback_resolution", step=step_num, mode="entity")
         resolution = _fallback_resolution(proposals)
 
     board.save_resolution(resolution, step_num)
     state_after = board.apply_resolution(resolution, step_num)
+    logger.info("entity_step_complete", step=step_num, proposal_count=len(proposals), critique_count=len(critiques))
 
     step = Step(
         step_number=step_num,
@@ -432,5 +446,6 @@ def _check_plateau(
 
 def _save_trajectory(trajectory: Trajectory, workspace: Path) -> None:
     path = workspace / "trajectory.json"
+    logger.debug("trajectory_save", path=str(path), steps=len(trajectory.steps))
     with open(path, "w") as f:
         f.write(trajectory.model_dump_json(indent=2))
