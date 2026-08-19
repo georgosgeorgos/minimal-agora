@@ -294,8 +294,8 @@ class SimulationModes(Scene):
             _arrow(fitness[0].get_bottom(), evolve[0].get_top()),
         ]
         oe_loop = CurvedArrow(
-            evolve[0].get_right(), fitness[0].get_right(),
-            angle=-1.5, color=DARK, stroke_width=2, tip_length=0.12,
+            evolve[0].get_left(), fitness[0].get_left(),
+            angle=1.5, color=DARK, stroke_width=2, tip_length=0.12,
         )
 
         self.play(
