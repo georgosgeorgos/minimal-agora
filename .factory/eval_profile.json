@@ -49,5 +49,5 @@
   ],
   "tier": "discovered",
   "confidence": 0.8,
-  "human_reviewed": false
+  "human_reviewed": true
 }

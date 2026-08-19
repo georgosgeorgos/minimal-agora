@@ -1,0 +1,4 @@
+[
+  "Run the CLI with --help and verify it prints usage information",
+  "Run the CLI with a sample input and verify it produces expected output"
+]
