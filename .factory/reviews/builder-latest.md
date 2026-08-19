@@ -1,23 +1,22 @@
 # Builder Agent Output
 
-- **timestamp:** 2026-08-18T21:56:41Z
+- **timestamp:** 2026-08-19T13:59:51Z
 - **exit_code:** 0
 
 ---
 
-Implementation complete. Here's what was done:
+The PR already exists from earlier work on this branch. My commit has been pushed and is now part of PR #45. The Mermaid diagrams are included in the PR.
 
-**PR:** https://github.com/georgosgeorgos/minimal-agora/pull/45
+Done. I added 6 Mermaid diagrams to `docs/guide.md`:
 
-**Changes:**
+1. **Core Simulation Loop** (Section 2, line 64) — flowchart of the 6-phase loop with wildcard and termination decision nodes
+2. **Agent Interaction Flow** (Section 2, line 137) — sequence diagram showing agent-board communication
+3. **Simulation Modes** (Section 3, line 189) — three parallel subgraphs comparing counterfactual, population, and open-ended flows
+4. **Wildcard Evaluation Flow** (Section 5, line 755) — flowchart of random/conditional/hybrid evaluation logic
+5. **Data Flow** (Section 6, line 837) — left-to-right graph from run directories through analysis to outputs
+6. **Particle Filtering Flow** (Section 9, line 1162) — flowchart of the resampling loop with ESS threshold
 
-1. **`src/minimal_agora/board.py`** — Added `compress_narrative(narrative, window=20)` function that parses `## Step N` sections, keeps the most recent `window` steps verbatim, and compresses older steps by extracting first sentences and grouping them in batches of 10. Handles re-compression (existing summary sections are preserved and extended).
-
-2. **`src/minimal_agora/models.py`** — Added `narrative_window: int | None = None` to `Scenario` model. Defaults to `None` so existing scenarios work unchanged.
-
-3. **`src/minimal_agora/loop.py`** — Added compression call at the start of `_run_step()`: when `scenario.narrative_window` is set, reads the narrative from disk, compresses it, and writes back before agents run. Logs compression ratios.
-
-4. **`tests/test_narrative_compression.py`** — 11 tests covering all required cases. All 103 tests pass, lint clean.
+Commit `df0b6ad` pushed to `factory/run-41ad6c6c`, included in PR #45: https://github.com/georgosgeorgos/minimal-agora/pull/45
 ---
 
 > **⚠ CEO IDENTITY RE-ANCHOR (Sacred Rule 8)**
