@@ -151,6 +151,7 @@ class ResamplingConfig(BaseModel):
     interval: int = Field(default=5, ge=1)
     criteria: list[str] = Field(default_factory=list)
     min_particles: int = Field(default=2, ge=1)
+    ess_threshold: float = Field(default=0.5, ge=0.0, le=1.0)
 
 
 class ResamplingScore(BaseModel):

@@ -22,6 +22,14 @@ from minimal_agora.models import (
 logger = structlog.stdlib.get_logger(__name__)
 
 
+def effective_sample_size(weights: list[float]) -> float:
+    """ESS = 1 / sum(w_i^2) for normalized weights."""
+    sum_sq = sum(w * w for w in weights)
+    if sum_sq == 0.0:
+        return 0.0
+    return 1.0 / sum_sq
+
+
 def systematic_resample(weights: list[float], n: int) -> list[int]:
     cumsum = []
     running = 0.0
@@ -51,6 +59,50 @@ def fork_workspace(src_workspace: Path, dst_workspace: Path) -> None:
     if dst_workspace.exists():
         shutil.rmtree(dst_workspace)
     shutil.copytree(src_workspace, dst_workspace)
+
+
+async def score_particles(
+    scenario: Scenario,
+    workspaces: list[Path],
+    step: int,
+    agent_timeout: int,
+    agent_semaphore: asyncio.Semaphore | None,
+) -> list[float]:
+    """Run critics and return normalized weights without resampling."""
+    resample_cfg = scenario.resampling
+    if resample_cfg is None:
+        n = len(workspaces)
+        return [1.0 / n] * n
+
+    criteria = resample_cfg.criteria or DEFAULT_RESAMPLING_CRITERIA
+    n = len(workspaces)
+
+    critic_agent = AgentConfig(
+        role=AgentRole.CRITIC,
+        name="resampling_critic",
+        perspective="You evaluate trajectory quality for resampling.",
+    )
+    prompt = build_resampling_critic_prompt(criteria, step)
+
+    async def run_critic(idx: int) -> None:
+        ws = workspaces[idx]
+        (ws / "critiques").mkdir(parents=True, exist_ok=True)
+        if agent_semaphore:
+            async with agent_semaphore:
+                await invoke_agent(critic_agent, ws, step, prompt, agent_timeout)
+        else:
+            await invoke_agent(critic_agent, ws, step, prompt, agent_timeout)
+
+    await asyncio.gather(*[run_critic(i) for i in range(n)], return_exceptions=True)
+
+    scores: list[ResamplingScore] = []
+    for i in range(n):
+        score = parse_resampling_score(workspaces[i], step, trajectory_id=i)
+        if score is None:
+            score = ResamplingScore(trajectory_id=i, scores=[0] * len(criteria), total=0)
+        scores.append(score)
+
+    return compute_weights(scores)
 
 
 async def resample_particles(
