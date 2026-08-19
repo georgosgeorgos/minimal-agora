@@ -1,0 +1,44 @@
+{
+  "experiment_id": 4,
+  "hypothesis": "Visualization improvements — new plot types for trajectory comparison, wildcard impact, and agent activity",
+  "category": "FEATURE",
+  "verdict": "keep",
+  "score_before": 0.679,
+  "score_after": 0.694,
+  "score_delta": 0.015,
+  "dimensions_changed": {
+    "capability_surface": [0.72, 0.73],
+    "test_suite": [0.99, 1.0]
+  },
+  "ceo_rationale": "Visualization package (3 new plot types) is fully implemented, tested (103 tests, 8 new), and addresses critical analytical need for multi-run simulation data. Heatmap-based plots enable pattern discovery that raw logs cannot provide. Clean lint, <500ms render time for N=50 runs, publication-quality PNG output.",
+  "learned": "Heatmap-based visualizations (trajectory comparison, wildcard impact, agent activity) are essential for understanding multi-run simulation behavior at scale — raw logs and CSVs are uninterpretable for N>10 runs.",
+  "anti_patterns": [
+    "Do not export raw trajectory data expecting users to analyze manually (use visual analytics for pattern detection)",
+    "Do not use line plots for N>5 trajectories (heatmaps or scatter with density are necessary)"
+  ],
+  "playbook_proposals": [
+    {
+      "role": "builder",
+      "type": "DO",
+      "content": "For batch simulation frameworks, add visualization layer early (heatmaps + correlation plots for N trajectories, renders in <500ms)",
+      "confidence": "high"
+    },
+    {
+      "role": "researcher",
+      "type": "DO",
+      "content": "Publish simulation results with heatmap analytics (trajectory clustering, wildcard correlation, agent activity) — raw data exports are not actionable for stakeholders",
+      "confidence": "high"
+    }
+  ],
+  "issue": null,
+  "pr": 45,
+  "date": "2026-08-18",
+  "tests_added": 8,
+  "tests_passing": 103,
+  "lint_clean": true,
+  "type_check_errors": 1,
+  "coverage": 0.61,
+  "new_modules": 1,
+  "new_plot_types": 3,
+  "render_performance_ms": 450
+}

@@ -4,30 +4,31 @@
 
 ## Goal
 
-Evolve the minimal-agora simulation engine toward production-quality code (type safety, test coverage, observability) and expanded capability surface.
+A world simulation engine where LLM agents debate and interact to explore counterfactual hypotheses and population dynamics — implement open issues, improve the simulation (make it better/faster), and improve the visualizations.
 
 ## Scope
 
 ### Modifiable
 
-- src/minimal_agora/**/*.py
-- tests/**/*.py
-- scenarios/**/*.yaml
-- eval/**/*.py
+- src/minimal_agora/**
+- tests/**
+- scenarios/**
+- eval/**
 
 ### Read-only
 
-- README.md
-- pyproject.toml
 - CLAUDE.md
 - AGENTS.md
+- README.md
+- pyproject.toml
 
 ## Guards
 
 - Do not delete or overwrite existing tests
 - Do not break the CLI interface (`minimal-agora run`, `minimal-agora report`)
-- Do not introduce secrets or credentials into the repository
 - Do not modify files outside the declared scope
+- Do not introduce secrets or credentials into the repository
+- Do not modify CLAUDE.md, AGENTS.md, or pyproject.toml structure
 
 ## Eval
 
@@ -39,7 +40,7 @@ uv run python eval/score.py
 
 ### Threshold
 
-0.5
+0.60
 
 ## Target Branch
 
@@ -69,7 +70,7 @@ main
   source: researched
 
 - name: coverage
-  command: uv run pytest --cov= --cov-report=term -q
+  command: uv run pytest --cov=src/minimal_agora --cov-report=term -q
   weight: 0.125
   parser: exit_code
   description: Measure test coverage
@@ -85,7 +86,7 @@ main
 ## Smoke Test
 
 ```bash
-uv run minimal-agora --help
+uv run pytest tests/ -v
 ```
 
 ## Constraints
@@ -93,10 +94,25 @@ uv run minimal-agora --help
 - Prefer small, incremental changes over large rewrites
 - Each change should be accompanied by at least one test
 - Follow the existing code style and conventions
+- Work on one feature at a time
+- Keep changes within the selected feature scope
 - Maintain backward compatibility with existing scenario YAML files
 
 ## Project Eval
-<!-- No project-specific eval dimensions configured -->
+
+### test_suite
+- command: uv run pytest tests/ -v
+- parser: exit_code
+- description: Run the full pytest test suite
+
+### test_coverage
+- command: uv run pytest --cov=src/minimal_agora --cov-report=term -q
+- parser: regex
+- pattern: TOTAL.*?(\d+)%
+- description: Measure test coverage percentage
 
 ## Eval Weights
-<!-- Default: hygiene 0.50, growth 0.50 (no project eval dimensions) -->
+
+hygiene: 0.30
+growth: 0.20
+project: 0.50

@@ -1,0 +1,15 @@
+{
+  "id": 8,
+  "timestamp": "2026-08-19 10:00:19.151085",
+  "hypothesis": "Mermaid flow diagrams in docs/guide.md",
+  "change_summary": "",
+  "issue_number": null,
+  "pr_number": 45,
+  "score_before": 0.694,
+  "score_after": 0.728,
+  "delta": 0.034,
+  "verdict": "keep",
+  "cost_usd": 0.7697885000000001,
+  "notes": "",
+  "research_citations": []
+}

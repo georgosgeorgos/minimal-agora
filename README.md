@@ -253,6 +253,11 @@ minimal-agora compare runs/run-a/ runs/run-b/ [--alpha 0.05] [--format text|json
 
 # Show version info
 minimal-agora version
+
+# Examples
+minimal-agora run scenarios/examples/intelligence.yaml -n 5
+minimal-agora run scenarios/examples/mediterranean.yaml -n 3 -m population
+minimal-agora run scenarios/examples/intelligence.yaml -n 30 --steps 10  # quick test run
 ```
 
 ## Example Scenarios
@@ -269,6 +274,26 @@ minimal-agora version
 | nuclear_war | counterfactual | 500 | 1 month | ~42 years | Does nuclear war occur? |
 
 Use `--steps 10` for quick test runs.
+
+## Features
+
+- **Provider abstraction** — `AgentProvider` protocol decouples the engine from
+  any specific LLM backend. Ships with `ClaudeSubprocessProvider` (production)
+  and `MockProvider` (testing). Swap providers without changing simulation code.
+
+- **Atomic checkpointing** — crash-safe state writes using temp-file-then-rename.
+  If the process dies mid-step, the last committed checkpoint is intact.
+
+- **Statistical analysis** — z-test for outcome proportions, bootstrap confidence
+  intervals, Cohen's d effect size, and cross-run comparison (`minimal-agora compare`).
+
+- **Review interval** — skip critic/judge evaluation on non-review steps to reduce
+  LLM calls. Configure `review_interval` in the scenario to run critique every
+  N steps instead of every step.
+
+- **Particle filtering** — sequential importance resampling across trajectories.
+  Score trajectories every K steps, prune low-weight runs, and fork high-weight
+  ones to focus compute on the most interesting branches.
 
 ## Requirements
 

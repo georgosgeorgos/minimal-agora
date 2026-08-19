@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import tempfile
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -10,7 +11,16 @@ from typing import IO
 
 import structlog
 
-from minimal_agora.models import Critique, Proposal, Resolution, Step, WildcardEvent
+from minimal_agora.models import (
+    ConditionOperator,
+    Critique,
+    Proposal,
+    Resolution,
+    Step,
+    TriggerCondition,
+    WildcardEvent,
+    WildcardMode,
+)
 
 logger = structlog.stdlib.get_logger(__name__)
 
@@ -173,3 +183,143 @@ def _deep_merge(base: dict, overlay: dict) -> None:
             _deep_merge(base[key], value)
         else:
             base[key] = value
+
+
+def _get_nested(d: dict, path: str):
+    keys = path.split(".")
+    current = d
+    for key in keys:
+        if not isinstance(current, dict) or key not in current:
+            return None
+        current = current[key]
+    return current
+
+
+_CONDITION_OPS = {
+    ConditionOperator.GT: lambda v, t: v > t,
+    ConditionOperator.LT: lambda v, t: v < t,
+    ConditionOperator.EQ: lambda v, t: float(v) == t,
+    ConditionOperator.GTE: lambda v, t: v >= t,
+    ConditionOperator.LTE: lambda v, t: v <= t,
+}
+
+
+def compress_narrative(narrative: str, window: int = 20) -> str:
+    _STEP_HEADER = re.compile(r"^## Step (\d+)$", re.MULTILINE)
+    matches = [(m, int(m.group(1))) for m in _STEP_HEADER.finditer(narrative) if int(m.group(1)) >= 1]
+
+    if len(matches) <= window:
+        logger.debug("narrative has %d steps, within window %d — no compression", len(matches), window)
+        return narrative
+
+    logger.info("compressing narrative: %d steps, keeping %d recent", len(matches), window)
+
+    steps: list[tuple[str, str]] = []
+    for i, (match, _step_num) in enumerate(matches):
+        header = match.group(0)
+        body_start = match.end()
+        body_end = matches[i + 1][0].start() if i + 1 < len(matches) else len(narrative)
+        body = narrative[body_start:body_end].strip()
+        steps.append((header, body))
+
+    preamble = narrative[: matches[0][0].start()]
+
+    summary_marker = "## Summary of Earlier Steps"
+    existing_summary = ""
+    clean_preamble = preamble
+    if summary_marker in preamble:
+        idx = preamble.index(summary_marker)
+        existing_summary = preamble[idx + len(summary_marker) :].strip()
+        clean_preamble = preamble[:idx].rstrip() + "\n\n"
+
+    old_steps = steps[:-window]
+    recent_steps = steps[-window:]
+
+    batch_size = 10
+    summary_parts: list[str] = []
+    if existing_summary:
+        summary_parts.append(existing_summary)
+
+    for i in range(0, len(old_steps), batch_size):
+        batch = old_steps[i : i + batch_size]
+        sentences = [_extract_first_sentence(body) for _, body in batch if body]
+        if sentences:
+            summary_parts.append(" ".join(sentences))
+
+    result = clean_preamble.rstrip("\n") + "\n\n"
+    if summary_parts:
+        result += summary_marker + "\n\n"
+        result += "\n\n".join(summary_parts)
+        result += "\n"
+
+    for header, body in recent_steps:
+        result += f"\n{header}\n\n{body}\n"
+
+    return result
+
+
+def _extract_first_sentence(text: str) -> str:
+    dot = text.find(".")
+    if dot >= 0:
+        return text[: dot + 1]
+    return (text[:100].rstrip() + "...") if len(text) > 100 else text
+
+
+def evaluate_trigger_conditions(conditions: list[TriggerCondition], state: dict) -> bool:
+    for cond in conditions:
+        value = _get_nested(state, cond.field)
+        if value is None or not isinstance(value, (int, float)):
+            logger.debug(
+                "trigger_condition field=%s not found or not numeric, condition fails",
+                cond.field,
+            )
+            return False
+
+        op_fn = _CONDITION_OPS[cond.operator]
+        passed = op_fn(value, cond.threshold)
+
+        logger.debug(
+            "trigger_condition field=%s op=%s threshold=%s value=%s → %s",
+            cond.field, cond.operator.value, cond.threshold, value,
+            "passed" if passed else "failed",
+        )
+        if not passed:
+            return False
+
+    logger.debug("all trigger_conditions satisfied (%d conditions)", len(conditions))
+    return True
+
+
+def evaluate_wildcard_mode(
+    event: WildcardEvent, per_step_prob: float, state: dict | None,
+) -> float | None:
+    mode = event.mode
+
+    if mode == WildcardMode.RANDOM:
+        logger.debug("wildcard %s mode=random, probability=%s", event.name, per_step_prob)
+        return per_step_prob
+
+    conditions_met = (
+        state is not None
+        and event.trigger_conditions
+        and evaluate_trigger_conditions(event.trigger_conditions, state)
+    )
+
+    if mode == WildcardMode.CONDITIONAL:
+        if not conditions_met:
+            logger.debug("wildcard %s mode=conditional, conditions not met — skipped", event.name)
+            return None
+        logger.debug("wildcard %s mode=conditional, conditions met, probability=%s", event.name, per_step_prob)
+        return per_step_prob
+
+    # HYBRID: always eligible, boosted when conditions met
+    if conditions_met:
+        boosted = min(per_step_prob * event.probability_boost, 1.0)
+        logger.debug(
+            "wildcard %s mode=hybrid, conditions met, boosted probability=%s (%.1fx)",
+            event.name, boosted, event.probability_boost,
+        )
+        return boosted
+
+    logger.debug("wildcard %s mode=hybrid, conditions not met, probability=%s", event.name, per_step_prob)
+    return per_step_prob

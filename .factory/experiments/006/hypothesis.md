@@ -1,0 +1,1 @@
+Wildcard mode — add explicit random/conditional mode option to WildcardEvent

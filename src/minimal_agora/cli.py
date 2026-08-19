@@ -43,6 +43,11 @@ def main() -> int:
     viz_parser.add_argument("--fields", nargs="+", default=None, help="State fields to plot over time")
     viz_parser.add_argument("--populations", nargs="+", default=None, help="Population names for score plots")
     viz_parser.add_argument("--scores", nargs="+", default=None, help="Score fields for population plots")
+    viz_parser.add_argument(
+        "--types", nargs="+", default=None,
+        choices=["outcomes", "steps", "timelines", "populations", "comparison", "wildcards", "agents"],
+        help="Plot types to generate (default: all)",
+    )
 
     dash_parser = subparsers.add_parser("dashboard", help="Launch live web dashboard")
     dash_parser.add_argument("run_dir", type=Path, help="Path to run output directory")
@@ -199,6 +204,7 @@ def cmd_visualize(args) -> int:
         fields=args.fields,
         populations=args.populations,
         score_fields=args.scores,
+        plot_types=args.types,
     )
 
     if paths:

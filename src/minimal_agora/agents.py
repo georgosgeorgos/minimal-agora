@@ -396,6 +396,78 @@ def build_judge_prompt(
     )
 
 
+def build_resampling_critic_prompt(
+    state_or_criteria: dict | list[str],
+    narrative_or_step: str | int | None = None,
+    trajectory_summaries: list[dict] | None = None,
+    *,
+    step: int | None = None,
+) -> str:
+    if step is not None and narrative_or_step is None:
+        narrative_or_step = step
+    if isinstance(state_or_criteria, dict):
+        state_json = json.dumps(state_or_criteria, indent=2)
+        summaries_json = json.dumps(trajectory_summaries or [], indent=2)
+        narrative = narrative_or_step
+        return (
+            "You are a **resampling critic** in a particle-filtering world simulation.\n\n"
+            "Your job is to evaluate a set of parallel trajectories and decide which are most\n"
+            "promising (should be duplicated) and which are least promising (should be pruned).\n\n"
+            f"## Current World State\n```json\n{state_json}\n```\n\n"
+            f"## Narrative So Far\n{narrative}\n\n"
+            "## Trajectory Summaries\n"
+            "Each entry describes one trajectory's recent progress, fitness, and outcome so far.\n"
+            f"```json\n{summaries_json}\n```\n\n"
+            "## Instructions\n"
+            "Evaluate each trajectory on:\n"
+            "- **Plausibility**: Is the trajectory's progression realistic and internally consistent?\n"
+            "- **Diversity**: Does it explore a meaningfully different region of the outcome space?\n"
+            "- **Promise**: Is it trending toward an interesting or informative outcome?\n\n"
+            "Return your assessment as JSON on stdout with this structure:\n"
+            '```json\n'
+            '{\n'
+            '  "scores": [\n'
+            '    {\n'
+            '      "trajectory_id": 0,\n'
+            '      "score": 0.85,\n'
+            '      "reasoning": "Why this trajectory is or isn\'t promising"\n'
+            '    }\n'
+            '  ],\n'
+            '  "recommendation": "Which trajectories to duplicate and which to prune",\n'
+            '  "overall_assessment": "Brief assessment of trajectory diversity and quality"\n'
+            '}\n'
+            '```\n\n'
+            "Score each trajectory from 0.0 (prune) to 1.0 (duplicate). Higher scores mean\n"
+            "the trajectory should receive more copies in the resampled population.\n"
+        )
+    criteria = state_or_criteria
+    step = narrative_or_step
+    criteria_lines = "\n".join(f"{i + 1}. {c}" for i, c in enumerate(criteria))
+    return f"""You are a **resampling critic** evaluating trajectory quality at step {step}.
+
+## Instructions
+1. Read the current world state from `board/state.json`
+2. Read the narrative history from `board/narrative.md`
+3. For each criterion below, score 0 (no) or 1 (yes):
+
+{criteria_lines}
+
+4. Write your result as a JSON file to `critiques/resample_step_{step:03d}.json`
+
+The JSON must have this structure:
+```json
+{{
+  "scores": [0, 1, 1, ...],
+  "total": 4,
+  "notes": "Brief explanation of your scoring"
+}}
+```
+
+The `scores` array must have exactly {len(criteria)} elements (one per criterion above).
+The `total` must equal the sum of the scores array.
+"""
+
+
 def build_prompt(
     agent: AgentConfig,
     step: int,
@@ -410,6 +482,11 @@ def build_prompt(
         return build_critic_prompt(agent, step, rules, **kwargs)
     elif agent.role == AgentRole.JUDGE:
         return build_judge_prompt(agent, step, rules, **kwargs)
+    elif agent.role == AgentRole.RESAMPLING_CRITIC:
+        raise ValueError(
+            "RESAMPLING_CRITIC must be invoked via build_resampling_critic_prompt() directly, "
+            "not through build_prompt(), because it requires state, narrative, and trajectory_summaries parameters"
+        )
     raise ValueError(f"Unknown role: {agent.role}")
 
 
@@ -511,33 +588,6 @@ def parse_resolution_from_text(text: str) -> Resolution | None:
     except (ValueError, KeyError) as e:
         logger.warning("parse.resolution_from_text.invalid", error=str(e))
         return None
-
-
-def build_resampling_critic_prompt(criteria: list[str], step: int) -> str:
-    criteria_lines = "\n".join(f"{i + 1}. {c}" for i, c in enumerate(criteria))
-    return f"""You are a **resampling critic** evaluating trajectory quality at step {step}.
-
-## Instructions
-1. Read the current world state from `board/state.json`
-2. Read the narrative history from `board/narrative.md`
-3. For each criterion below, score 0 (no) or 1 (yes):
-
-{criteria_lines}
-
-4. Write your result as a JSON file to `critiques/resample_step_{step:03d}.json`
-
-The JSON must have this structure:
-```json
-{{
-  "scores": [0, 1, 1, ...],
-  "total": 4,
-  "notes": "Brief explanation of your scoring"
-}}
-```
-
-The `scores` array must have exactly {len(criteria)} elements (one per criterion above).
-The `total` must equal the sum of the scores array.
-"""
 
 
 def parse_resampling_score(workspace: Path, step: int, trajectory_id: int) -> ResamplingScore | None:

@@ -1,0 +1,15 @@
+{
+  "id": 4,
+  "timestamp": "2026-08-18 18:01:53.594362",
+  "hypothesis": "Visualization improvements \u2014 new plot types for trajectory comparison, wildcard impact, and simulation analytics",
+  "change_summary": "",
+  "issue_number": null,
+  "pr_number": 45,
+  "score_before": 0.679,
+  "score_after": 0.694,
+  "delta": 0.015,
+  "verdict": "keep",
+  "cost_usd": 5.42546725,
+  "notes": "ceo:keep score_before=0.679 score_after=0.694 delta=+0.015 tests=103/103 lint=clean qa_pass=true new_tests=8 visualization_improvements=3_new_plot_types",
+  "research_citations": []
+}

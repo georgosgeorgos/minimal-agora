@@ -1,0 +1,53 @@
+{
+  "project_type": "cli_tool",
+  "dimensions": [
+    {
+      "name": "tests",
+      "command": "uv run pytest -v",
+      "weight": 0.4166666666666667,
+      "parser": "exit_code",
+      "regex_pattern": null,
+      "description": "Run test suite: uv run pytest -v",
+      "source": "discovered"
+    },
+    {
+      "name": "lint",
+      "command": "uv run ruff check .",
+      "weight": 0.25,
+      "parser": "exit_code",
+      "regex_pattern": null,
+      "description": "Run linter: uv run ruff check .",
+      "source": "discovered"
+    },
+    {
+      "name": "type_check",
+      "command": "uv run mypy ./",
+      "weight": 0.125,
+      "parser": "exit_code",
+      "regex_pattern": null,
+      "description": "Run type checker: uv run mypy ./",
+      "source": "researched"
+    },
+    {
+      "name": "coverage",
+      "command": "uv run pytest --cov=run_41ad6c6c --cov-report=term -q",
+      "weight": 0.125,
+      "parser": "exit_code",
+      "regex_pattern": null,
+      "description": "Measure test coverage",
+      "source": "researched"
+    },
+    {
+      "name": "observability",
+      "command": "(inline)",
+      "weight": 0.08333333333333334,
+      "parser": "json",
+      "regex_pattern": null,
+      "description": "Analyze logging coverage, structured logging, and request tracing",
+      "source": "researched"
+    }
+  ],
+  "tier": "discovered",
+  "confidence": 0.8,
+  "human_reviewed": true
+}

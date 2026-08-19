@@ -22,7 +22,14 @@ from minimal_agora.agents import (
     parse_resolution,
     parse_resolution_from_text,
 )
-from minimal_agora.board import Board, _atomic_write, _deep_merge, _expand_dotted_keys
+from minimal_agora.board import (
+    Board,
+    _atomic_write,
+    _deep_merge,
+    _expand_dotted_keys,
+    compress_narrative,
+    evaluate_wildcard_mode,
+)
 from minimal_agora.models import (
     AgentRole,
     FitnessConfig,
@@ -144,7 +151,11 @@ async def run_trajectory(
 
     for step_num in range(resume_from, max_steps):
         slog = tlog.bind(step=step_num, max_steps=max_steps)
-        wildcard = _roll_wildcard(scenario.wildcards, max_steps) if scenario.wildcards_enabled else None
+        if scenario.wildcards_enabled:
+            current_state = board.read_state()
+            wildcard = _roll_wildcard(scenario.wildcards, max_steps, current_state)
+        else:
+            wildcard = None
         if wildcard:
             slog.info("step.start", wildcard=wildcard.name)
             board.write_wildcard(wildcard, step_num)
@@ -201,6 +212,13 @@ async def _run_step(
     agent_semaphore: asyncio.Semaphore | None = None,
     max_steps: int = 1,
 ) -> Step:
+    if scenario.narrative_window is not None:
+        raw = board.narrative_path.read_text()
+        compressed = compress_narrative(raw, scenario.narrative_window)
+        if compressed != raw:
+            logger.info("Compressed narrative: %d → %d chars", len(raw), len(compressed))
+            board.narrative_path.write_text(compressed)
+
     state_before = deepcopy(board.read_state())
 
     if scenario.entities:
@@ -716,10 +734,15 @@ def _classify_outcome(state: dict, scenario: Scenario) -> str:
     return "unclassified"
 
 
-def _roll_wildcard(wildcards: list[WildcardEvent], max_steps: int = 1) -> WildcardEvent | None:
+def _roll_wildcard(
+    wildcards: list[WildcardEvent], max_steps: int = 1, state: dict | None = None,
+) -> WildcardEvent | None:
     for event in wildcards:
         per_step = min(event.probability / max_steps, 1.0)
-        if random.random() < per_step:
+        effective_prob = evaluate_wildcard_mode(event, per_step, state)
+        if effective_prob is None:
+            continue
+        if random.random() < effective_prob:
             return event
     return None
 
