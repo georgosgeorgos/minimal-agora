@@ -59,6 +59,24 @@ WILDCARD → PROPOSE → CRITIQUE → RESOLVE → UPDATE → CHECK
 | **UPDATE** | The resolution's `state_delta` is deep-merged into the current state. The narrative is appended to the narrative log. A state snapshot is saved to the history directory. |
 | **CHECK** | Termination conditions are evaluated. If any condition matches (a field equals/exceeds a threshold), the trajectory ends. For open-ended mode, a fitness plateau check also runs. |
 
+The following diagram shows the core simulation loop with its decision points for wildcard firing and termination:
+
+```mermaid
+flowchart TD
+    START([Step Start]) --> WC{Wildcard\nenabled?}
+    WC -->|No| PROPOSE
+    WC -->|Yes| PROB{Probability\ncheck}
+    PROB -->|Fires| APPLY[Apply state_impact\nWrite wildcard file]
+    PROB -->|Skips| PROPOSE
+    APPLY --> PROPOSE[PROPOSE\nActors write proposals]
+    PROPOSE --> CRITIQUE[CRITIQUE\nCritics evaluate proposals]
+    CRITIQUE --> RESOLVE[RESOLVE\nJudge synthesizes resolution]
+    RESOLVE --> UPDATE[UPDATE\nDeep-merge state_delta\nAppend narrative]
+    UPDATE --> CHECK{Termination\ncondition met?}
+    CHECK -->|Yes| END([Trajectory Complete])
+    CHECK -->|No| START
+```
+
 If no judge agent is configured, or if the judge fails to produce output, a
 **fallback resolution** merges all proposals' `proposed_changes` and concatenates
 their reasoning.
@@ -112,6 +130,32 @@ Key Board operations:
 | `write_wildcard(event, step)` | Write wildcard event JSON to `board/` |
 | `clear_wildcard(step)` | Remove wildcard file for a step |
 
+### Agent Interaction Flow
+
+The following sequence diagram shows how agents interact through the filesystem board during a single step:
+
+```mermaid
+sequenceDiagram
+    participant L as Loop
+    participant A as Actor Agent
+    participant B as Board (filesystem)
+    participant C as Critic Agent
+    participant J as Judge Agent
+
+    L->>B: Write state.json, narrative.md, scenario.md
+    L->>A: Invoke with prompt
+    A->>B: Read state.json, narrative.md
+    A->>B: Write proposals/step_N_name.json
+    L->>C: Invoke with prompt
+    C->>B: Read state.json + proposals/*
+    C->>B: Write critiques/step_N_name.json
+    L->>J: Invoke with prompt
+    J->>B: Read proposals/* + critiques/*
+    J->>B: Write resolutions/step_N_resolution.json
+    L->>B: Read resolution, apply state_delta
+    L->>B: Update state.json, append narrative.md
+```
+
 ### Deep Merge
 
 State updates use deep merge (`_deep_merge`): when the resolution's
@@ -139,6 +183,36 @@ restarting from scratch. Completed trajectories (those with a written
 
 minimal-agora supports three simulation modes, each suited to different kinds of
 questions.
+
+The following diagram compares the three modes side by side:
+
+```mermaid
+flowchart TD
+    subgraph Counterfactual
+        direction TB
+        C1[Same scenario\nsame agents] --> C2[N independent\ntrajectories]
+        C2 --> C3[Classify each\noutcome]
+        C3 --> C4[Aggregate\nstatistics]
+    end
+
+    subgraph Population
+        direction TB
+        P1[Shared world state] --> P2[Forces act on world]
+        P2 --> P3[Populations respond]
+        P3 --> P4[Critics check\nplausibility]
+        P4 --> P5[Evaluator resolves]
+        P5 --> P6[N runs →\naggregate]
+    end
+
+    subgraph Open-Ended
+        direction TB
+        O1[Single trajectory] --> O2[Run step loop]
+        O2 --> O3[Evaluate fitness]
+        O3 --> O4{Plateau\ndetected?}
+        O4 -->|No| O2
+        O4 -->|Yes| O5[Terminate]
+    end
+```
 
 ### Counterfactual Mode
 
@@ -676,6 +750,31 @@ This wildcard only fires when social cohesion drops below 50 — a condition
 that might itself be caused by other events. The probability roll then
 determines whether the event actually occurs.
 
+The following diagram shows the evaluation flow for each wildcard mode:
+
+```mermaid
+flowchart TD
+    START([Evaluate Wildcard]) --> MODE{Mode?}
+
+    MODE -->|RANDOM\nno trigger_conditions| R1{Probability\ncheck}
+    R1 -->|Pass| FIRE1([Fire wildcard\nApply state_impact])
+    R1 -->|Fail| SKIP1([Skip])
+
+    MODE -->|CONDITIONAL\ntrigger_conditions present| C1{All trigger\nconditions met?}
+    C1 -->|No| SKIP2([Skip])
+    C1 -->|Yes| C2{Probability\ncheck}
+    C2 -->|Pass| FIRE2([Fire wildcard\nApply state_impact])
+    C2 -->|Fail| SKIP3([Skip])
+
+    MODE -->|HYBRID\nconditions + boosted rate| H1{Probability check\nbase_rate}
+    H1 -->|Fail| SKIP4([Skip])
+    H1 -->|Pass| H2{Conditions\nmet?}
+    H2 -->|Yes| H3{Probability check\nboosted_rate}
+    H2 -->|No| H4([Fire at\nbase_rate])
+    H3 -->|Pass| FIRE3([Fire wildcard\nboosted])
+    H3 -->|Fail| SKIP5([Skip])
+```
+
 ### Trigger Condition Operators
 
 | Operator | Meaning |
@@ -730,6 +829,21 @@ The README and architecture reference z-test for outcome proportions, bootstrap
 confidence intervals, and Cohen's d effect size as planned or available
 capabilities. The `compare` CLI command is designed to compare outcomes from two
 runs.
+
+### Data Flow
+
+The following diagram shows how data flows from completed simulation runs through analysis to visualizations:
+
+```mermaid
+graph LR
+    RD[Run directory\ntrajectory_*/] --> LT[load_trajectories]
+    LT --> CO[Classify\noutcomes]
+    CO --> CS[Compute statistics\nz-test, CIs,\nCohen's d]
+    CS --> GP[Generate plots\nmatplotlib PNGs]
+    CS --> SD[Serve dashboard\nSSE live updates]
+    GP --> PD[plots/ directory]
+    SD --> WB[Browser\nlocalhost:8765]
+```
 
 ### Static Plots
 
@@ -1041,6 +1155,22 @@ ones.
 ```
 Run N trajectories → Every K steps: score trajectories →
 Resample (kill boring, fork interesting) → Continue
+```
+
+The following diagram shows the particle filtering loop in detail:
+
+```mermaid
+flowchart TD
+    START([Start N trajectories]) --> RUN[Run all trajectories\nfor K steps]
+    RUN --> SCORE[Resampling critic\nscores each trajectory\non plausibility,\ndiversity, promise]
+    SCORE --> WEIGHTS[Compute weights\nand ESS]
+    WEIGHTS --> ESS{ESS < N/2?}
+    ESS -->|No| CONTINUE
+    ESS -->|Yes| RESAMPLE[Resample:\nPrune low-weight trajectories\nDuplicate high-weight trajectories]
+    RESAMPLE --> CONTINUE[Continue all\ntrajectories]
+    CONTINUE --> DONE{All trajectories\ncomplete?}
+    DONE -->|No| RUN
+    DONE -->|Yes| END([Aggregate results])
 ```
 
 ### The Resampling Critic
