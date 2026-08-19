@@ -1,0 +1,1 @@
+Add Mermaid flow diagrams to docs/guide.md for core simulation flows

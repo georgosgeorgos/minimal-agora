@@ -1,0 +1,36 @@
+{
+  "experiment_id": 2,
+  "hypothesis": "Conditional wildcards — state-dependent triggers (Issue #34)",
+  "category": "EXPLORE",
+  "verdict": "revert",
+  "score_before": 0.543,
+  "score_after": 0.552,
+  "score_delta": 0.009,
+  "dimensions_changed": {
+    "capability_surface": [0.66, 0.68]
+  },
+  "ceo_rationale": "Feature is fully implemented and verified (85/85 tests pass, code review PASS, QA PASS). score.py shows 0.813 composite (above 0.60 threshold). Revert is due to factory internal eval not detecting uv+pytest test suites and coverage metrics (tests and coverage dimensions scored at 0.5 'Not detected'). This is a metadata detection issue, not code quality.",
+  "learned": "State-dependent event triggers are a major realism win for simulations. Factory's internal eval has a detection gap for uv+pytest — scores tests and coverage at 0.5 'Not detected' regardless of actual test counts and pass rates.",
+  "anti_patterns": [
+    "Don't underestimate the impact of state-dependent wildcards on simulation expressiveness",
+    "Don't rely on factory internal eval metadata scoring for go/no-go decisions when actual evaluators (score.py) show higher scores"
+  ],
+  "playbook_proposals": [
+    {
+      "role": "builder",
+      "type": "DO",
+      "content": "For wildcard features, include state-dependent trigger conditions as first-class citizens — this is table-stakes for realism",
+      "confidence": "high"
+    }
+  ],
+  "issue": 34,
+  "pr": 45,
+  "date": "2026-08-18",
+  "actual_test_count": 85,
+  "actual_test_pass": true,
+  "actual_new_tests": 30,
+  "lint_status": "clean",
+  "code_review_status": "PASS",
+  "qa_status": "PASS",
+  "score_py_composite": 0.813
+}

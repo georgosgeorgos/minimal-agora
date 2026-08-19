@@ -35,11 +35,11 @@ def main() -> int:
     run_parser.add_argument("--dry-run", action="store_true", help="Validate and summarize scenario without running")
 
     report_parser = subparsers.add_parser("report", help="Generate report from completed run")
-    report_parser.add_argument("run_dir", type=Path, help="Path to run output directory")
+    report_parser.add_argument("run_dir", nargs="?", type=Path, default=None, help="Path to run output directory (default: latest in runs/)")
     report_parser.add_argument("--format", dest="output_format", choices=["text", "json"], default="text", help="Output format")
 
     viz_parser = subparsers.add_parser("visualize", help="Generate plots from completed run")
-    viz_parser.add_argument("run_dir", type=Path, help="Path to run output directory")
+    viz_parser.add_argument("run_dir", nargs="?", type=Path, default=None, help="Path to run output directory (default: latest in runs/)")
     viz_parser.add_argument("--fields", nargs="+", default=None, help="State fields to plot over time")
     viz_parser.add_argument("--populations", nargs="+", default=None, help="Population names for score plots")
     viz_parser.add_argument("--scores", nargs="+", default=None, help="Score fields for population plots")
@@ -50,7 +50,7 @@ def main() -> int:
     )
 
     dash_parser = subparsers.add_parser("dashboard", help="Launch live web dashboard")
-    dash_parser.add_argument("run_dir", type=Path, help="Path to run output directory")
+    dash_parser.add_argument("run_dir", nargs="?", type=Path, default=None, help="Path to run output directory (default: latest in runs/)")
     dash_parser.add_argument("-p", "--port", type=int, default=8765, help="Server port")
     dash_parser.add_argument("--fields", nargs="+", default=None, help="State fields to track")
     dash_parser.add_argument("--populations", nargs="+", default=None, help="Population names")
@@ -106,6 +106,38 @@ def main() -> int:
     else:
         parser.print_help()
         return 1
+
+
+def _resolve_run_dir(args) -> int | None:
+    """If args.run_dir is None, find the most recently modified subdirectory under runs/.
+    Returns 1 on failure (caller should return it), None on success (args.run_dir is set).
+    """
+    if args.run_dir is not None:
+        return None
+    runs_root = Path("runs")
+    if not runs_root.exists():
+        print("No runs/ directory found. Run a simulation first.")
+        return 1
+    subdirs = [d for d in runs_root.iterdir() if d.is_dir()]
+    if not subdirs:
+        print("No runs found in runs/")
+        return 1
+    latest = max(subdirs, key=lambda d: d.stat().st_mtime)
+    args.run_dir = latest
+    print(f"Using latest run: {latest}")
+    return None
+
+
+def _extract_numeric_field_paths(state: dict, prefix: str = "") -> list[str]:
+    """Extract dot-separated paths to numeric values from a nested dict."""
+    paths = []
+    for key, value in state.items():
+        full = f"{prefix}.{key}" if prefix else key
+        if isinstance(value, (int, float)):
+            paths.append(full)
+        elif isinstance(value, dict):
+            paths.extend(_extract_numeric_field_paths(value, full))
+    return paths
 
 
 def cmd_run(args) -> int:
@@ -181,6 +213,9 @@ def cmd_run(args) -> int:
 
 
 def cmd_report(args) -> int:
+    err = _resolve_run_dir(args)
+    if err is not None:
+        return err
     trajectories = load_trajectories(args.run_dir)
     if not trajectories:
         print(f"No trajectories found in {args.run_dir}")
@@ -196,6 +231,9 @@ def cmd_report(args) -> int:
 
 
 def cmd_visualize(args) -> int:
+    err = _resolve_run_dir(args)
+    if err is not None:
+        return err
     from minimal_agora.visualize import generate_all_plots
 
     print(f"Generating plots from: {args.run_dir}")
@@ -213,7 +251,19 @@ def cmd_visualize(args) -> int:
 
 
 def cmd_dashboard(args) -> int:
+    err = _resolve_run_dir(args)
+    if err is not None:
+        return err
     from minimal_agora.dashboard import start_dashboard
+
+    if not args.fields:
+        trajectories = load_trajectories(args.run_dir)
+        if trajectories and trajectories[0].steps:
+            state = trajectories[0].steps[0].state_after
+            detected = _extract_numeric_field_paths(state)
+            if detected:
+                args.fields = detected
+                print(f"Auto-detected fields: {', '.join(detected)}")
 
     start_dashboard(
         args.run_dir,

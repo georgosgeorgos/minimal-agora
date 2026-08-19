@@ -1,0 +1,1 @@
+Conditional wildcards — state-dependent triggers (Issue #34). Add trigger_conditions to WildcardEvent, ConditionOperator enum, state-based evaluation in board.py, structlog instrumentation, tests.

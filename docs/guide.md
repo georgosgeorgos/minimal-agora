@@ -225,10 +225,20 @@ Each trajectory is an isolated run with the same agents, rules, and initial stat
 but different random seeds. Wildcards fire stochastically, producing divergent
 paths. After all trajectories complete, outcomes are classified and aggregated.
 
-```
-world₁  world₂  world₃  ...  worldₙ     (isolated, same setup)
-  ↓       ↓       ↓           ↓
-out₁    out₂    out₃        outₙ        → statistics
+```mermaid
+flowchart TB
+    S["📋 Same Scenario"] --> W1["🌍 World 1"]
+    S --> W2["🌍 World 2"]
+    S --> W3["🌍 World 3"]
+    S --> WN["🌍 World N"]
+    W1 --> O1["out₁"]
+    W2 --> O2["out₂"]
+    W3 --> O3["out₃"]
+    WN --> ON["outₙ"]
+    O1 --> ST["📊 Statistics"]
+    O2 --> ST
+    O3 --> ST
+    ON --> ST
 ```
 
 **Use for:** "How frequently does intelligence emerge?" "In what fraction of
@@ -262,12 +272,16 @@ evaluator-judge resolves everything.
 
 Run N times to get statistics across population scenarios.
 
-```
-         shared world state
-         ┌──────┼──────┐
-       pop₁   pop₂   pop₃      (interact via shared board)
-         └──────┼──────┘
-            resolution          → narrative + scores
+```mermaid
+flowchart TB
+    WS["🌐 Shared World State"]
+    WS <--> P1["👥 Pop 1"]
+    WS <--> P2["👥 Pop 2"]
+    WS <--> P3["👥 Pop 3"]
+    P1 --> RES["⚖️ Resolution"]
+    P2 --> RES
+    P3 --> RES
+    RES --> N["📝 Narrative + Scores"]
 ```
 
 **Use for:** "What happens when Rome, Greece, and Persia compete for 1000

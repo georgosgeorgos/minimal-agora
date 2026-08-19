@@ -1,0 +1,105 @@
+{
+  "total": 0.7284326,
+  "results": [
+    {
+      "name": "tests",
+      "score": 0.5,
+      "weight": 0.093,
+      "passed": true,
+      "details": "Not detected: no test suite detected"
+    },
+    {
+      "name": "lint",
+      "score": 0.9,
+      "weight": 0.045,
+      "passed": false,
+      "details": "run-41ad6c6c: 1 errors"
+    },
+    {
+      "name": "type_check",
+      "score": 0.95,
+      "weight": 0.03,
+      "passed": false,
+      "details": "run-41ad6c6c: 1 errors"
+    },
+    {
+      "name": "coverage",
+      "score": 0.5,
+      "weight": 0.075,
+      "passed": true,
+      "details": "Not detected: no coverage tool detected"
+    },
+    {
+      "name": "config_parser",
+      "score": 1.0,
+      "weight": 0.03,
+      "passed": true,
+      "details": "OK: goal is non-empty; OK: scope has entries; OK: eval_command is non-empty; OK: eval_threshold is positive"
+    },
+    {
+      "name": "architecture",
+      "score": 0.5,
+      "weight": 0.027,
+      "passed": true,
+      "details": "Not detected: no .sentrux/rules.toml found"
+    },
+    {
+      "name": "capability_surface",
+      "score": 0.73,
+      "weight": 0.05,
+      "passed": true,
+      "details": "surface=146 (modules=20, public_fns=118, entry_points=8), target=200"
+    },
+    {
+      "name": "experiment_diversity",
+      "score": 0.7163,
+      "weight": 0.04000000000000001,
+      "passed": true,
+      "details": "3 distinct categories in last 7 experiments; dominant=feature (43%); last 3: ['feature', 'bugfix', 'feature']"
+    },
+    {
+      "name": "observability",
+      "score": 0.611,
+      "weight": 0.036,
+      "passed": true,
+      "details": "observability_score=0.61, function_coverage=0.17, structured_logging=False"
+    },
+    {
+      "name": "research_grounding",
+      "score": 0.1,
+      "weight": 0.028000000000000004,
+      "passed": false,
+      "details": "sources=0 (archive), utilization=0.00, research_report=no, doc_ratio=0.50 (4/8), citation_ratio=0.00"
+    },
+    {
+      "name": "factory_effectiveness",
+      "score": 0.5571,
+      "weight": 0.026000000000000002,
+      "passed": true,
+      "details": "keep_rate=0.57 (4/7), delta_score=1.00, managed_projects=0"
+    },
+    {
+      "name": "spec_compliance",
+      "score": 0.5,
+      "weight": 0.020000000000000004,
+      "passed": true,
+      "details": "spec_results.json not found \u2014 neutral score"
+    },
+    {
+      "name": "test_suite",
+      "score": 1.0,
+      "weight": 0.25,
+      "passed": true,
+      "details": "ots_with_synthetic_data PASSED [ 99%]\ntests/test_visualize.py::test_generate_all_plots_with_type_filter PASSED [100%]\n\n============================= 130 passed in 1.10s ==============================\n"
+    },
+    {
+      "name": "test_coverage",
+      "score": 0.67,
+      "weight": 0.25,
+      "passed": true,
+      "details": "coverage=67%"
+    }
+  ],
+  "guard_violations": [],
+  "passed": true
+}

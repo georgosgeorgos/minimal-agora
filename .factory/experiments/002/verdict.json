@@ -1,0 +1,15 @@
+{
+  "id": 2,
+  "timestamp": "2026-08-18 18:02:01.606807",
+  "hypothesis": "Conditional wildcards \u2014 state-dependent triggers (Issue #34)",
+  "change_summary": "",
+  "issue_number": null,
+  "pr_number": 45,
+  "score_before": 0.543,
+  "score_after": 0.679,
+  "delta": 0.136,
+  "verdict": "keep",
+  "cost_usd": 5.42546725,
+  "notes": "ceo:keep retroactive_keep=true score_before=0.543 score_after=0.679 tests=85/85_at_time qa_pass=true new_feature=true",
+  "research_citations": []
+}

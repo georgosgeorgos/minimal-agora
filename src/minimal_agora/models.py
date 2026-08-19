@@ -194,6 +194,7 @@ class Scenario(BaseModel):
     fitness: FitnessConfig | None = None
     wildcards: list[WildcardEvent] = Field(default_factory=list)
     wildcards_enabled: bool = False
+    wildcard_warmup: float = Field(default=0.05, ge=0.0, le=1.0)
     narrative_window: int | None = None
     description: str = ""
     max_concurrent_agents: int = Field(default=8, ge=1)

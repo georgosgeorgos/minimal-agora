@@ -111,7 +111,8 @@ async def run_particle_filter(
     for step_num in range(max_steps):
         for i in range(n):
             if scenario.wildcards_enabled:
-                wildcard = _roll_wildcard(scenario.wildcards, max_steps)
+                current_state = boards[i].read_state()
+                wildcard = _roll_wildcard(scenario.wildcards, max_steps, current_state, step_num, scenario.wildcard_warmup)
                 if wildcard:
                     boards[i].write_wildcard(wildcard, step_num)
                     if wildcard.state_impact:

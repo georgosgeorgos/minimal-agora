@@ -95,8 +95,8 @@ async def resample_particles(
     weights = compute_weights(scores)
     parent_indices = systematic_resample(weights, n)
 
-    n_killed = len(set(range(n)) - set(parent_indices))
-    n_forked = len(parent_indices) - len(set(parent_indices))
+    n_replaced = len(set(range(n)) - set(parent_indices))
+    n_duplicated = len(parent_indices) - len(set(parent_indices))
 
     new_workspaces = list(workspaces)
     for dst_idx in range(n):
@@ -108,8 +108,8 @@ async def resample_particles(
     logger.info(
         "resample.complete",
         step=step,
-        n_killed=n_killed,
-        n_forked=n_forked,
+        n_replaced=n_replaced,
+        n_duplicated=n_duplicated,
         weights=[round(w, 4) for w in weights],
         scores=[s.total for s in scores],
     )

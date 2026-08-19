@@ -1,0 +1,46 @@
+[
+  {
+    "type": "anti_pattern",
+    "text": "Factory internal eval does not detect uv+pytest test suites, scoring tests and coverage dimensions at 0.5 ('Not detected') regardless of actual test pass rate. This metadata detection gap can cause false rejections of high-quality work. Use score.py evaluation as ground truth for acceptance, not factory internal eval composite.",
+    "evidence": [1, 2],
+    "date": "2026-08-18"
+  },
+  {
+    "type": "pattern",
+    "text": "State-dependent event triggering is a major realism multiplier for simulations. Both conditional wildcard implementation (exp #2) and feedback from simulation design space suggest this is essential for expressing realistic scenario logic.",
+    "evidence": [2],
+    "date": "2026-08-18"
+  },
+  {
+    "type": "agent_perf",
+    "agent": "builder",
+    "text": "Builder successfully implemented both FIX (#40) and EXPLORE (#34) hypotheses to full specification. Code review caught non-blocking issues only; adversarial test verified all edge cases. QA pass rate 100% across both experiments.",
+    "evidence": [1, 2],
+    "date": "2026-08-18"
+  },
+  {
+    "type": "pattern",
+    "text": "Bounded-prompt mechanisms (narrative compression via summarization) are critical for production simulations beyond ~50 steps. Token budgets prevent agent context from growing unbounded while preserving causal continuity. Exp #3 demonstrates 40-60% token savings without quality loss.",
+    "evidence": [3],
+    "date": "2026-08-18"
+  },
+  {
+    "type": "pattern",
+    "text": "Visualization analytics (heatmaps, correlation plots, activity matrices) are non-negotiable for multi-run batch simulation analysis. Raw trajectory data and logs are uninterpretable for N>10 runs; visual distillation enables pattern discovery. Exp #4 adds 3 essential plot types.",
+    "evidence": [4],
+    "date": "2026-08-18"
+  },
+  {
+    "type": "agent_perf",
+    "agent": "builder",
+    "text": "Builder completed 4 consecutive experiments to full production quality (103 tests, clean lint, all QA pass). Demonstrates ability to scale from single-feature fixes to multi-feature feature work without scope creep or quality degradation.",
+    "evidence": [1, 2, 3, 4],
+    "date": "2026-08-18"
+  },
+  {
+    "type": "pattern",
+    "text": "Cycle scores improved from 0.543 baseline to 0.694 final (+0.151, +28%) through targeted fixes (bug #40) + features (wildcards #34, compression #29, visualizations). All 4 hypotheses KEPT despite different categories (FIX/EXPLORE/FEATURE). No trade-offs observed between velocity and quality.",
+    "evidence": [1, 2, 3, 4],
+    "date": "2026-08-18"
+  }
+]

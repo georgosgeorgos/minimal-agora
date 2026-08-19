@@ -181,8 +181,9 @@ def _collect_events(trajectories: list, run_dir: Path) -> list[dict]:
                         "step": step.step_number,
                         "type": "proposal",
                         "agent": p.agent,
-                        "text": p.reasoning[:200],
+                        "text": p.reasoning,
                         "accepted": accepted,
+                        "proposed_fields": list(p.proposed_changes.keys()),
                     })
 
         # Check for wildcards in board directory
@@ -227,6 +228,7 @@ def _build_html() -> str:
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>minimal-agora dashboard</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3"></script>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
@@ -235,45 +237,49 @@ def _build_html() -> str:
   .subtitle { color: #888; font-size: 0.85rem; margin-bottom: 20px; }
   .status { display: inline-block; padding: 2px 8px; border-radius: 4px;
             font-size: 0.75rem; font-weight: 600; }
-  .status.live { background: #1a3a1a; color: #4ade80; }
+  .status.live { background: #1a3a1a; color: #4ade80; animation: pulse 2s ease-in-out infinite; }
   .status.done { background: #1a2a3a; color: #60a5fa; }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
   .page-layout { display: grid; grid-template-columns: 1fr 360px; gap: 20px; }
   @media (max-width: 1000px) { .page-layout { grid-template-columns: 1fr; } }
   .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
           gap: 16px; margin-bottom: 20px; }
-  .card { background: #141414; border: 1px solid #222; border-radius: 8px; padding: 16px; }
+  .card { background: #141414; border: 1px solid #222; border-radius: 8px; padding: 16px;
+          box-shadow: 0 2px 8px rgba(0,0,0,0.3); border-top: 2px solid #4e79a7; }
   .card h2 { font-size: 0.9rem; color: #aaa; margin-bottom: 12px; text-transform: uppercase;
              letter-spacing: 0.05em; }
   .stats-row { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 16px; }
-  .stat { background: #1a1a1a; border-radius: 6px; padding: 12px 16px; min-width: 100px; }
+  .stat { background: #1a1a1a; border-radius: 6px; padding: 12px 16px; min-width: 100px;
+          box-shadow: 0 2px 8px rgba(0,0,0,0.3); border-top: 2px solid #4e79a7; }
   .stat .value { font-size: 1.8rem; font-weight: 700; color: #fff; }
   .stat .label { font-size: 0.75rem; color: #888; margin-top: 2px; }
   .outcome-bar { display: flex; align-items: center; margin: 6px 0; }
   .outcome-bar .name { width: 120px; font-size: 0.85rem; color: #ccc; }
-  .outcome-bar .bar-bg { flex: 1; height: 24px; background: #1a1a1a; border-radius: 4px;
+  .outcome-bar .bar-bg { flex: 1; height: 24px; background: #1a1a1a; border-radius: 6px;
                           overflow: hidden; position: relative; }
-  .outcome-bar .bar-fill { height: 100%; border-radius: 4px; transition: width 0.5s ease; }
+  .outcome-bar .bar-fill { height: 100%; border-radius: 6px; transition: width 0.5s ease; }
   .outcome-bar .bar-label { position: absolute; right: 8px; top: 3px; font-size: 0.75rem;
                              color: #fff; font-weight: 600; }
-  canvas { max-height: 300px; }
+  canvas { max-height: 350px; }
   .field-select { background: #1a1a1a; color: #ccc; border: 1px solid #333; border-radius: 4px;
                   padding: 4px 8px; font-size: 0.8rem; margin-bottom: 8px; }
   .wc-heatmap { width: 100%; border-collapse: collapse; margin-bottom: 12px; }
   .wc-heatmap td, .wc-heatmap th { padding: 2px 4px; font-size: 0.7rem; text-align: center; }
   .wc-heatmap th { color: #888; font-weight: 400; }
-  .wc-heatmap .wc-cell { width: 18px; height: 18px; border-radius: 3px; cursor: default; }
-  .wc-heatmap .wc-hit { background: #fbbf24; }
+  .wc-heatmap .wc-cell { width: 22px; height: 22px; border-radius: 3px; cursor: default; }
+  .wc-heatmap .wc-hit { background: #edc948; }
   .wc-heatmap .wc-miss { background: #1a1a1a; }
   .wc-heatmap .traj-label { text-align: right; color: #888; padding-right: 6px; }
   .wc-tooltip { position: relative; }
   .wc-tooltip:hover::after { content: attr(data-tip); position: absolute; bottom: 120%;
-    left: 50%; transform: translateX(-50%); background: #222; color: #fbbf24; padding: 3px 8px;
+    left: 50%; transform: translateX(-50%); background: #222; color: #edc948; padding: 3px 8px;
     border-radius: 4px; font-size: 0.7rem; white-space: nowrap; z-index: 10;
     pointer-events: none; }
   .empty { color: #555; font-style: italic; padding: 40px; text-align: center; }
   .event-log { background: #141414; border: 1px solid #222; border-radius: 8px;
                padding: 16px; height: calc(100vh - 120px); overflow-y: auto;
-               position: sticky; top: 20px; }
+               position: sticky; top: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+               border-top: 2px solid #4e79a7; }
   .event-log h2 { font-size: 0.9rem; color: #aaa; margin-bottom: 12px;
                    text-transform: uppercase; letter-spacing: 0.05em; }
   .event { margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid #1a1a1a; }
@@ -283,20 +289,36 @@ def _build_html() -> str:
   .event .meta .tag { padding: 1px 6px; border-radius: 3px; font-weight: 600;
                        font-size: 0.65rem; text-transform: uppercase; }
   .tag.narrative { background: #1a2a3a; color: #60a5fa; }
-  .tag.proposal { background: #1a3a2a; color: #4ade80; }
-  .tag.wildcard { background: #3a2a1a; color: #fbbf24; }
+  .tag.proposal { background: #1a3a2a; color: #4ade80; font-size: 0.7rem; font-weight: 700; }
+  .tag.wildcard { background: #3a2a1a; color: #edc948; }
   .tag.outcome { background: #2a1a3a; color: #c084fc; }
-  .event .text { font-size: 0.8rem; color: #ccc; line-height: 1.4; }
+  .event .text { font-size: 0.8rem; color: #ccc; line-height: 1.4;
+    max-height: 2.8em; overflow: hidden; cursor: pointer; position: relative; }
+  .event .text.expanded { max-height: none; }
+  .event .text:not(.expanded)::after { content: '... click to expand'; position: absolute;
+    right: 0; bottom: 0; background: linear-gradient(to right, transparent, #141414 40%);
+    padding-left: 20px; color: #666; font-size: 0.7rem; }
   .event-filter { display: flex; gap: 6px; margin-bottom: 12px; flex-wrap: wrap; }
   .event-filter button { background: #1a1a1a; border: 1px solid #333; color: #888;
                           padding: 3px 10px; border-radius: 4px; cursor: pointer;
                           font-size: 0.7rem; }
   .event-filter button.active { border-color: #555; color: #fff; }
-  .colors { --c0: #2196F3; --c1: #F44336; --c2: #4CAF50; --c3: #FF9800; --c4: #9C27B0;
-            --c5: #00BCD4; --c6: #795548; --c7: #607D8B; }
+  .proposal-fields { margin: 4px 0; font-size: 0.75rem; color: #888; }
+  .proposal-fields code { background: #1a2a1a; padding: 1px 5px; border-radius: 3px;
+                           font-size: 0.7rem; color: #4ade80; margin-right: 4px; }
+  .proposal-reasoning { margin: 6px 0 0 0; padding: 6px 10px; border-left: 3px solid #333;
+                         font-size: 0.78rem; color: #aaa; line-height: 1.5;
+                         background: #0f0f0f; border-radius: 0 4px 4px 0; }
+  .proposal-status { margin-left: auto; font-weight: 600; font-size: 0.75rem; }
+  .wc-legend { display: flex; gap: 12px; align-items: center; margin-top: 8px;
+               font-size: 0.7rem; color: #888; }
+  .wc-legend-swatch { display: inline-block; width: 14px; height: 14px; border-radius: 3px;
+                       vertical-align: middle; margin-right: 4px; }
+  .stat .icon { font-size: 1rem; margin-bottom: 4px; }
+  .footer { text-align: center; padding: 16px 0 4px; font-size: 0.7rem; color: #444; }
 </style>
 </head>
-<body class="colors">
+<body>
 <div style="display:flex; align-items:center; gap:12px; margin-bottom:4px;">
   <h1 id="title">minimal-agora dashboard</h1>
   <span class="status live" id="status">connecting...</span>
@@ -353,16 +375,74 @@ def _build_html() -> str:
     <button class="active" data-type="narrative">Narrative</button>
     <button class="active" data-type="wildcard">Wildcards</button>
     <button class="active" data-type="outcome">Outcomes</button>
-    <button data-type="proposal">Proposals</button>
+    <button class="active" data-type="proposal">Proposals</button>
   </div>
   <div id="events"><div class="empty">waiting for events...</div></div>
 </div>
 </div>
+<div class="footer">minimal-agora v0.1 • powered by Chart.js</div>
 
 <script>
-const COLORS = ['#2196F3','#F44336','#4CAF50','#FF9800','#9C27B0',
-                '#00BCD4','#795548','#607D8B','#E91E63','#3F51B5'];
+const COLORS = ['#4e79a7','#f28e2b','#e15759','#76b7b2','#59a14f',
+                '#edc948','#b07aa1','#ff9da7','#9c755f','#bab0ac'];
 const charts = {};
+
+Chart.defaults.animation.duration = 800;
+Chart.defaults.animation.easing = 'easeOutQuart';
+Chart.defaults.interaction.mode = 'index';
+Chart.defaults.interaction.intersect = false;
+Chart.defaults.plugins.tooltip.backgroundColor = 'rgba(20,20,20,0.95)';
+Chart.defaults.plugins.tooltip.borderColor = '#333';
+Chart.defaults.plugins.tooltip.borderWidth = 1;
+Chart.defaults.plugins.tooltip.titleColor = '#fff';
+Chart.defaults.plugins.tooltip.bodyColor = '#ccc';
+Chart.defaults.plugins.tooltip.padding = 10;
+Chart.defaults.plugins.tooltip.cornerRadius = 6;
+
+Chart.register({
+  id: 'crosshair',
+  afterDraw(chart) {
+    if (chart.tooltip && chart.tooltip._active && chart.tooltip._active.length) {
+      const x = chart.tooltip._active[0].element.x;
+      const ctx = chart.ctx;
+      const top = chart.chartArea.top;
+      const bottom = chart.chartArea.bottom;
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(x, top);
+      ctx.lineTo(x, bottom);
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+});
+
+function gradientBg(color) {
+  return function(context) {
+    if (!context.chart.chartArea) return color + '00';
+    const {top, bottom} = context.chart.chartArea;
+    const ctx = context.chart.ctx;
+    const g = ctx.createLinearGradient(0, top, 0, bottom);
+    g.addColorStop(0, color + '40');
+    g.addColorStop(1, color + '00');
+    return g;
+  };
+}
+
+function lineDataset(label, data, color, fill) {
+  return {
+    label, data,
+    borderColor: color,
+    backgroundColor: fill !== false ? gradientBg(color) : color + '22',
+    fill: fill !== false,
+    tension: 0.3,
+    pointRadius: 2,
+    pointHoverRadius: 6,
+    borderWidth: 2.5,
+  };
+}
 
 function initChart(id, config) {
   if (charts[id]) charts[id].destroy();
@@ -375,8 +455,8 @@ function renderStats(data) {
   const n = data.n_trajectories || 0;
   const nOutcomes = Object.keys(data.outcomes || {}).length;
   el.innerHTML = `
-    <div class="stat"><div class="value">${n}</div><div class="label">trajectories</div></div>
-    <div class="stat"><div class="value">${nOutcomes}</div><div class="label">distinct outcomes</div></div>
+    <div class="stat"><div class="icon">📊</div><div class="value">${n}</div><div class="label">trajectories</div></div>
+    <div class="stat"><div class="icon">🎯</div><div class="value">${nOutcomes}</div><div class="label">distinct outcomes</div></div>
   `;
 }
 
@@ -405,15 +485,17 @@ function renderStepsChart(data) {
   const labels = Object.keys(outcomes).sort();
   if (!labels.length) return;
 
+  const values = labels.map(l => outcomes[l].mean_steps);
   initChart('steps-chart', {
     type: 'bar',
     data: {
       labels,
       datasets: [{
-        data: labels.map(l => outcomes[l].mean_steps),
+        data: values,
         backgroundColor: labels.map((_, i) => COLORS[i % COLORS.length] + '99'),
         borderColor: labels.map((_, i) => COLORS[i % COLORS.length]),
-        borderWidth: 1
+        borderWidth: 1,
+        borderRadius: 4
       }]
     },
     options: {
@@ -421,7 +503,22 @@ function renderStepsChart(data) {
       scales: { y: { title: { display: true, text: 'mean steps', color: '#888' },
                       grid: { color: '#222' }, ticks: { color: '#888' } },
                 x: { grid: { color: '#222' }, ticks: { color: '#ccc' } } }
-    }
+    },
+    plugins: [{
+      afterDatasetsDraw(chart) {
+        const ctx = chart.ctx;
+        chart.getDatasetMeta(0).data.forEach((bar, i) => {
+          if (values[i] == null) return;
+          ctx.save();
+          ctx.fillStyle = '#ccc';
+          ctx.font = '11px -apple-system, system-ui, sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'bottom';
+          ctx.fillText(values[i].toFixed(1), bar.x, bar.y - 4);
+          ctx.restore();
+        });
+      }
+    }]
   });
 }
 
@@ -431,16 +528,39 @@ function renderTimelines(data) {
   if (!fields.length) return;
 
   document.getElementById('timelines-card').style.display = '';
-  const datasets = fields.map((f, i) => {
+  const datasets = [];
+  fields.forEach((f, i) => {
     const series = timelines[f];
-    return {
-      label: f,
-      data: series.map(s => ({ x: s.step, y: s.mean })),
-      borderColor: COLORS[i % COLORS.length],
-      backgroundColor: COLORS[i % COLORS.length] + '22',
-      fill: false, tension: 0.3, pointRadius: 3
+    const color = COLORS[i % COLORS.length];
+    datasets.push({
+      label: f + ' max', data: series.map(s => ({ x: s.step, y: s.max })),
+      borderColor: color + '44', backgroundColor: color + '15',
+      fill: { target: '+1', above: color + '15' },
+      tension: 0.3, pointRadius: 0, borderWidth: 1, borderDash: [3, 3],
+    });
+    datasets.push({
+      label: '_' + f + ' min', data: series.map(s => ({ x: s.step, y: s.min })),
+      borderColor: color + '44', fill: false,
+      tension: 0.3, pointRadius: 0, borderWidth: 1, borderDash: [3, 3],
+    });
+    datasets.push(lineDataset(f, series.map(s => ({ x: s.step, y: s.mean })), color));
+  });
+
+  const wcEvents = (data.events || []).filter(e => e.type === 'wildcard');
+  const wcSteps = {};
+  wcEvents.forEach(e => { wcSteps[e.step] = e.name || 'wildcard'; });
+  const wcAnnotations = {};
+  Object.entries(wcSteps).forEach(([step, name]) => {
+    wcAnnotations['wc' + step] = {
+      type: 'line', xMin: +step, xMax: +step,
+      borderColor: '#edc94866', borderWidth: 1.5, borderDash: [5, 3],
+      label: { display: true, content: name, position: 'start',
+               color: '#edc948', backgroundColor: '#141414cc',
+               font: { size: 9 }, padding: 2 }
     };
   });
+
+  const hasAnnotations = Object.keys(wcAnnotations).length > 0;
 
   initChart('timelines-chart', {
     type: 'line',
@@ -448,9 +568,14 @@ function renderTimelines(data) {
     options: {
       responsive: true,
       scales: { x: { type: 'linear', title: { display: true, text: 'step', color: '#888' },
-                      grid: { color: '#222' }, ticks: { color: '#888' } },
+                      grid: { color: '#222' }, ticks: { color: '#888',
+                        callback: function(v) { return 'Step ' + v; } } },
                 y: { grid: { color: '#222' }, ticks: { color: '#888' } } },
-      plugins: { legend: { labels: { color: '#ccc' } } }
+      plugins: {
+        legend: { labels: { color: '#ccc',
+          filter: (item) => !item.text.startsWith('_') && !item.text.endsWith(' max') } },
+        annotation: hasAnnotations ? { annotations: wcAnnotations } : undefined
+      }
     }
   });
 }
@@ -464,13 +589,12 @@ function renderFitness(data) {
     type: 'line',
     data: {
       datasets: [
-        { label: 'mean', data: fitness.map(f => ({x: f.step, y: f.mean})),
-          borderColor: '#4CAF50', fill: false, tension: 0.3 },
+        Object.assign(lineDataset('mean', fitness.map(f => ({x: f.step, y: f.mean})), '#59a14f'), {}),
         { label: 'range', data: fitness.map(f => ({x: f.step, y: f.max})),
-          borderColor: '#4CAF5044', backgroundColor: '#4CAF5011',
-          fill: { target: '+1', above: '#4CAF5011' }, tension: 0.3, pointRadius: 0 },
+          borderColor: '#59a14f44', backgroundColor: '#59a14f11',
+          fill: { target: '+1', above: '#59a14f11' }, tension: 0.3, pointRadius: 0, borderWidth: 1 },
         { label: '_min', data: fitness.map(f => ({x: f.step, y: f.min})),
-          borderColor: '#4CAF5044', fill: false, tension: 0.3, pointRadius: 0 }
+          borderColor: '#59a14f44', fill: false, tension: 0.3, pointRadius: 0, borderWidth: 1 }
       ]
     },
     options: {
@@ -506,12 +630,8 @@ function renderPopulations(data) {
 
     const datasets = popNames.map((pop, i) => {
       const series = pops[pop][sf] || [];
-      return {
-        label: pop,
-        data: series.map(s => ({x: s.step, y: s.mean})),
-        borderColor: COLORS[i % COLORS.length],
-        fill: false, tension: 0.3, pointRadius: 3
-      };
+      const color = COLORS[i % COLORS.length];
+      return lineDataset(pop, series.map(s => ({x: s.step, y: s.mean})), color);
     });
 
     initChart(`pop-chart-${sf}`, {
@@ -543,12 +663,10 @@ function renderTrajectoryComparison(data) {
   const tids = Object.keys(trajData);
   if (!tids.length) return;
 
-  const datasets = tids.map((tid, i) => ({
-    label: 'T' + tid,
-    data: trajData[tid].map(p => ({ x: p.step, y: p.value })),
-    borderColor: COLORS[i % COLORS.length],
-    fill: false, tension: 0.3, pointRadius: 2, borderWidth: 2
-  }));
+  const datasets = tids.map((tid, i) => {
+    const color = COLORS[i % COLORS.length];
+    return lineDataset('T' + tid, trajData[tid].map(p => ({x: p.step, y: p.value})), color);
+  });
 
   initChart('traj-compare-chart', {
     type: 'line',
@@ -589,7 +707,9 @@ function renderWildcardImpact(data) {
   }).join('');
 
   document.getElementById('wc-heatmap-container').innerHTML =
-    `<div style="overflow-x:auto"><table class="wc-heatmap"><tr><th></th>${headerCells}</tr>${rows}</table></div>`;
+    `<div style="overflow-x:auto"><table class="wc-heatmap"><tr><th></th>${headerCells}</tr>${rows}</table></div>` +
+    `<div class="wc-legend"><span><span class="wc-legend-swatch" style="background:#edc948"></span>Wildcard fired</span>` +
+    `<span><span class="wc-legend-swatch" style="background:#1a1a1a;border:1px solid #333"></span>No wildcard</span></div>`;
 
   const freq = new Array(maxStep + 1).fill(0);
   events.forEach(e => { freq[e.step] = (freq[e.step] || 0) + 1; });
@@ -601,8 +721,9 @@ function renderWildcardImpact(data) {
       datasets: [{
         label: 'Wildcards fired',
         data: freq,
-        backgroundColor: '#fbbf2499',
-        borderColor: '#fbbf24',
+        backgroundColor: '#edc94899',
+        borderColor: '#edc948',
+        borderRadius: 4,
         borderWidth: 1
       }]
     },
@@ -632,6 +753,10 @@ function renderAgentActivity(data) {
   const agents = Object.keys(agentStats).sort();
   const totals = agents.map(a => agentStats[a].total);
   const accepted = agents.map(a => agentStats[a].accepted);
+  const rates = agents.map(a => {
+    const s = agentStats[a];
+    return s.total ? Math.round(s.accepted / s.total * 100) : 0;
+  });
 
   initChart('agent-activity-chart', {
     type: 'bar',
@@ -639,9 +764,9 @@ function renderAgentActivity(data) {
       labels: agents,
       datasets: [
         { label: 'Total proposals', data: totals,
-          backgroundColor: '#2196F399', borderColor: '#2196F3', borderWidth: 1 },
+          backgroundColor: COLORS[0] + '99', borderColor: COLORS[0], borderWidth: 1, borderRadius: 4 },
         { label: 'Accepted', data: accepted,
-          backgroundColor: '#4CAF5099', borderColor: '#4CAF50', borderWidth: 1 }
+          backgroundColor: COLORS[4] + '99', borderColor: COLORS[4], borderWidth: 1, borderRadius: 4 }
       ]
     },
     options: {
@@ -650,11 +775,26 @@ function renderAgentActivity(data) {
                       grid: { color: '#222' }, ticks: { color: '#888', stepSize: 1 } },
                 y: { grid: { color: '#222' }, ticks: { color: '#ccc' } } },
       plugins: { legend: { labels: { color: '#ccc' } } }
-    }
+    },
+    plugins: [{
+      afterDatasetsDraw(chart) {
+        const meta = chart.getDatasetMeta(1);
+        const ctx = chart.ctx;
+        meta.data.forEach((bar, i) => {
+          ctx.save();
+          ctx.fillStyle = '#aaa';
+          ctx.font = '11px -apple-system, system-ui, sans-serif';
+          ctx.textAlign = 'left';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(rates[i] + '%', bar.x + 6, bar.y);
+          ctx.restore();
+        });
+      }
+    }]
   });
 }
 
-let activeFilters = new Set(['narrative', 'wildcard', 'outcome']);
+let activeFilters = new Set(['narrative', 'wildcard', 'outcome', 'proposal']);
 let allEvents = [];
 
 function renderEvents(data) {
@@ -675,17 +815,31 @@ function renderEvents(data) {
   });
 
   el.innerHTML = Object.values(grouped).map(g => {
-    const items = g.items.map(e => {
-      const agent = e.agent ? ` (${e.agent})` : '';
+    return g.items.map(e => {
+      if (e.type === 'proposal') {
+        const status = e.accepted
+          ? '<span class="proposal-status" style="color:#4ade80">✓ accepted</span>'
+          : '<span class="proposal-status" style="color:#f87171">✗ rejected</span>';
+        const fields = (e.proposed_fields || []).map(f =>
+          '<code>' + escapeHtml(f) + '</code>').join(' ');
+        return `<div class="event">
+          <div class="meta">
+            <span class="tag proposal">${escapeHtml(e.agent)}</span>
+            <span>T${e.trajectory} Step ${e.step}</span>
+            ${status}
+          </div>
+          ${fields ? '<div class="proposal-fields">Proposed: ' + fields + '</div>' : ''}
+          <div class="proposal-reasoning"><strong>${escapeHtml(e.agent)}</strong>: ${escapeHtml(e.text)}</div>
+        </div>`;
+      }
       return `<div class="event">
         <div class="meta">
           <span class="tag ${e.type}">${e.type}</span>
-          <span>T${e.trajectory} Step ${e.step}${agent}</span>
+          <span>T${e.trajectory} Step ${e.step}</span>
         </div>
         <div class="text">${escapeHtml(e.text)}</div>
       </div>`;
     }).join('');
-    return items;
   }).join('');
 
   el.scrollTop = el.scrollHeight;
@@ -715,6 +869,11 @@ document.getElementById('event-filter').addEventListener('click', (e) => {
     }
   });
   renderEvents({ events: allEvents });
+});
+
+document.getElementById('events').addEventListener('click', (e) => {
+  const textEl = e.target.closest('.event .text');
+  if (textEl) textEl.classList.toggle('expanded');
 });
 
 let lastData = {};
