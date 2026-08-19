@@ -224,18 +224,22 @@ class SimulationModes(Scene):
         agg = _box("Aggregate", PURPLE, width=2.0, height=0.6)
         agg.move_to([col_x[0], row_y[4], 0])
 
-        cf_arrows = [
-            _arrow(scenario_box[0].get_left(), runs[0][0].get_top()),
-            _arrow(scenario_box[0].get_bottom(), runs[1][0].get_top()),
-            _arrow(scenario_box[0].get_right(), runs[2][0].get_top()),
-        ]
+        # Arrows: Scenario → Runs (fan out from bottom edge, not sides)
+        cf_arrows = []
+        for r in runs:
+            cf_arrows.append(_arrow(
+                scenario_box[0].get_bottom(),
+                r[0].get_top(),
+            ))
+        # Arrows: Runs → Outs (straight down)
         for r, o in zip(runs, outs):
             cf_arrows.append(_arrow(r[0].get_bottom(), o[0].get_top()))
-        cf_arrows.extend([
-            _arrow(outs[0][0].get_bottom(), agg[0].get_left()),
-            _arrow(outs[1][0].get_bottom(), agg[0].get_top()),
-            _arrow(outs[2][0].get_bottom(), agg[0].get_right()),
-        ])
+        # Arrows: Outs → Aggregate (fan in to top edge, not sides)
+        for o in outs:
+            cf_arrows.append(_arrow(
+                o[0].get_bottom(),
+                agg[0].get_top(),
+            ))
 
         # Column 2: Population (skip row_y[3] — no Outs row)
         world = _box("Shared\nWorld", BLUE, width=2.0, height=0.7)
@@ -254,14 +258,8 @@ class SimulationModes(Scene):
 
         pop_arrows = []
         for e in entities:
-            pop_arrows.append(Arrow(
-                world[0].get_bottom(), e[0].get_top(),
-                color=DARK, stroke_width=2, tip_length=0.12, buff=0.05,
-            ))
-            pop_arrows.append(Arrow(
-                e[0].get_bottom(), judge[0].get_top(),
-                color=DARK, stroke_width=2, tip_length=0.12, buff=0.05,
-            ))
+            pop_arrows.append(_arrow(world[0].get_bottom(), e[0].get_top()))
+            pop_arrows.append(_arrow(e[0].get_bottom(), judge[0].get_top()))
 
         # Column 3: Open-Ended (skip row_y[3] — no Outs row)
         single = _box("Single\nTrajectory", BLUE, width=2.0, height=0.7)
