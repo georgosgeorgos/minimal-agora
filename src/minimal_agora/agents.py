@@ -16,7 +16,7 @@ from minimal_agora.models import (
     Resolution,
     SimRule,
 )
-from minimal_agora.providers.protocol import AgentProvider
+from minimal_agora.providers.protocol import AgentInvocationResult, AgentProvider
 from minimal_agora.providers.subprocess_provider import ClaudeSubprocessProvider
 
 logger = structlog.stdlib.get_logger(__name__)
@@ -42,7 +42,7 @@ async def invoke_agent(
     prompt: str,
     timeout: int = 300,
     provider: AgentProvider | None = None,
-) -> str:
+) -> AgentInvocationResult:
     active = provider or _default_provider
 
     logger.debug(
@@ -60,9 +60,11 @@ async def invoke_agent(
         step=step,
         tokens_used=result.tokens_used,
         model=result.model,
+        input_tokens=result.input_tokens,
+        output_tokens=result.output_tokens,
     )
 
-    return result.output
+    return result
 
 
 def _format_rules(rules: list[SimRule], agent_name: str, agent_role: str) -> str:

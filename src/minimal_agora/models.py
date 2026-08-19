@@ -240,6 +240,22 @@ class Evaluation(BaseModel):
     rewards: dict[str, float] = Field(default_factory=dict)
 
 
+class AgentCallTokens(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    role: str
+    input_tokens: int
+    output_tokens: int
+
+
+class StepTokenUsage(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    agent_calls: list[AgentCallTokens] = Field(default_factory=list)
+    total_input_tokens: int = 0
+    total_output_tokens: int = 0
+
+
 class Step(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -249,6 +265,7 @@ class Step(BaseModel):
     resolution: Resolution | None = None
     state_before: dict[str, Any] = Field(default_factory=dict)
     state_after: dict[str, Any] = Field(default_factory=dict)
+    token_usage: StepTokenUsage | None = None
 
 
 class TrajectoryOutcome(BaseModel):
@@ -269,6 +286,7 @@ class Trajectory(BaseModel):
     steps: list[Step] = Field(default_factory=list)
     outcome: TrajectoryOutcome | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
+    total_tokens: dict[str, Any] | None = None
 
 
 class AggregateResult(BaseModel):

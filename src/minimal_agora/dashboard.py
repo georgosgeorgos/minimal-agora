@@ -201,6 +201,8 @@ def _collect_data(
 
     events = _collect_events(trajectories, run_dir)
 
+    token_summary, token_timeline = _collect_token_data(trajectories)
+
     return {
         "scenario": trajectories[0].scenario_name,
         "n_trajectories": n,
@@ -210,7 +212,57 @@ def _collect_data(
         "populations": pop_data,
         "fitness": fitness_data,
         "events": events,
+        "token_summary": token_summary,
+        "token_timeline": token_timeline,
     }
+
+
+def _collect_token_data(trajectories: list) -> tuple[dict, list[dict]]:
+    total_input = 0
+    total_output = 0
+    per_role: dict[str, dict[str, int]] = {}
+    step_totals: dict[int, dict[str, int]] = {}
+
+    for t in trajectories:
+        if t.total_tokens:
+            total_input += t.total_tokens.get("total_input_tokens", 0)
+            total_output += t.total_tokens.get("total_output_tokens", 0)
+            for role, counts in t.total_tokens.get("per_role", {}).items():
+                if role not in per_role:
+                    per_role[role] = {"input_tokens": 0, "output_tokens": 0}
+                per_role[role]["input_tokens"] += counts.get("input_tokens", 0)
+                per_role[role]["output_tokens"] += counts.get("output_tokens", 0)
+        for step in t.steps:
+            if step.token_usage is None:
+                continue
+            sn = step.step_number
+            if sn not in step_totals:
+                step_totals[sn] = {"input_tokens": 0, "output_tokens": 0}
+            step_totals[sn]["input_tokens"] += step.token_usage.total_input_tokens
+            step_totals[sn]["output_tokens"] += step.token_usage.total_output_tokens
+
+    total = total_input + total_output
+    estimated_cost = (total_input / 1_000_000 * 3) + (total_output / 1_000_000 * 15) if total else 0.0
+
+    summary = {
+        "total_input_tokens": total_input,
+        "total_output_tokens": total_output,
+        "total_tokens": total,
+        "estimated_cost_usd": round(estimated_cost, 4),
+        "per_role": per_role,
+    }
+
+    timeline = []
+    for sn in sorted(step_totals.keys()):
+        st = step_totals[sn]
+        timeline.append({
+            "step": sn,
+            "input_tokens": st["input_tokens"],
+            "output_tokens": st["output_tokens"],
+            "total_tokens": st["input_tokens"] + st["output_tokens"],
+        })
+
+    return summary, timeline
 
 
 def _collect_events(trajectories: list, run_dir: Path) -> list[dict]:
@@ -457,6 +509,10 @@ def _build_html() -> str:
     </div>
   </div>
   <div class="grid">
+    <div class="card" id="token-usage-card" style="display:none">
+      <h2>Token Usage</h2>
+      <canvas id="token-usage-chart"></canvas>
+    </div>
     <div class="card" id="wildcard-impact-card" style="display:none">
       <h2>Wildcard Impact</h2>
       <div id="wc-heatmap-container"></div>
@@ -579,6 +635,12 @@ function initChart(id, config) {
   return charts[id];
 }
 
+function formatTokens(n) {
+  if (n >= 1e6) return (n / 1e6).toFixed(1) + 'M';
+  if (n >= 1e3) return (n / 1e3).toFixed(1) + 'K';
+  return String(n);
+}
+
 function renderStats(data) {
   const el = document.getElementById('stats');
   const n = data.n_trajectories || 0;
@@ -588,10 +650,17 @@ function renderStats(data) {
   if (nValidation > 0) {
     validationStat = `<div class="stat"><div class="icon">&#x26a0;</div><div class="value" style="color:#edc948">${nValidation}</div><div class="label">validation warnings</div></div>`;
   }
+  const ts = data.token_summary || {};
+  let tokenStats = '';
+  if (ts.total_tokens > 0) {
+    tokenStats = `<div class="stat"><div class="icon">&#x1f4ac;</div><div class="value">${formatTokens(ts.total_tokens)}</div><div class="label">total tokens</div></div>` +
+      `<div class="stat"><div class="icon">&#x1f4b0;</div><div class="value">$${ts.estimated_cost_usd.toFixed(2)}</div><div class="label">est. cost</div></div>`;
+  }
   el.innerHTML = `
     <div class="stat"><div class="icon">&#x1f4ca;</div><div class="value">${n}</div><div class="label">trajectories</div></div>
     <div class="stat"><div class="icon">&#x1f3af;</div><div class="value">${nOutcomes}</div><div class="label">distinct outcomes</div></div>
     ${validationStat}
+    ${tokenStats}
   `;
 }
 
@@ -964,6 +1033,46 @@ function renderAgentActivity(data) {
   });
 }
 
+function renderTokenUsage(data) {
+  const timeline = data.token_timeline || [];
+  const summary = data.token_summary || {};
+  const perRole = summary.per_role || {};
+  if (!timeline.length && !Object.keys(perRole).length) return;
+
+  document.getElementById('token-usage-card').style.display = '';
+  const tc = getThemeColors();
+
+  const roles = Object.keys(perRole);
+  if (timeline.length) {
+    const roleStepData = {};
+    for (const t of (data.n_trajectories ? [data] : [])) {
+      // We need per-step per-role data from the timeline
+      // The timeline has aggregated totals; for the stacked chart, show input vs output
+    }
+
+    initChart('token-usage-chart', {
+      type: 'bar',
+      data: {
+        labels: timeline.map(t => 'Step ' + t.step),
+        datasets: [
+          { label: 'Input tokens', data: timeline.map(t => t.input_tokens),
+            backgroundColor: COLORS[0] + '99', borderColor: COLORS[0], borderWidth: 1, borderRadius: 4 },
+          { label: 'Output tokens', data: timeline.map(t => t.output_tokens),
+            backgroundColor: COLORS[1] + '99', borderColor: COLORS[1], borderWidth: 1, borderRadius: 4 },
+        ]
+      },
+      options: {
+        responsive: true,
+        scales: themedScales({
+          x: { stacked: true },
+          y: { stacked: true, title: { display: true, text: 'tokens' } }
+        }),
+        plugins: { legend: { labels: { color: tc.textTertiary } } }
+      }
+    });
+  }
+}
+
 let activeFilters = new Set(['narrative', 'wildcard', 'outcome', 'proposal', 'validation']);
 let allEvents = [];
 
@@ -1062,6 +1171,7 @@ function render(data) {
   renderFitness(data);
   renderPopulations(data);
   renderTrajectoryComparison(data);
+  renderTokenUsage(data);
   renderWildcardImpact(data);
   renderAgentActivity(data);
   renderEvents(data);

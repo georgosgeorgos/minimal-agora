@@ -6,6 +6,7 @@ import time
 from copy import deepcopy
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 import structlog
 
@@ -31,17 +32,20 @@ from minimal_agora.board import (
     evaluate_wildcard_mode,
 )
 from minimal_agora.models import (
+    AgentCallTokens,
     AgentRole,
     FitnessConfig,
     Resolution,
     Scenario,
     SimMode,
     Step,
+    StepTokenUsage,
     Trajectory,
     TrajectoryOutcome,
     TrajectoryType,
     WildcardEvent,
 )
+from minimal_agora.providers.protocol import AgentInvocationResult
 from minimal_agora.schema import infer_schema, validate_state_delta
 
 
@@ -54,16 +58,16 @@ async def _safe_invoke(coro) -> None:
 
 async def _invoke_with_retry(
     agent, workspace: Path, step_num: int, prompt: str, timeout: int, max_retries: int = 1,
-) -> None:
+) -> AgentInvocationResult | None:
     for attempt in range(1 + max_retries):
         try:
-            await invoke_agent(agent, workspace, step_num, prompt, timeout)
-            return
+            return await invoke_agent(agent, workspace, step_num, prompt, timeout)
         except (OSError, RuntimeError, TimeoutError) as e:
             if attempt < max_retries:
                 logger.warning("Agent %s failed (attempt %d), retrying: %s", agent.name, attempt + 1, e)
             else:
                 logger.error("Agent %s failed after %d attempts: %s", agent.name, attempt + 1, e)
+    return None
 
 
 async def _invoke_with_semaphore(
@@ -207,6 +211,8 @@ async def run_trajectory(
         final_state=final_state,
     )
 
+    trajectory.total_tokens = _aggregate_trajectory_tokens(trajectory.steps)
+
     _save_trajectory(trajectory, workspace)
     return trajectory
 
@@ -235,6 +241,60 @@ async def _run_step(
     return await _run_flat_step(scenario, board, step_num, timeout, state_before, trajectory_id, agent_semaphore, max_steps, state_schema)
 
 
+def _collect_tokens_from_result(
+    result: AgentInvocationResult | None,
+    role: str,
+    token_calls: list[AgentCallTokens],
+) -> None:
+    if result is None:
+        return
+    input_t = result.input_tokens or 0
+    output_t = result.output_tokens or 0
+    if input_t or output_t:
+        token_calls.append(AgentCallTokens(role=role, input_tokens=input_t, output_tokens=output_t))
+
+
+def _build_step_token_usage(token_calls: list[AgentCallTokens]) -> StepTokenUsage | None:
+    if not token_calls:
+        return None
+    total_in = sum(c.input_tokens for c in token_calls)
+    total_out = sum(c.output_tokens for c in token_calls)
+    return StepTokenUsage(
+        agent_calls=token_calls,
+        total_input_tokens=total_in,
+        total_output_tokens=total_out,
+    )
+
+
+def _aggregate_trajectory_tokens(steps: list[Step]) -> dict[str, Any] | None:
+    total_input = 0
+    total_output = 0
+    per_role: dict[str, dict[str, int]] = {}
+    has_any = False
+    for step in steps:
+        if step.token_usage is None:
+            continue
+        has_any = True
+        total_input += step.token_usage.total_input_tokens
+        total_output += step.token_usage.total_output_tokens
+        for call in step.token_usage.agent_calls:
+            if call.role not in per_role:
+                per_role[call.role] = {"input_tokens": 0, "output_tokens": 0}
+            per_role[call.role]["input_tokens"] += call.input_tokens
+            per_role[call.role]["output_tokens"] += call.output_tokens
+    if not has_any:
+        return None
+    total = total_input + total_output
+    estimated_cost = (total_input / 1_000_000 * 3) + (total_output / 1_000_000 * 15)
+    return {
+        "total_input_tokens": total_input,
+        "total_output_tokens": total_output,
+        "total_tokens": total,
+        "estimated_cost_usd": round(estimated_cost, 4),
+        "per_role": per_role,
+    }
+
+
 def _read_narrative(board: Board) -> str:
     try:
         return board.narrative_path.read_text()
@@ -259,7 +319,7 @@ async def _invoke_and_collect(
     timeout: int,
     agent_semaphore: asyncio.Semaphore | None,
     max_concurrent: int,
-) -> str | None:
+) -> AgentInvocationResult | None:
     try:
         if agent_semaphore:
             if agent_semaphore.locked():
@@ -276,7 +336,7 @@ async def _invoke_and_collect(
 
 async def _invoke_with_retry_return(
     agent, workspace: Path, step_num: int, prompt: str, timeout: int, max_retries: int = 1,
-) -> str | None:
+) -> AgentInvocationResult | None:
     for attempt in range(1 + max_retries):
         try:
             return await invoke_agent(agent, workspace, step_num, prompt, timeout)
@@ -319,14 +379,15 @@ async def _run_flat_step(
     logger.debug("flat_step.propose_start", step=step_num, n_actors=len(actors))
     t0 = time.monotonic()
 
-    actor_outputs: dict[str, str | None] = {}
+    token_calls: list[AgentCallTokens] = []
+    actor_results: dict[str, AgentInvocationResult | None] = {}
 
     async def _run_actor(a):
         prompt = build_prompt(a, step_num, rules, trajectory_id=trajectory_id, **embed_kwargs)
         result = await _invoke_and_collect(
             a, board.workspace, step_num, prompt, timeout, agent_semaphore, max_concurrent,
         )
-        actor_outputs[a.name] = result
+        actor_results[a.name] = result
 
     try:
         async with asyncio.TaskGroup() as tg:
@@ -339,7 +400,9 @@ async def _run_flat_step(
 
     proposals = []
     for a in actors:
-        output = actor_outputs.get(a.name)
+        result = actor_results.get(a.name)
+        _collect_tokens_from_result(result, a.role.value, token_calls)
+        output = result.output if result else None
         p = None
         if output:
             p = parse_proposal_from_text(output, a.name)
@@ -366,14 +429,14 @@ async def _run_flat_step(
             logger.debug("flat_step.critique_start", step=step_num, n_critics=len(critics))
             t1 = time.monotonic()
 
-            critic_outputs: dict[str, str | None] = {}
+            critic_results: dict[str, AgentInvocationResult | None] = {}
 
             async def _run_critic(c):
                 prompt = build_prompt(c, step_num, rules, **critic_kwargs)
                 result = await _invoke_and_collect(
                     c, board.workspace, step_num, prompt, timeout, agent_semaphore, max_concurrent,
                 )
-                critic_outputs[c.name] = result
+                critic_results[c.name] = result
 
             try:
                 async with asyncio.TaskGroup() as tg:
@@ -390,7 +453,9 @@ async def _run_flat_step(
             )
 
             for c in critics:
-                output = critic_outputs.get(c.name)
+                result = critic_results.get(c.name)
+                _collect_tokens_from_result(result, c.role.value, token_calls)
+                output = result.output if result else None
                 cr = None
                 if output:
                     cr = parse_critique_from_text(output, c.name)
@@ -410,9 +475,11 @@ async def _run_flat_step(
                 "critiques": [c.model_dump() for c in critiques],
             }
             prompt = build_prompt(judge, step_num, rules, **judge_kwargs)
-            judge_output = await _invoke_with_retry_return(
+            judge_result = await _invoke_with_retry_return(
                 judge, board.workspace, step_num, prompt, timeout,
             )
+            _collect_tokens_from_result(judge_result, judge.role.value, token_calls)
+            judge_output = judge_result.output if judge_result else None
             if judge_output:
                 resolution = parse_resolution_from_text(judge_output)
             if resolution is None:
@@ -464,6 +531,7 @@ async def _run_flat_step(
         resolution=resolution,
         state_before=state_before,
         state_after=state_after,
+        token_usage=_build_step_token_usage(token_calls),
     )
     board.save_step(step)
     return step
@@ -483,6 +551,7 @@ async def _run_entity_step(
     max_concurrent = scenario.max_concurrent_agents
     proposals = []
     critiques = []
+    token_calls: list[AgentCallTokens] = []
 
     force_entities = [e for e in scenario.entities if e.type == TrajectoryType.FORCE]
     pop_entities = [e for e in scenario.entities if e.type == TrajectoryType.POPULATION]
@@ -512,14 +581,14 @@ async def _run_entity_step(
     if force_agents:
         logger.debug("entity_step.forces_start", step=step_num, n_agents=len(force_agents))
         t0 = time.monotonic()
-        force_outputs: dict[str, str | None] = {}
+        force_results: dict[str, AgentInvocationResult | None] = {}
 
         async def _run_force(a):
             prompt = build_prompt(a, step_num, rules, trajectory_id=trajectory_id, **embed_kwargs)
             result = await _invoke_and_collect(
                 a, board.workspace, step_num, prompt, timeout, agent_semaphore, max_concurrent,
             )
-            force_outputs[a.name] = result
+            force_results[a.name] = result
 
         try:
             async with asyncio.TaskGroup() as tg:
@@ -535,7 +604,9 @@ async def _run_entity_step(
             duration_s=round(time.monotonic() - t0, 3),
         )
         for a in force_agents:
-            output = force_outputs.get(a.name)
+            result = force_results.get(a.name)
+            _collect_tokens_from_result(result, a.role.value, token_calls)
+            output = result.output if result else None
             p = None
             if output:
                 p = parse_proposal_from_text(output, a.name)
@@ -559,7 +630,7 @@ async def _run_entity_step(
     if pop_agents:
         logger.debug("entity_step.populations_start", step=step_num, n_agents=len(pop_agents))
         t1 = time.monotonic()
-        pop_outputs: dict[str, str | None] = {}
+        pop_results: dict[str, AgentInvocationResult | None] = {}
 
         async def _run_pop(a):
             prompt = build_prompt(
@@ -569,7 +640,7 @@ async def _run_entity_step(
             result = await _invoke_and_collect(
                 a, board.workspace, step_num, prompt, timeout, agent_semaphore, max_concurrent,
             )
-            pop_outputs[a.name] = result
+            pop_results[a.name] = result
 
         try:
             async with asyncio.TaskGroup() as tg:
@@ -585,7 +656,9 @@ async def _run_entity_step(
             duration_s=round(time.monotonic() - t1, 3),
         )
         for a in pop_agents:
-            output = pop_outputs.get(a.name)
+            result = pop_results.get(a.name)
+            _collect_tokens_from_result(result, a.role.value, token_calls)
+            output = result.output if result else None
             p = None
             if output:
                 p = parse_proposal_from_text(output, a.name)
@@ -603,14 +676,14 @@ async def _run_entity_step(
 
         logger.debug("entity_step.critics_start", step=step_num, n_agents=len(critic_agents))
         t2 = time.monotonic()
-        critic_outputs: dict[str, str | None] = {}
+        critic_results: dict[str, AgentInvocationResult | None] = {}
 
         async def _run_critic(c):
             prompt = build_prompt(c, step_num, rules, **critic_kwargs)
             result = await _invoke_and_collect(
                 c, board.workspace, step_num, prompt, timeout, agent_semaphore, max_concurrent,
             )
-            critic_outputs[c.name] = result
+            critic_results[c.name] = result
 
         try:
             async with asyncio.TaskGroup() as tg:
@@ -626,7 +699,9 @@ async def _run_entity_step(
             duration_s=round(time.monotonic() - t2, 3),
         )
         for c in critic_agents:
-            output = critic_outputs.get(c.name)
+            result = critic_results.get(c.name)
+            _collect_tokens_from_result(result, c.role.value, token_calls)
+            output = result.output if result else None
             cr = None
             if output:
                 cr = parse_critique_from_text(output, c.name)
@@ -649,9 +724,11 @@ async def _run_entity_step(
             "critiques": [c.model_dump() for c in critiques],
         }
         prompt = build_prompt(judge, step_num, rules, **judge_kwargs)
-        judge_output = await _invoke_with_retry_return(
+        judge_result = await _invoke_with_retry_return(
             judge, board.workspace, step_num, prompt, timeout,
         )
+        _collect_tokens_from_result(judge_result, judge.role.value, token_calls)
+        judge_output = judge_result.output if judge_result else None
         if judge_output:
             resolution = parse_resolution_from_text(judge_output)
         if resolution is None:
@@ -680,6 +757,7 @@ async def _run_entity_step(
         resolution=resolution,
         state_before=state_before,
         state_after=state_after,
+        token_usage=_build_step_token_usage(token_calls),
     )
     board.save_step(step)
     return step
