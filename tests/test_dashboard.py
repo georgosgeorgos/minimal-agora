@@ -2,7 +2,7 @@ import json
 import tempfile
 from pathlib import Path
 
-from minimal_agora.dashboard import _collect_data, _collect_events
+from minimal_agora.dashboard import _collect_data, _collect_events, _list_runs
 from minimal_agora.models import (
     Proposal,
     Resolution,
@@ -224,3 +224,88 @@ class TestProposalAcceptance:
         bob_event = next(e for e in prop_events if e["agent"] == "bob")
         assert alice_event["accepted"] is True
         assert bob_event["accepted"] is False
+
+
+class TestListRuns:
+    def test_lists_run_directories(self):
+        t1 = _make_trajectory(0, "A", [{"x": 1}])
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            runs_root = Path(tmpdir)
+            run_a = runs_root / "run-alpha"
+            run_a.mkdir()
+            _write_trajectories(run_a, [t1])
+
+            run_b = runs_root / "run-beta"
+            run_b.mkdir()
+
+            runs = _list_runs(runs_root, run_a)
+
+        names = [r["dirname"] for r in runs]
+        assert "run-alpha" in names
+        assert "run-beta" in names
+
+    def test_marks_current_run(self):
+        t1 = _make_trajectory(0, "A", [{"x": 1}])
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            runs_root = Path(tmpdir)
+            run_a = runs_root / "run-alpha"
+            run_a.mkdir()
+            _write_trajectories(run_a, [t1])
+
+            runs = _list_runs(runs_root, run_a)
+
+        current = [r for r in runs if r["current"]]
+        assert len(current) == 1
+        assert current[0]["dirname"] == "run-alpha"
+
+    def test_reads_scenario_name_from_trajectory(self):
+        t1 = _make_trajectory(0, "A", [{"x": 1}])
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            runs_root = Path(tmpdir)
+            run_dir = runs_root / "my-run"
+            run_dir.mkdir()
+            _write_trajectories(run_dir, [t1])
+
+            runs = _list_runs(runs_root, run_dir)
+
+        assert runs[0]["scenario"] == "test"
+
+    def test_counts_trajectories(self):
+        t1 = _make_trajectory(0, "A", [{"x": 1}])
+        t2 = _make_trajectory(1, "B", [{"x": 2}])
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            runs_root = Path(tmpdir)
+            run_dir = runs_root / "my-run"
+            run_dir.mkdir()
+            _write_trajectories(run_dir, [t1, t2])
+
+            runs = _list_runs(runs_root, run_dir)
+
+        assert runs[0]["n_trajectories"] == 2
+
+    def test_nonexistent_runs_root_returns_fallback(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            current = Path(tmpdir) / "current"
+            current.mkdir()
+            missing = Path(tmpdir) / "nonexistent"
+
+            runs = _list_runs(missing, current)
+
+        assert len(runs) == 1
+        assert runs[0]["current"] is True
+
+
+class TestCollectDataRunDir:
+    def test_returns_run_dir_name(self):
+        t1 = _make_trajectory(0, "A", [{"x": 1}])
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            run_dir = Path(tmpdir)
+            _write_trajectories(run_dir, [t1])
+            data = _collect_data(run_dir, [], [], [])
+
+        assert data["n_trajectories"] == 1
