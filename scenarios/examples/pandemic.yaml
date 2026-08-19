@@ -121,11 +121,24 @@ rules:
 wildcards_enabled: true
 
 wildcards:
+  - name: mutation
+    mode: random
+    probability: 0.6
+    description: >
+      The pathogen mutates. Could become more transmissible, more lethal,
+      or partially evade prior immunity/vaccines. Always possible regardless
+      of world state.
+    state_impact:
+      disease:
+        mutations: 1
+
   - name: super_spreader_event
+    mode: conditional
     probability: 0.8
     description: >
       A large gathering (religious event, sporting event, political rally)
-      causes a massive spike in cases in one region.
+      causes a massive spike in cases in one region. Only possible when
+      the disease is already sufficiently transmissible.
     trigger_conditions:
       - field: disease.transmissibility
         operator: gte
@@ -134,20 +147,14 @@ wildcards:
       disease:
         transmissibility: 0.85
 
-  - name: mutation
-    probability: 0.6
-    description: >
-      The pathogen mutates. Could become more transmissible, more lethal,
-      or partially evade prior immunity/vaccines.
-    state_impact:
-      disease:
-        mutations: 1
-
   - name: misinformation_wave
-    probability: 0.6
+    mode: hybrid
+    probability: 0.3
+    probability_boost: 3.0
     description: >
       A major misinformation campaign undermines public health messaging.
-      Compliance with measures drops across all regions.
+      Always possible, but 3x more likely when social cohesion in the
+      Americas drops below 50.
     trigger_conditions:
       - field: regions.americas.social_cohesion
         operator: lt

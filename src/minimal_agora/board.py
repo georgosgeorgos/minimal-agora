@@ -13,6 +13,7 @@ from minimal_agora.models import (
     Step,
     TriggerCondition,
     WildcardEvent,
+    WildcardMode,
 )
 
 logger = logging.getLogger(__name__)
@@ -232,3 +233,38 @@ def evaluate_trigger_conditions(conditions: list[TriggerCondition], state: dict)
 
     logger.debug("all trigger_conditions satisfied (%d conditions)", len(conditions))
     return True
+
+
+def evaluate_wildcard_mode(
+    event: WildcardEvent, per_step_prob: float, state: dict | None,
+) -> float | None:
+    mode = event.mode
+
+    if mode == WildcardMode.RANDOM:
+        logger.debug("wildcard %s mode=random, probability=%s", event.name, per_step_prob)
+        return per_step_prob
+
+    conditions_met = (
+        state is not None
+        and event.trigger_conditions
+        and evaluate_trigger_conditions(event.trigger_conditions, state)
+    )
+
+    if mode == WildcardMode.CONDITIONAL:
+        if not conditions_met:
+            logger.debug("wildcard %s mode=conditional, conditions not met — skipped", event.name)
+            return None
+        logger.debug("wildcard %s mode=conditional, conditions met, probability=%s", event.name, per_step_prob)
+        return per_step_prob
+
+    # HYBRID: always eligible, boosted when conditions met
+    if conditions_met:
+        boosted = min(per_step_prob * event.probability_boost, 1.0)
+        logger.debug(
+            "wildcard %s mode=hybrid, conditions met, boosted probability=%s (%.1fx)",
+            event.name, boosted, event.probability_boost,
+        )
+        return boosted
+
+    logger.debug("wildcard %s mode=hybrid, conditions not met, probability=%s", event.name, per_step_prob)
+    return per_step_prob

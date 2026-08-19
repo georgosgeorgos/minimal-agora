@@ -16,7 +16,7 @@ from minimal_agora.agents import (
     parse_proposal,
     parse_resolution,
 )
-from minimal_agora.board import Board, _deep_merge, compress_narrative, evaluate_trigger_conditions
+from minimal_agora.board import Board, _deep_merge, compress_narrative, evaluate_wildcard_mode
 from minimal_agora.models import (
     AgentRole,
     FitnessConfig,
@@ -410,13 +410,11 @@ def _roll_wildcard(
     wildcards: list[WildcardEvent], max_steps: int = 1, state: dict | None = None,
 ) -> WildcardEvent | None:
     for event in wildcards:
-        if event.trigger_conditions:
-            if state is None or not evaluate_trigger_conditions(event.trigger_conditions, state):
-                logger.debug("wildcard %s skipped: trigger conditions not met", event.name)
-                continue
-            logger.debug("wildcard %s: trigger conditions met, rolling probability", event.name)
         per_step = min(event.probability / max_steps, 1.0)
-        if random.random() < per_step:
+        effective_prob = evaluate_wildcard_mode(event, per_step, state)
+        if effective_prob is None:
+            continue
+        if random.random() < effective_prob:
             return event
     return None
 

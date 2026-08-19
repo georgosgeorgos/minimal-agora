@@ -3,7 +3,7 @@ from __future__ import annotations
 from enum import Enum
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class SimMode(str, Enum):
@@ -110,6 +110,12 @@ class TriggerCondition(BaseModel):
     threshold: float
 
 
+class WildcardMode(str, Enum):
+    RANDOM = "random"
+    CONDITIONAL = "conditional"
+    HYBRID = "hybrid"
+
+
 class WildcardEvent(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -118,6 +124,14 @@ class WildcardEvent(BaseModel):
     description: str = ""
     state_impact: dict[str, Any] = Field(default_factory=dict)
     trigger_conditions: list[TriggerCondition] = Field(default_factory=list)
+    mode: WildcardMode = WildcardMode.RANDOM
+    probability_boost: float = 2.0
+
+    @model_validator(mode="after")
+    def _validate_conditional_has_conditions(self) -> WildcardEvent:
+        if self.mode == WildcardMode.CONDITIONAL and not self.trigger_conditions:
+            raise ValueError("CONDITIONAL mode requires at least one trigger_condition")
+        return self
 
 
 class FitnessConfig(BaseModel):
