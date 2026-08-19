@@ -119,6 +119,7 @@ rules:
       takes 3-6 months to reach meaningful coverage.
 
 wildcards_enabled: true
+wildcard_warmup: 0.05
 
 wildcards:
   - name: mutation

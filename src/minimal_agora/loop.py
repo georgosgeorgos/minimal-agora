@@ -153,7 +153,10 @@ async def run_trajectory(
         slog = tlog.bind(step=step_num, max_steps=max_steps)
         if scenario.wildcards_enabled:
             current_state = board.read_state()
-            wildcard = _roll_wildcard(scenario.wildcards, max_steps, current_state)
+            wildcard = _roll_wildcard(
+                scenario.wildcards, max_steps, current_state,
+                step_num=step_num, warmup=scenario.wildcard_warmup,
+            )
         else:
             wildcard = None
         if wildcard:
@@ -735,8 +738,15 @@ def _classify_outcome(state: dict, scenario: Scenario) -> str:
 
 
 def _roll_wildcard(
-    wildcards: list[WildcardEvent], max_steps: int = 1, state: dict | None = None,
+    wildcards: list[WildcardEvent],
+    max_steps: int = 1,
+    state: dict | None = None,
+    step_num: int = 0,
+    warmup: float = 0.05,
 ) -> WildcardEvent | None:
+    if step_num < int(max_steps * warmup):
+        logger.debug("wildcard.warmup_suppressed", step=step_num)
+        return None
     for event in wildcards:
         per_step = min(event.probability / max_steps, 1.0)
         effective_prob = evaluate_wildcard_mode(event, per_step, state)
