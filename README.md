@@ -26,6 +26,37 @@ Agents are stateless `claude -p` subprocesses. They share context through a
 filesystem board (state, narrative, proposals). No fine-tuning, no memory,
 no agent frameworks — just prompts, roles, and domain rules.
 
+## Installation
+
+```bash
+# Clone the repository
+git clone https://github.com/georgosgeorgos/minimal-agora.git
+cd minimal-agora
+
+# Install dependencies
+uv sync --group dev
+
+# Verify everything works
+uv run pytest tests/ -v
+```
+
+**Requirements:** Python 3.12+, [uv](https://docs.astral.sh/uv/), [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) (installed and authenticated)
+
+## Quick Start
+
+```bash
+# Run a short simulation (3 trajectories, 10 steps)
+uv run minimal-agora run scenarios/examples/intelligence.yaml -n 3 --steps 10
+
+# View results
+uv run minimal-agora report runs/intelligence/
+
+# Launch the dashboard
+uv run minimal-agora dashboard
+```
+
+See [docs/guide.md](docs/guide.md) for the full design guide with detailed architecture and configuration reference.
+
 ## Architecture
 
 ### Core Simulation Loop
@@ -33,15 +64,14 @@ no agent frameworks — just prompts, roles, and domain rules.
 Each step follows the same loop regardless of mode:
 
 ```mermaid
-%%{init: {'theme': 'base', 'themeVariables': {'primaryColor': '#e8f4f8', 'primaryTextColor': '#1a1a1a', 'primaryBorderColor': '#4a90d9', 'lineColor': '#5a5a5a', 'secondaryColor': '#f0f7e8', 'tertiaryColor': '#fff5e6', 'fontSize': '14px'}}}%%
 flowchart LR
-    W["Wildcard"] --> P["Propose"]
-    P --> C["Critique"]
-    C --> R["Resolve"]
-    R --> U["Update"]
-    U --> T{Terminate?}
-    T -->|No| W
-    T -->|Yes| E["Classify"]
+    A[Wildcard] --> B[Propose]
+    B --> C[Critique]
+    C --> D[Resolve]
+    D --> E[Update State]
+    E --> F{Done?}
+    F -- No --> A
+    F -- Yes --> G[Classify Outcome]
 ```
 
 In population mode, the propose phase runs in order:
@@ -49,106 +79,61 @@ In population mode, the propose phase runs in order:
 
 ### Review Interval Optimization
 
-Skip critic/judge on routine steps for 2–3× speedup:
+Skip critic/judge on routine steps for 2-3x speedup:
 
-```mermaid
-%%{init: {'theme': 'base', 'themeVariables': {'primaryColor': '#e8f4f8', 'primaryTextColor': '#1a1a1a', 'primaryBorderColor': '#4a90d9', 'lineColor': '#5a5a5a', 'secondaryColor': '#f0f7e8', 'tertiaryColor': '#fff5e6', 'fontSize': '14px'}}}%%
-sequenceDiagram
-    participant S as Step
-    participant W as Wildcard
-    participant P as Propose
-    participant C as Critique
-    participant R as Resolve
-    participant U as Update
-
-    Note over S: Step 0 (full review)
-    S->>W: Roll wildcards
-    W->>P: Actors propose
-    P->>C: Critics evaluate
-    C->>R: Judge resolves
-    R->>U: Merge state
-
-    Note over S: Steps 1-2 (fast)
-    S->>W: Roll wildcards
-    W->>P: Actors propose
-    P->>U: Auto-merge
-
-    Note over S: Step 3 (full review)
-    S->>W: Roll wildcards
-    W->>P: Actors propose
-    P->>C: Critics evaluate
-    C->>R: Judge resolves
-    R->>U: Merge state
-```
+| Step | Wildcard | Propose | Critique | Resolve | Update |
+|------|----------|---------|----------|---------|--------|
+| 0    | yes      | yes     | **yes**  | **yes** | yes    |
+| 1    | yes      | yes     | skip     | skip    | auto   |
+| 2    | yes      | yes     | skip     | skip    | auto   |
+| 3    | yes      | yes     | **yes**  | **yes** | yes    |
 
 ### Particle Filter (Sequential Importance Resampling)
 
 Focus compute on the most interesting trajectories:
 
 ```mermaid
-%%{init: {'theme': 'base', 'themeVariables': {'primaryColor': '#e8f4f8', 'primaryTextColor': '#1a1a1a', 'primaryBorderColor': '#4a90d9', 'lineColor': '#5a5a5a', 'secondaryColor': '#f0f7e8', 'tertiaryColor': '#fff5e6', 'fontSize': '14px'}}}%%
 flowchart LR
-    subgraph Before["Before Resampling"]
-        T1["Trajectory 1 (low)"]
-        T2["Trajectory 2 (mid)"]
-        T3["Trajectory 3 (high)"]
-        T4["Trajectory 4 (low)"]
+    subgraph before[Before]
+        T1[T1 low]
+        T2[T2 mid]
+        T3[T3 high]
     end
-
-    Before --> SC["Score & Resample"]
-
-    subgraph After["After Resampling"]
-        R1["Traj 1 replaced by Traj 3"]
-        R2["Traj 2 kept"]
-        R3["Traj 3 duplicated"]
-        R4["Traj 4 replaced by Traj 3"]
+    before -->|score & resample| after
+    subgraph after[After]
+        R1[T3 copy]
+        R2[T2 kept]
+        R3[T3 kept]
     end
-
-    SC --> After
 ```
 
-## Features
+### Data Flow
 
-- **Three simulation modes** — `counterfactual` (N independent runs, statistical answers), `population` (interacting entities in a shared world), `open_ended` (single run optimizing fitness/complexity)
-- **Pluggable providers** — `ClaudeSubprocessProvider` (default, uses `claude -p`), `AnthropicAPIProvider` (direct API access), `MockProvider` (deterministic testing)
-- **Atomic checkpointing** — crash-safe writes via `tempfile` + `fsync` + `rename`
-- **Statistical analysis** — z-test, bootstrap CIs, Cohen's d, cross-run comparison
-- **Review interval** — skip critic/judge on routine steps for 2–3× speedup
-- **Particle filtering** — sequential importance resampling: duplicate high-weight trajectories, replace low-weight ones to focus compute on interesting branches
-- **Structured logging** — `structlog` with JSON/console rendering
-- **Live dashboard** — WebSocket-based web dashboard for monitoring running simulations
-- **Visualization** — matplotlib plots for state fields and population scores over time
+```mermaid
+flowchart LR
+    A[Scenario YAML] --> B[Runner]
+    B --> C[Board]
+    C --> D[Trajectories]
+    D --> E[Analysis]
+    E --> F[Report] & G[Plots] & H[Dashboard]
+```
 
 ## Simulation Modes
 
 ### `counterfactual`
 
 Run the **same scenario N times independently** to answer statistical questions.
+Wildcards fire stochastically, producing different paths. Outcomes are classified
+and aggregated.
 
-Each trajectory is an isolated run with the same agents and initial state but
-different random seeds. Wildcards (asteroids, plagues) fire stochastically,
-producing different paths. After all trajectories complete, outcomes are
-classified and aggregated.
+```mermaid
+flowchart LR
+    S[Scenario] --> W1[Run 1] & W2[Run 2] & W3[Run N]
+    W1 & W2 & W3 --> ST[Aggregate Statistics]
+```
 
 **Use for:** "How frequently does intelligence emerge?" "In what fraction of
 runs does Rome fall before 200 AD?"
-
-```mermaid
-%%{init: {'theme': 'base', 'themeVariables': {'primaryColor': '#e8f4f8', 'primaryTextColor': '#1a1a1a', 'primaryBorderColor': '#4a90d9', 'lineColor': '#5a5a5a', 'secondaryColor': '#f0f7e8', 'tertiaryColor': '#fff5e6', 'fontSize': '14px'}}}%%
-flowchart TB
-    S["Same Scenario"] --> W1["World 1"]
-    S --> W2["World 2"]
-    S --> W3["World 3"]
-    S --> WN["World N"]
-    W1 --> O1["out 1"]
-    W2 --> O2["out 2"]
-    W3 --> O3["out 3"]
-    WN --> ON["out N"]
-    O1 --> ST["Statistics"]
-    O2 --> ST
-    O3 --> ST
-    ON --> ST
-```
 
 ```bash
 minimal-agora run scenarios/examples/intelligence.yaml -n 30 -m counterfactual
@@ -157,27 +142,14 @@ minimal-agora run scenarios/examples/intelligence.yaml -n 30 -m counterfactual
 ### `population`
 
 Multiple **interacting entities** (civilizations, species, factions) share a
-single world. Each entity has its own state subtree and agents. Forces (nature,
-disease) modify the shared world. Critics check plausibility. Evaluators score
-and resolve.
-
-Run N times to get statistics across population scenarios ("How often does Rome
-dominate?"). Each run is a full multi-entity simulation.
-
-**Use for:** "What happens when Rome, Greece, and Persia compete for 1000
-years?" "Which civilization dominates under different starting conditions?"
+single world. Each entity has its own state subtree and agents. Forces modify
+the shared world. Critics check plausibility. Evaluators score and resolve.
 
 ```mermaid
-%%{init: {'theme': 'base', 'themeVariables': {'primaryColor': '#e8f4f8', 'primaryTextColor': '#1a1a1a', 'primaryBorderColor': '#4a90d9', 'lineColor': '#5a5a5a', 'secondaryColor': '#f0f7e8', 'tertiaryColor': '#fff5e6', 'fontSize': '14px'}}}%%
 flowchart TB
-    WS["Shared World State"]
-    WS <--> P1["Pop 1"]
-    WS <--> P2["Pop 2"]
-    WS <--> P3["Pop 3"]
-    P1 --> RES["Resolution"]
-    P2 --> RES
-    P3 --> RES
-    RES --> N["Narrative + Scores"]
+    W[World State] <--> P1[Pop A] & P2[Pop B] & P3[Pop C]
+    P1 & P2 & P3 --> J[Judge Resolution]
+    J --> N[Narrative]
 ```
 
 Entity types:
@@ -301,11 +273,6 @@ minimal-agora compare runs/run-a/ runs/run-b/ [--alpha 0.05] [--format text|json
 
 # Show version info
 minimal-agora version
-
-# Examples
-minimal-agora run scenarios/examples/intelligence.yaml -n 5
-minimal-agora run scenarios/examples/mediterranean.yaml -n 3 -m population
-minimal-agora run scenarios/examples/intelligence.yaml -n 30 --steps 10  # quick test run
 ```
 
 ## Example Scenarios
@@ -325,46 +292,18 @@ Use `--steps 10` for quick test runs.
 
 ## Features
 
-- **Provider abstraction** — `AgentProvider` protocol decouples the engine from
-  any specific LLM backend. Ships with `ClaudeSubprocessProvider` (production)
-  and `MockProvider` (testing). Swap providers without changing simulation code.
+- **Three simulation modes** — `counterfactual` (N independent runs, statistical answers), `population` (interacting entities in a shared world), `open_ended` (single run optimizing fitness/complexity)
+- **Pluggable providers** — `ClaudeSubprocessProvider` (default, uses `claude -p`), `AnthropicAPIProvider` (direct API access), `MockProvider` (deterministic testing)
+- **Atomic checkpointing** — crash-safe writes via `tempfile` + `fsync` + `rename`
+- **Statistical analysis** — z-test, bootstrap CIs, Cohen's d, cross-run comparison
+- **Review interval** — skip critic/judge on routine steps for 2-3x speedup
+- **Particle filtering** — sequential importance resampling: duplicate high-weight trajectories, replace low-weight ones to focus compute on interesting branches
+- **Structured logging** — `structlog` with JSON/console rendering
+- **Live dashboard** — WebSocket-based web dashboard for monitoring running simulations
+- **Visualization** — matplotlib plots for state fields and population scores over time
 
-- **Atomic checkpointing** — crash-safe state writes using temp-file-then-rename.
-  If the process dies mid-step, the last committed checkpoint is intact.
+## Documentation
 
-- **Statistical analysis** — z-test for outcome proportions, bootstrap confidence
-  intervals, Cohen's d effect size, and cross-run comparison (`minimal-agora compare`).
-
-- **Review interval** — skip critic/judge evaluation on non-review steps to reduce
-  LLM calls. Configure `review_interval` in the scenario to run critique every
-  N steps instead of every step.
-
-- **Particle filtering** — sequential importance resampling across trajectories.
-  Score trajectories every K steps, duplicate high-weight runs, and replace
-  low-weight ones to focus compute on the most interesting branches.
-
-## Data Flow
-
-```mermaid
-%%{init: {'theme': 'base', 'themeVariables': {'primaryColor': '#e8f4f8', 'primaryTextColor': '#1a1a1a', 'primaryBorderColor': '#4a90d9', 'lineColor': '#5a5a5a', 'secondaryColor': '#f0f7e8', 'tertiaryColor': '#fff5e6', 'fontSize': '14px'}}}%%
-flowchart LR
-    YAML["Scenario YAML"] --> RUN["Runner"]
-    RUN --> BOARD["Board (filesystem)"]
-    BOARD --> TRAJ["Trajectories"]
-    TRAJ --> ANA["Analysis"]
-    ANA --> REP["Report"]
-    ANA --> PLT["Plots"]
-    ANA --> DASH["Dashboard"]
-```
-
-## Requirements
-
-- Python 3.12+
-- `claude` CLI (Claude Code) installed and authenticated
-- `uv` for dependency management
-
-```bash
-uv sync
-uv run minimal-agora run scenarios/examples/intelligence.yaml -n 3
-uv run minimal-agora run scenarios/examples/intelligence.yaml -n 3 --steps 10  # quick test
-```
+- [Design Guide](docs/guide.md) — full architecture, configuration reference, and flow diagrams
+- [Simulation Structure](docs/simulation-structure.md) — detailed simulation internals
+- [Example Scenarios](scenarios/examples/) — ready-to-run YAML scenarios
