@@ -3,6 +3,8 @@ from __future__ import annotations
 import contextvars
 import logging
 import sys
+from collections.abc import MutableMapping
+from typing import Any
 
 import structlog
 
@@ -12,8 +14,8 @@ trajectory_context: contextvars.ContextVar[int | None] = contextvars.ContextVar(
 
 
 def _add_trajectory_id(
-    logger: logging.Logger, method_name: str, event_dict: dict
-) -> dict:
+    logger: Any, method_name: str, event_dict: MutableMapping[str, Any]
+) -> MutableMapping[str, Any]:
     tid = trajectory_context.get()
     if tid is not None:
         event_dict["trajectory_id"] = tid

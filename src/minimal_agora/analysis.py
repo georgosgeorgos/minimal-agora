@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import math
 from collections import defaultdict
+from collections.abc import Sequence
 from pathlib import Path
 
 from minimal_agora.models import AggregateResult, Trajectory
@@ -51,7 +52,7 @@ def extract_field_timelines(
     return timelines
 
 
-def compute_statistics(values: list[float | int]) -> dict[str, float]:
+def compute_statistics(values: Sequence[float | int]) -> dict[str, float]:
     if not values:
         return {}
     n = len(values)
@@ -110,20 +111,22 @@ def save_artifacts(trajectories: list[Trajectory], output_dir: Path) -> Path:
     artifacts_dir = output_dir / "artifacts"
     artifacts_dir.mkdir(parents=True, exist_ok=True)
 
-    summary = {
-        "scenario": trajectories[0].scenario_name if trajectories else "unknown",
-        "n_trajectories": len(trajectories),
-        "trajectories": [],
-    }
+    traj_summaries: list[dict[str, object]] = []
 
     for t in trajectories:
-        traj_summary = {
+        traj_summary: dict[str, object] = {
             "id": t.trajectory_id,
             "n_steps": len(t.steps),
             "outcome": t.outcome.classification if t.outcome else "unclassified",
             "final_step": t.outcome.final_step if t.outcome else len(t.steps) - 1,
         }
-        summary["trajectories"].append(traj_summary)
+        traj_summaries.append(traj_summary)
+
+    summary: dict[str, object] = {
+        "scenario": trajectories[0].scenario_name if trajectories else "unknown",
+        "n_trajectories": len(trajectories),
+        "trajectories": traj_summaries,
+    }
 
     with open(artifacts_dir / "summary.json", "w") as f:
         json.dump(summary, f, indent=2)

@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import json
 import time
-from functools import partial
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
+from typing import Any
 
 from minimal_agora.analysis import compute_statistics, extract_field_timelines, load_trajectories
 
@@ -103,7 +103,7 @@ def _collect_data(
                     series.append({"step": step_num, **stats})
             timelines[field] = series
 
-    pop_data = {}
+    pop_data: dict[str, dict[str, Any]] = {}
     if populations and score_fields:
         for pop in populations:
             pop_data[pop] = {}
@@ -121,7 +121,7 @@ def _collect_data(
     if all_fitness:
         max_len = max(len(h) for h in all_fitness)
         for i in range(max_len):
-            vals = [h[i] for h in all_fitness if i < len(h) and h[i] is not None]
+            vals = [v for h in all_fitness if i < len(h) for v in [h[i]] if v is not None]
             if vals:
                 fitness_data.append({"step": i, "mean": _mean(vals), "min": min(vals), "max": max(vals)})
 
@@ -575,13 +575,18 @@ def start_dashboard(
     populations: list[str] | None = None,
     score_fields: list[str] | None = None,
 ) -> None:
-    handler = partial(DashboardHandler)
-    handler.run_dir = run_dir
-    handler.fields = fields or []
-    handler.populations = populations or []
-    handler.score_fields = score_fields or []
+    configured = type(
+        "ConfiguredDashboardHandler",
+        (DashboardHandler,),
+        {
+            "run_dir": run_dir,
+            "fields": fields or [],
+            "populations": populations or [],
+            "score_fields": score_fields or [],
+        },
+    )
 
-    server = HTTPServer(("127.0.0.1", port), handler)
+    server = HTTPServer(("127.0.0.1", port), configured)
     print(f"Dashboard: http://127.0.0.1:{port}")
     print(f"Watching: {run_dir}")
     print("Press Ctrl+C to stop\n")

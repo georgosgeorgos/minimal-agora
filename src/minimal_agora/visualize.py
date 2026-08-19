@@ -85,41 +85,41 @@ def plot_field_timelines(
 
         if numeric:
             for t_idx, t in enumerate(trajectories):
-                t_vals = []
-                t_steps = []
-                for step in t.steps:
-                    val = _get_nested(step.state_after, field)
+                num_vals: list[int | float] = []
+                num_steps: list[int] = []
+                for s in t.steps:
+                    val = _get_nested(s.state_after, field)
                     if isinstance(val, (int, float)):
-                        t_vals.append(val)
-                        t_steps.append(step.step_number)
-                if t_vals:
+                        num_vals.append(val)
+                        num_steps.append(s.step_number)
+                if num_vals:
                     color = COLORS[t_idx % len(COLORS)]
-                    ax.plot(t_steps, t_vals, marker="o", markersize=3,
+                    ax.plot(num_steps, num_vals, marker="o", markersize=3,
                             color=color, alpha=0.6, label=f"traj {t.trajectory_id}")
 
-            means = []
-            for step in steps:
-                vals = [v for v in field_data[step] if isinstance(v, (int, float))]
+            means: list[float | None] = []
+            for step_key in steps:
+                vals = [v for v in field_data[step_key] if isinstance(v, (int, float))]
                 if vals:
                     means.append(sum(vals) / len(vals))
                 else:
                     means.append(None)
 
-            valid_steps = [s for s, m in zip(steps, means) if m is not None]
+            valid_steps = [sk for sk, m in zip(steps, means) if m is not None]
             valid_means = [m for m in means if m is not None]
             if valid_means:
                 ax.plot(valid_steps, valid_means, "k-", linewidth=2, label="mean", zorder=10)
         else:
             for t_idx, t in enumerate(trajectories):
-                t_vals = []
-                t_steps = []
-                for step in t.steps:
-                    val = _get_nested(step.state_after, field)
+                str_vals: list[str] = []
+                str_steps: list[int] = []
+                for s in t.steps:
+                    val = _get_nested(s.state_after, field)
                     if val is not None:
-                        t_vals.append(str(val))
-                        t_steps.append(step.step_number)
-                if t_vals:
-                    ax.scatter(t_steps, t_vals, marker="o", s=30,
+                        str_vals.append(str(val))
+                        str_steps.append(s.step_number)
+                if str_vals:
+                    ax.scatter(str_steps, str_vals, marker="o", s=30,
                                color=COLORS[t_idx % len(COLORS)], alpha=0.6)
 
         ax.set_title(field, fontsize=11, fontweight="bold")
