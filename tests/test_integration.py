@@ -84,7 +84,12 @@ class FileWritingMockProvider:
             )
             output = resolution.model_dump_json(indent=2)
 
-        return AgentInvocationResult(output=output, tokens_used=100, model="mock-model")
+        input_tokens = len(prompt) // 4
+        output_tokens = len(output) // 4
+        return AgentInvocationResult(
+            output=output, tokens_used=input_tokens + output_tokens, model="mock-model",
+            input_tokens=input_tokens, output_tokens=output_tokens,
+        )
 
 
 @pytest.fixture()
@@ -259,3 +264,50 @@ def test_batch_run_with_aggregation(
     assert agg.scenario_name == "test-counterfactual"
     assert "completed" in agg.outcomes
     assert agg.outcomes["completed"] == 2
+
+
+def test_token_tracking_counterfactual(
+    mock_provider: FileWritingMockProvider, tmp_path: Path,
+) -> None:
+    """Token usage is tracked per step and aggregated per trajectory."""
+    scenario = _counterfactual_scenario()
+    workspace = setup_workspace(scenario, tmp_path, trajectory_id=0)
+
+    trajectory = asyncio.run(run_trajectory(scenario, workspace, trajectory_id=0))
+
+    for step in trajectory.steps:
+        assert step.token_usage is not None
+        assert step.token_usage.total_input_tokens > 0
+        assert step.token_usage.total_output_tokens > 0
+        assert len(step.token_usage.agent_calls) == 3  # actor + critic + judge
+        roles = {c.role for c in step.token_usage.agent_calls}
+        assert roles == {"actor", "critic", "judge"}
+
+    assert trajectory.total_tokens is not None
+    assert trajectory.total_tokens["total_input_tokens"] > 0
+    assert trajectory.total_tokens["total_output_tokens"] > 0
+    assert trajectory.total_tokens["total_tokens"] > 0
+    assert trajectory.total_tokens["estimated_cost_usd"] > 0
+    assert "per_role" in trajectory.total_tokens
+    assert "actor" in trajectory.total_tokens["per_role"]
+    assert "critic" in trajectory.total_tokens["per_role"]
+    assert "judge" in trajectory.total_tokens["per_role"]
+
+
+def test_token_tracking_population(
+    mock_provider: FileWritingMockProvider, tmp_path: Path,
+) -> None:
+    """Token usage is tracked in population mode with entity steps."""
+    scenario = _population_scenario()
+    workspace = setup_workspace(scenario, tmp_path, trajectory_id=0)
+
+    trajectory = asyncio.run(run_trajectory(scenario, workspace, trajectory_id=0))
+
+    for step in trajectory.steps:
+        assert step.token_usage is not None
+        assert step.token_usage.total_input_tokens > 0
+        # 1 force + 2 pop actors + 1 critic + 1 judge = 5 calls
+        assert len(step.token_usage.agent_calls) == 5
+
+    assert trajectory.total_tokens is not None
+    assert trajectory.total_tokens["total_tokens"] > 0

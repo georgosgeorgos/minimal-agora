@@ -169,8 +169,11 @@ class TestLoopIntegration:
             patch("minimal_agora.loop.parse_resolution_from_text") as mock_parse_res,
         ):
             from minimal_agora.models import Proposal
+            from minimal_agora.providers.protocol import AgentInvocationResult
 
-            mock_invoke.return_value = "output"
+            mock_invoke.return_value = AgentInvocationResult(
+                output="output", input_tokens=10, output_tokens=5,
+            )
             mock_parse_prop.return_value = Proposal(
                 agent="actor1",
                 role=AgentRole.ACTOR,

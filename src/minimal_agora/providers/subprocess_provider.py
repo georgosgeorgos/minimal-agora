@@ -66,15 +66,21 @@ class ClaudeSubprocessProvider:
 
         output = stdout.decode().strip()
 
+        estimated_input = len(prompt) // 4
+        estimated_output = len(output) // 4
+
         logger.debug(
             "provider.invoke.done",
             provider="claude-subprocess",
             output_length=len(output),
-            tokens_used=None,
+            estimated_input_tokens=estimated_input,
+            estimated_output_tokens=estimated_output,
         )
 
         return AgentInvocationResult(
             output=output,
-            tokens_used=None,
+            tokens_used=estimated_input + estimated_output,
             model="claude-via-cli",
+            input_tokens=estimated_input,
+            output_tokens=estimated_output,
         )

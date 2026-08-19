@@ -12,6 +12,8 @@ class AgentInvocationResult:
     output: str
     tokens_used: int | None = field(default=None)
     model: str | None = field(default=None)
+    input_tokens: int | None = field(default=None)
+    output_tokens: int | None = field(default=None)
 
 
 @runtime_checkable

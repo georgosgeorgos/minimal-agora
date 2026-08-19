@@ -143,7 +143,7 @@ class TestSetDefaultProvider:
             agent = _make_agent()
             with tempfile.TemporaryDirectory() as tmp:
                 result = asyncio.run(invoke_agent(agent, Path(tmp), step=1, prompt="actor test"))
-            assert result == "mock output"
+            assert result.output == "mock output"
             assert mock.call_count == 1
         finally:
             set_default_provider(original)
@@ -155,7 +155,7 @@ class TestSetDefaultProvider:
             result = asyncio.run(
                 invoke_agent(agent, Path(tmp), step=1, prompt="critic test", provider=explicit)
             )
-        assert result == "explicit output"
+        assert result.output == "explicit output"
         assert explicit.call_count == 1
 
 
