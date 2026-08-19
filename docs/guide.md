@@ -33,9 +33,9 @@ summaries with confidence intervals.
 
 **Particle filtering.** For trajectory-level exploration, the runner supports
 sequential importance resampling. Trajectories are periodically scored, and
-low-weight (boring/implausible) runs are pruned and replaced with copies of
+low-weight (boring/implausible) runs are replaced with duplicates of
 high-weight (interesting/promising) ones — concentrating compute on the most
-informative branches of the simulation.
+informative branches of the simulation while preserving the total trajectory count.
 
 ---
 
@@ -62,16 +62,17 @@ WILDCARD → PROPOSE → CRITIQUE → RESOLVE → UPDATE → CHECK
 The following diagram shows the core simulation loop with its decision points for wildcard firing and termination:
 
 ```mermaid
+%%{init: {'theme': 'base', 'themeVariables': {'primaryColor': '#e8f4f8', 'primaryTextColor': '#1a1a1a', 'primaryBorderColor': '#4a90d9', 'lineColor': '#5a5a5a', 'secondaryColor': '#f0f7e8', 'tertiaryColor': '#fff5e6', 'fontSize': '14px'}}}%%
 flowchart TD
     START([Step Start]) --> WC{Wildcard\nenabled?}
     WC -->|No| PROPOSE
     WC -->|Yes| PROB{Probability\ncheck}
     PROB -->|Fires| APPLY[Apply state_impact\nWrite wildcard file]
     PROB -->|Skips| PROPOSE
-    APPLY --> PROPOSE[PROPOSE\nActors write proposals]
-    PROPOSE --> CRITIQUE[CRITIQUE\nCritics evaluate proposals]
-    CRITIQUE --> RESOLVE[RESOLVE\nJudge synthesizes resolution]
-    RESOLVE --> UPDATE[UPDATE\nDeep-merge state_delta\nAppend narrative]
+    APPLY --> PROPOSE[Propose\nActors write proposals]
+    PROPOSE --> CRITIQUE[Critique\nCritics evaluate proposals]
+    CRITIQUE --> RESOLVE[Resolve\nJudge synthesizes resolution]
+    RESOLVE --> UPDATE[Update\nDeep-merge state_delta\nAppend narrative]
     UPDATE --> CHECK{Termination\ncondition met?}
     CHECK -->|Yes| END([Trajectory Complete])
     CHECK -->|No| START
@@ -135,6 +136,7 @@ Key Board operations:
 The following sequence diagram shows how agents interact through the filesystem board during a single step:
 
 ```mermaid
+%%{init: {'theme': 'base', 'themeVariables': {'primaryColor': '#e8f4f8', 'primaryTextColor': '#1a1a1a', 'primaryBorderColor': '#4a90d9', 'lineColor': '#5a5a5a', 'secondaryColor': '#f0f7e8', 'tertiaryColor': '#fff5e6', 'fontSize': '14px'}}}%%
 sequenceDiagram
     participant L as Loop
     participant A as Actor Agent
@@ -187,6 +189,7 @@ questions.
 The following diagram compares the three modes side by side:
 
 ```mermaid
+%%{init: {'theme': 'base', 'themeVariables': {'primaryColor': '#e8f4f8', 'primaryTextColor': '#1a1a1a', 'primaryBorderColor': '#4a90d9', 'lineColor': '#5a5a5a', 'secondaryColor': '#f0f7e8', 'tertiaryColor': '#fff5e6', 'fontSize': '14px'}}}%%
 flowchart TD
     subgraph Counterfactual
         direction TB
@@ -201,7 +204,7 @@ flowchart TD
         P2 --> P3[Populations respond]
         P3 --> P4[Critics check\nplausibility]
         P4 --> P5[Evaluator resolves]
-        P5 --> P6[N runs →\naggregate]
+        P5 --> P6[N runs then\naggregate]
     end
 
     subgraph Open-Ended
@@ -226,16 +229,17 @@ but different random seeds. Wildcards fire stochastically, producing divergent
 paths. After all trajectories complete, outcomes are classified and aggregated.
 
 ```mermaid
+%%{init: {'theme': 'base', 'themeVariables': {'primaryColor': '#e8f4f8', 'primaryTextColor': '#1a1a1a', 'primaryBorderColor': '#4a90d9', 'lineColor': '#5a5a5a', 'secondaryColor': '#f0f7e8', 'tertiaryColor': '#fff5e6', 'fontSize': '14px'}}}%%
 flowchart TB
-    S["📋 Same Scenario"] --> W1["🌍 World 1"]
-    S --> W2["🌍 World 2"]
-    S --> W3["🌍 World 3"]
-    S --> WN["🌍 World N"]
-    W1 --> O1["out₁"]
-    W2 --> O2["out₂"]
-    W3 --> O3["out₃"]
-    WN --> ON["outₙ"]
-    O1 --> ST["📊 Statistics"]
+    S["Same Scenario"] --> W1["World 1"]
+    S --> W2["World 2"]
+    S --> W3["World 3"]
+    S --> WN["World N"]
+    W1 --> O1["out 1"]
+    W2 --> O2["out 2"]
+    W3 --> O3["out 3"]
+    WN --> ON["out N"]
+    O1 --> ST["Statistics"]
     O2 --> ST
     O3 --> ST
     ON --> ST
@@ -273,15 +277,16 @@ evaluator-judge resolves everything.
 Run N times to get statistics across population scenarios.
 
 ```mermaid
+%%{init: {'theme': 'base', 'themeVariables': {'primaryColor': '#e8f4f8', 'primaryTextColor': '#1a1a1a', 'primaryBorderColor': '#4a90d9', 'lineColor': '#5a5a5a', 'secondaryColor': '#f0f7e8', 'tertiaryColor': '#fff5e6', 'fontSize': '14px'}}}%%
 flowchart TB
-    WS["🌐 Shared World State"]
-    WS <--> P1["👥 Pop 1"]
-    WS <--> P2["👥 Pop 2"]
-    WS <--> P3["👥 Pop 3"]
-    P1 --> RES["⚖️ Resolution"]
+    WS["Shared World State"]
+    WS <--> P1["Pop 1"]
+    WS <--> P2["Pop 2"]
+    WS <--> P3["Pop 3"]
+    P1 --> RES["Resolution"]
     P2 --> RES
     P3 --> RES
-    RES --> N["📝 Narrative + Scores"]
+    RES --> N["Narrative + Scores"]
 ```
 
 **Use for:** "What happens when Rome, Greece, and Persia compete for 1000
@@ -767,6 +772,7 @@ determines whether the event actually occurs.
 The following diagram shows the evaluation flow for each wildcard mode:
 
 ```mermaid
+%%{init: {'theme': 'base', 'themeVariables': {'primaryColor': '#e8f4f8', 'primaryTextColor': '#1a1a1a', 'primaryBorderColor': '#4a90d9', 'lineColor': '#5a5a5a', 'secondaryColor': '#f0f7e8', 'tertiaryColor': '#fff5e6', 'fontSize': '14px'}}}%%
 flowchart TD
     START([Evaluate Wildcard]) --> MODE{Mode?}
 
@@ -849,10 +855,11 @@ runs.
 The following diagram shows how data flows from completed simulation runs through analysis to visualizations:
 
 ```mermaid
+%%{init: {'theme': 'base', 'themeVariables': {'primaryColor': '#e8f4f8', 'primaryTextColor': '#1a1a1a', 'primaryBorderColor': '#4a90d9', 'lineColor': '#5a5a5a', 'secondaryColor': '#f0f7e8', 'tertiaryColor': '#fff5e6', 'fontSize': '14px'}}}%%
 graph LR
     RD[Run directory\ntrajectory_*/] --> LT[load_trajectories]
-    LT --> CO[Classify\noutcomes]
-    CO --> CS[Compute statistics\nz-test, CIs,\nCohen's d]
+    LT --> CO[Classify outcomes]
+    CO --> CS[Compute statistics\nz-test, CIs, Cohen's d]
     CS --> GP[Generate plots\nmatplotlib PNGs]
     CS --> SD[Serve dashboard\nSSE live updates]
     GP --> PD[plots/ directory]
@@ -1174,13 +1181,14 @@ Resample (kill boring, fork interesting) → Continue
 The following diagram shows the particle filtering loop in detail:
 
 ```mermaid
+%%{init: {'theme': 'base', 'themeVariables': {'primaryColor': '#e8f4f8', 'primaryTextColor': '#1a1a1a', 'primaryBorderColor': '#4a90d9', 'lineColor': '#5a5a5a', 'secondaryColor': '#f0f7e8', 'tertiaryColor': '#fff5e6', 'fontSize': '14px'}}}%%
 flowchart TD
     START([Start N trajectories]) --> RUN[Run all trajectories\nfor K steps]
     RUN --> SCORE[Resampling critic\nscores each trajectory\non plausibility,\ndiversity, promise]
     SCORE --> WEIGHTS[Compute weights\nand ESS]
     WEIGHTS --> ESS{ESS < N/2?}
     ESS -->|No| CONTINUE
-    ESS -->|Yes| RESAMPLE[Resample:\nPrune low-weight trajectories\nDuplicate high-weight trajectories]
+    ESS -->|Yes| RESAMPLE[Resample:\nDuplicate high-weight trajectories\nReplace low-weight trajectories]
     RESAMPLE --> CONTINUE[Continue all\ntrajectories]
     CONTINUE --> DONE{All trajectories\ncomplete?}
     DONE -->|No| RUN
@@ -1231,8 +1239,8 @@ population is re-diversified.
 2. Each trajectory is summarized: recent state changes, fitness score,
    current outcome classification.
 3. The resampling critic scores each trajectory.
-4. Trajectories with low scores are pruned (their workspace is replaced with
-   a copy of a high-scoring trajectory's workspace).
+4. Low-scoring trajectories are replaced: their workspace is overwritten with
+   a copy of a high-scoring trajectory's workspace.
 5. All trajectories continue from their current state.
 
 This concentrates compute on the most promising branches of the simulation

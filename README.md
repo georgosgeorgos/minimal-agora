@@ -33,14 +33,15 @@ no agent frameworks — just prompts, roles, and domain rules.
 Each step follows the same loop regardless of mode:
 
 ```mermaid
+%%{init: {'theme': 'base', 'themeVariables': {'primaryColor': '#e8f4f8', 'primaryTextColor': '#1a1a1a', 'primaryBorderColor': '#4a90d9', 'lineColor': '#5a5a5a', 'secondaryColor': '#f0f7e8', 'tertiaryColor': '#fff5e6', 'fontSize': '14px'}}}%%
 flowchart LR
-    W["🎲 Wildcard"] --> P["💬 Propose"]
-    P --> C["🔍 Critique"]
-    C --> R["⚖️ Resolve"]
-    R --> U["📝 Update"]
+    W["Wildcard"] --> P["Propose"]
+    P --> C["Critique"]
+    C --> R["Resolve"]
+    R --> U["Update"]
     U --> T{Terminate?}
     T -->|No| W
-    T -->|Yes| E["📊 Classify"]
+    T -->|Yes| E["Classify"]
 ```
 
 In population mode, the propose phase runs in order:
@@ -51,6 +52,7 @@ In population mode, the propose phase runs in order:
 Skip critic/judge on routine steps for 2–3× speedup:
 
 ```mermaid
+%%{init: {'theme': 'base', 'themeVariables': {'primaryColor': '#e8f4f8', 'primaryTextColor': '#1a1a1a', 'primaryBorderColor': '#4a90d9', 'lineColor': '#5a5a5a', 'secondaryColor': '#f0f7e8', 'tertiaryColor': '#fff5e6', 'fontSize': '14px'}}}%%
 sequenceDiagram
     participant S as Step
     participant W as Wildcard
@@ -60,23 +62,23 @@ sequenceDiagram
     participant U as Update
 
     Note over S: Step 0 (full review)
-    S->>W: 🎲 Roll wildcards
-    W->>P: 💬 Actors propose
-    P->>C: 🔍 Critics evaluate
-    C->>R: ⚖️ Judge resolves
-    R->>U: 📝 Merge state
+    S->>W: Roll wildcards
+    W->>P: Actors propose
+    P->>C: Critics evaluate
+    C->>R: Judge resolves
+    R->>U: Merge state
 
-    Note over S: Steps 1–2 (fast)
-    S->>W: 🎲 Roll wildcards
-    W->>P: 💬 Actors propose
-    P->>U: 📝 Auto-merge
+    Note over S: Steps 1-2 (fast)
+    S->>W: Roll wildcards
+    W->>P: Actors propose
+    P->>U: Auto-merge
 
     Note over S: Step 3 (full review)
-    S->>W: 🎲 Roll wildcards
-    W->>P: 💬 Actors propose
-    P->>C: 🔍 Critics evaluate
-    C->>R: ⚖️ Judge resolves
-    R->>U: 📝 Merge state
+    S->>W: Roll wildcards
+    W->>P: Actors propose
+    P->>C: Critics evaluate
+    C->>R: Judge resolves
+    R->>U: Merge state
 ```
 
 ### Particle Filter (Sequential Importance Resampling)
@@ -84,20 +86,22 @@ sequenceDiagram
 Focus compute on the most interesting trajectories:
 
 ```mermaid
+%%{init: {'theme': 'base', 'themeVariables': {'primaryColor': '#e8f4f8', 'primaryTextColor': '#1a1a1a', 'primaryBorderColor': '#4a90d9', 'lineColor': '#5a5a5a', 'secondaryColor': '#f0f7e8', 'tertiaryColor': '#fff5e6', 'fontSize': '14px'}}}%%
 flowchart LR
-    subgraph Before["⏳ Before Resampling"]
-        T1["Trajectory 1"]
-        T2["Trajectory 2"]
-        T3["Trajectory 3 ⭐"]
-        T4["Trajectory 4"]
+    subgraph Before["Before Resampling"]
+        T1["Trajectory 1 (low)"]
+        T2["Trajectory 2 (mid)"]
+        T3["Trajectory 3 (high)"]
+        T4["Trajectory 4 (low)"]
     end
 
-    Before --> SC["📊 Score &\nResample"]
+    Before --> SC["Score & Resample"]
 
-    subgraph After["✅ After Resampling"]
-        R1["Trajectory 1 → pruned"]
-        R2["Trajectory 2 → kept"]
-        R3["Trajectory 3 → forked ×2"]
+    subgraph After["After Resampling"]
+        R1["Traj 1 replaced by Traj 3"]
+        R2["Traj 2 kept"]
+        R3["Traj 3 duplicated"]
+        R4["Traj 4 replaced by Traj 3"]
     end
 
     SC --> After
@@ -110,7 +114,7 @@ flowchart LR
 - **Atomic checkpointing** — crash-safe writes via `tempfile` + `fsync` + `rename`
 - **Statistical analysis** — z-test, bootstrap CIs, Cohen's d, cross-run comparison
 - **Review interval** — skip critic/judge on routine steps for 2–3× speedup
-- **Particle filtering** — sequential importance resampling to focus compute on interesting trajectories
+- **Particle filtering** — sequential importance resampling: duplicate high-weight trajectories, replace low-weight ones to focus compute on interesting branches
 - **Structured logging** — `structlog` with JSON/console rendering
 - **Live dashboard** — WebSocket-based web dashboard for monitoring running simulations
 - **Visualization** — matplotlib plots for state fields and population scores over time
@@ -130,16 +134,17 @@ classified and aggregated.
 runs does Rome fall before 200 AD?"
 
 ```mermaid
+%%{init: {'theme': 'base', 'themeVariables': {'primaryColor': '#e8f4f8', 'primaryTextColor': '#1a1a1a', 'primaryBorderColor': '#4a90d9', 'lineColor': '#5a5a5a', 'secondaryColor': '#f0f7e8', 'tertiaryColor': '#fff5e6', 'fontSize': '14px'}}}%%
 flowchart TB
-    S["📋 Same Scenario"] --> W1["🌍 World 1"]
-    S --> W2["🌍 World 2"]
-    S --> W3["🌍 World 3"]
-    S --> WN["🌍 World N"]
-    W1 --> O1["out₁"]
-    W2 --> O2["out₂"]
-    W3 --> O3["out₃"]
-    WN --> ON["outₙ"]
-    O1 --> ST["📊 Statistics"]
+    S["Same Scenario"] --> W1["World 1"]
+    S --> W2["World 2"]
+    S --> W3["World 3"]
+    S --> WN["World N"]
+    W1 --> O1["out 1"]
+    W2 --> O2["out 2"]
+    W3 --> O3["out 3"]
+    WN --> ON["out N"]
+    O1 --> ST["Statistics"]
     O2 --> ST
     O3 --> ST
     ON --> ST
@@ -163,15 +168,16 @@ dominate?"). Each run is a full multi-entity simulation.
 years?" "Which civilization dominates under different starting conditions?"
 
 ```mermaid
+%%{init: {'theme': 'base', 'themeVariables': {'primaryColor': '#e8f4f8', 'primaryTextColor': '#1a1a1a', 'primaryBorderColor': '#4a90d9', 'lineColor': '#5a5a5a', 'secondaryColor': '#f0f7e8', 'tertiaryColor': '#fff5e6', 'fontSize': '14px'}}}%%
 flowchart TB
-    WS["🌐 Shared World State"]
-    WS <--> P1["👥 Pop 1"]
-    WS <--> P2["👥 Pop 2"]
-    WS <--> P3["👥 Pop 3"]
-    P1 --> RES["⚖️ Resolution"]
+    WS["Shared World State"]
+    WS <--> P1["Pop 1"]
+    WS <--> P2["Pop 2"]
+    WS <--> P3["Pop 3"]
+    P1 --> RES["Resolution"]
     P2 --> RES
     P3 --> RES
-    RES --> N["📝 Narrative + Scores"]
+    RES --> N["Narrative + Scores"]
 ```
 
 Entity types:
@@ -334,20 +340,21 @@ Use `--steps 10` for quick test runs.
   N steps instead of every step.
 
 - **Particle filtering** — sequential importance resampling across trajectories.
-  Score trajectories every K steps, prune low-weight runs, and fork high-weight
-  ones to focus compute on the most interesting branches.
+  Score trajectories every K steps, duplicate high-weight runs, and replace
+  low-weight ones to focus compute on the most interesting branches.
 
 ## Data Flow
 
 ```mermaid
+%%{init: {'theme': 'base', 'themeVariables': {'primaryColor': '#e8f4f8', 'primaryTextColor': '#1a1a1a', 'primaryBorderColor': '#4a90d9', 'lineColor': '#5a5a5a', 'secondaryColor': '#f0f7e8', 'tertiaryColor': '#fff5e6', 'fontSize': '14px'}}}%%
 flowchart LR
-    YAML["📄 Scenario\nYAML"] --> RUN["🚀 Runner"]
-    RUN --> BOARD["📂 Board\n(filesystem)"]
-    BOARD --> TRAJ["🔀 Trajectories"]
-    TRAJ --> ANA["📊 Analysis"]
-    ANA --> REP["📝 Report"]
-    ANA --> PLT["📈 Plots"]
-    ANA --> DASH["🖥️ Dashboard"]
+    YAML["Scenario YAML"] --> RUN["Runner"]
+    RUN --> BOARD["Board (filesystem)"]
+    BOARD --> TRAJ["Trajectories"]
+    TRAJ --> ANA["Analysis"]
+    ANA --> REP["Report"]
+    ANA --> PLT["Plots"]
+    ANA --> DASH["Dashboard"]
 ```
 
 ## Requirements
