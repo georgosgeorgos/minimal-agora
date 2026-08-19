@@ -224,23 +224,6 @@ class SimulationModes(Scene):
         agg = _box("Aggregate", PURPLE, width=2.0, height=0.6)
         agg.move_to([col_x[0], row_y[4], 0])
 
-        # Arrows: Scenario → Runs (fan out from bottom edge, not sides)
-        cf_arrows = []
-        for r in runs:
-            cf_arrows.append(_arrow(
-                scenario_box[0].get_bottom(),
-                r[0].get_top(),
-            ))
-        # Arrows: Runs → Outs (straight down)
-        for r, o in zip(runs, outs):
-            cf_arrows.append(_arrow(r[0].get_bottom(), o[0].get_top()))
-        # Arrows: Outs → Aggregate (fan in to top edge, not sides)
-        for o in outs:
-            cf_arrows.append(_arrow(
-                o[0].get_bottom(),
-                agg[0].get_top(),
-            ))
-
         # Column 2: Population (skip row_y[3] — no Outs row)
         world = _box("Shared\nWorld", BLUE, width=2.0, height=0.7)
         world.move_to([col_x[1], row_y[1], 0])
@@ -256,11 +239,6 @@ class SimulationModes(Scene):
         judge = _box("Judge", PURPLE, width=2.0, height=0.6)
         judge.move_to([col_x[1], row_y[4], 0])
 
-        pop_arrows = []
-        for e in entities:
-            pop_arrows.append(_arrow(world[0].get_bottom(), e[0].get_top()))
-            pop_arrows.append(_arrow(e[0].get_bottom(), judge[0].get_top()))
-
         # Column 3: Open-Ended (skip row_y[3] — no Outs row)
         single = _box("Single\nTrajectory", BLUE, width=2.0, height=0.7)
         single.move_to([col_x[2], row_y[1], 0])
@@ -270,15 +248,6 @@ class SimulationModes(Scene):
 
         evolve = _box("Evolve", TEAL, width=2.0, height=0.6)
         evolve.move_to([col_x[2], row_y[4], 0])
-
-        oe_arrows = [
-            _arrow(single[0].get_bottom(), fitness[0].get_top()),
-            _arrow(fitness[0].get_bottom(), evolve[0].get_top()),
-        ]
-        oe_loop = CurvedArrow(
-            evolve[0].get_right(), fitness[0].get_right(),
-            angle=-1.5, color=DARK, stroke_width=2, tip_length=0.12,
-        )
 
         sep1 = Line(
             np.array([-2.1, 3.5, 0]), np.array([-2.1, -2.8, 0]),
@@ -297,6 +266,37 @@ class SimulationModes(Scene):
             sep1, sep2,
         )
         all_mobjects.move_to([0, 0, 0])
+
+        # Arrows: Scenario → Runs (fan out from bottom edge, not sides)
+        cf_arrows = []
+        for r in runs:
+            cf_arrows.append(_arrow(
+                scenario_box[0].get_bottom(),
+                r[0].get_top(),
+            ))
+        # Arrows: Runs → Outs (straight down)
+        for r, o in zip(runs, outs):
+            cf_arrows.append(_arrow(r[0].get_bottom(), o[0].get_top()))
+        # Arrows: Outs → Aggregate (fan in to top edge, not sides)
+        for o in outs:
+            cf_arrows.append(_arrow(
+                o[0].get_bottom(),
+                agg[0].get_top(),
+            ))
+
+        pop_arrows = []
+        for e in entities:
+            pop_arrows.append(_arrow(world[0].get_bottom(), e[0].get_top()))
+            pop_arrows.append(_arrow(e[0].get_bottom(), judge[0].get_top()))
+
+        oe_arrows = [
+            _arrow(single[0].get_bottom(), fitness[0].get_top()),
+            _arrow(fitness[0].get_bottom(), evolve[0].get_top()),
+        ]
+        oe_loop = CurvedArrow(
+            evolve[0].get_right(), fitness[0].get_right(),
+            angle=-1.5, color=DARK, stroke_width=2, tip_length=0.12,
+        )
 
         self.play(
             FadeIn(title_cf), FadeIn(title_pop), FadeIn(title_oe),
