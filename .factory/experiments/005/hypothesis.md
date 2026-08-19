@@ -1,1 +1,0 @@
-Dashboard enhancement — add trajectory comparison, wildcard impact, and agent activity panels with live SSE updates
