@@ -1,1 +1,0 @@
-Fix resampling critic — migrate to inline prompts (Issue #40). Create build_resampling_critic_prompt() in agents.py using inline style, add RESAMPLING_CRITIC to AgentRole enum, add tests.

@@ -1,1 +1,0 @@
-Project documentation — comprehensive design and usage guide in docs/
