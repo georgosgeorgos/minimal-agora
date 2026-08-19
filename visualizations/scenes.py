@@ -195,7 +195,7 @@ class SimulationModes(Scene):
         self.camera.background_color = WHITE
 
         col_x = [-4.2, 0, 4.2]
-        row_y = [2.8, 1.5, -0.2, -1.8]
+        row_y = [3.0, 1.8, 0.3, -1.0, -2.2]
 
         title_cf = Text("Counterfactual", color=DARK, font_size=24)
         title_pop = Text("Population", color=DARK, font_size=24)
@@ -211,19 +211,33 @@ class SimulationModes(Scene):
         runs = []
         for i, lbl in enumerate(["Run 1", "Run 2", "Run N"]):
             b = _box(lbl, GREEN, width=1.2, height=0.5)
-            b.move_to([col_x[0] - 1.3 + i * 1.3, row_y[2], 0])
+            b.move_to([col_x[0] - 1.5 + i * 1.5, row_y[2], 0])
             runs.append(b)
 
+        LIGHT_PURPLE = "#B8A9D4"
+        outs = []
+        for i, lbl in enumerate(["Out 1", "Out 2", "Out N"]):
+            b = _box(lbl, LIGHT_PURPLE, width=1.2, height=0.5)
+            b.move_to([col_x[0] - 1.5 + i * 1.5, row_y[3], 0])
+            outs.append(b)
+
         agg = _box("Aggregate", PURPLE, width=2.0, height=0.6)
-        agg.move_to([col_x[0], row_y[3], 0])
+        agg.move_to([col_x[0], row_y[4], 0])
 
-        cf_arrows = []
-        for r in runs:
-            cf_arrows.append(_arrow(scenario_box[0].get_bottom(), r[0].get_top()))
-        for r in runs:
-            cf_arrows.append(_arrow(r[0].get_bottom(), agg[0].get_top()))
+        cf_arrows = [
+            _arrow(scenario_box[0].get_left(), runs[0][0].get_top()),
+            _arrow(scenario_box[0].get_bottom(), runs[1][0].get_top()),
+            _arrow(scenario_box[0].get_right(), runs[2][0].get_top()),
+        ]
+        for r, o in zip(runs, outs):
+            cf_arrows.append(_arrow(r[0].get_bottom(), o[0].get_top()))
+        cf_arrows.extend([
+            _arrow(outs[0][0].get_bottom(), agg[0].get_left()),
+            _arrow(outs[1][0].get_bottom(), agg[0].get_top()),
+            _arrow(outs[2][0].get_bottom(), agg[0].get_right()),
+        ])
 
-        # Column 2: Population
+        # Column 2: Population (skip row_y[3] — no Outs row)
         world = _box("Shared\nWorld", BLUE, width=2.0, height=0.7)
         world.move_to([col_x[1], row_y[1], 0])
 
@@ -236,7 +250,7 @@ class SimulationModes(Scene):
             entities.append(b)
 
         judge = _box("Judge", PURPLE, width=2.0, height=0.6)
-        judge.move_to([col_x[1], row_y[3], 0])
+        judge.move_to([col_x[1], row_y[4], 0])
 
         pop_arrows = []
         for e in entities:
@@ -249,7 +263,7 @@ class SimulationModes(Scene):
                 color=DARK, stroke_width=2, tip_length=0.12, buff=0.05,
             ))
 
-        # Column 3: Open-Ended
+        # Column 3: Open-Ended (skip row_y[3] — no Outs row)
         single = _box("Single\nTrajectory", BLUE, width=2.0, height=0.7)
         single.move_to([col_x[2], row_y[1], 0])
 
@@ -257,7 +271,7 @@ class SimulationModes(Scene):
         fitness.move_to([col_x[2], row_y[2], 0])
 
         evolve = _box("Evolve", TEAL, width=2.0, height=0.6)
-        evolve.move_to([col_x[2], row_y[3], 0])
+        evolve.move_to([col_x[2], row_y[4], 0])
 
         oe_arrows = [
             _arrow(single[0].get_bottom(), fitness[0].get_top()),
@@ -269,17 +283,17 @@ class SimulationModes(Scene):
         )
 
         sep1 = Line(
-            np.array([-2.1, 3.2, 0]), np.array([-2.1, -2.5, 0]),
+            np.array([-2.1, 3.5, 0]), np.array([-2.1, -2.8, 0]),
             color=GRAY, stroke_width=1, stroke_opacity=0.3,
         )
         sep2 = Line(
-            np.array([2.1, 3.2, 0]), np.array([2.1, -2.5, 0]),
+            np.array([2.1, 3.5, 0]), np.array([2.1, -2.8, 0]),
             color=GRAY, stroke_width=1, stroke_opacity=0.3,
         )
 
         all_mobjects = VGroup(
             title_cf, title_pop, title_oe,
-            scenario_box, *runs, agg,
+            scenario_box, *runs, *outs, agg,
             world, *entities, judge,
             single, fitness, evolve,
             sep1, sep2,
@@ -292,7 +306,8 @@ class SimulationModes(Scene):
             run_time=0.3,
         )
         self.play(
-            FadeIn(scenario_box), *[FadeIn(r) for r in runs], FadeIn(agg),
+            FadeIn(scenario_box), *[FadeIn(r) for r in runs],
+            *[FadeIn(o) for o in outs], FadeIn(agg),
             run_time=0.3,
         )
         for a in cf_arrows:
