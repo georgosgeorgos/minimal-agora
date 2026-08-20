@@ -2,6 +2,8 @@ import json
 import tempfile
 from pathlib import Path
 
+import pytest
+
 from minimal_agora.analysis import aggregate_outcomes, format_report
 from minimal_agora.board import Board, _deep_merge
 from minimal_agora.models import (
@@ -511,6 +513,77 @@ def test_load_market_scenario():
     assert "population" in cap_rule.applies_to
 
 
+def test_semaphore_limits_peak_concurrency():
+    import asyncio
+
+    from minimal_agora.loop import _invoke_with_semaphore
+
+    peak = 0
+    current = 0
+
+    async def mock_invoke_with_retry(agent, workspace, step_num, prompt, timeout, max_retries=1):
+        nonlocal peak, current
+        current += 1
+        peak = max(peak, current)
+        await asyncio.sleep(0.05)
+        current -= 1
+
+    import minimal_agora.loop as loop_module
+    original = loop_module._invoke_with_retry
+    loop_module._invoke_with_retry = mock_invoke_with_retry
+
+    try:
+        max_concurrent = 2
+
+        class FakeAgent:
+            name = "test"
+
+        async def run_all():
+            semaphore = asyncio.Semaphore(max_concurrent)
+            agents = [FakeAgent() for _ in range(6)]
+            tasks = [
+                _invoke_with_semaphore(
+                    semaphore, a, Path("/tmp"), 0, "prompt", 60, max_concurrent,
+                )
+                for a in agents
+            ]
+            await asyncio.gather(*tasks)
+
+        asyncio.run(run_all())
+        assert peak <= max_concurrent, f"Peak concurrency {peak} exceeded limit {max_concurrent}"
+        assert peak == max_concurrent, f"Expected peak {max_concurrent}, got {peak}"
+    finally:
+        loop_module._invoke_with_retry = original
+
+
+def test_max_concurrent_agents_default():
+    scenario = Scenario(
+        name="test", mode=SimMode.COUNTERFACTUAL,
+        initial_state={"x": 0}, step_budget=5,
+    )
+    assert scenario.max_concurrent_agents == 8
+
+
+def test_max_concurrent_agents_configurable():
+    scenario = Scenario(
+        name="test", mode=SimMode.COUNTERFACTUAL,
+        initial_state={"x": 0}, step_budget=5,
+        max_concurrent_agents=4,
+    )
+    assert scenario.max_concurrent_agents == 4
+
+
+def test_max_concurrent_agents_rejects_zero():
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        Scenario(
+            name="test", mode=SimMode.COUNTERFACTUAL,
+            initial_state={"x": 0}, step_budget=5,
+            max_concurrent_agents=0,
+        )
+
+
 def test_convergence_detection():
     from minimal_agora.analysis import detect_convergence
 
@@ -535,3 +608,126 @@ def test_convergence_detection():
         for i in range(12)
     ]
     assert detect_convergence(diverse) == []
+
+
+def test_review_interval_default():
+    scenario = Scenario(
+        name="test", mode=SimMode.COUNTERFACTUAL,
+        initial_state={"x": 0}, step_budget=5,
+    )
+    assert scenario.review_interval == 1
+
+
+def test_review_interval_rejects_zero():
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        Scenario(
+            name="test", mode=SimMode.COUNTERFACTUAL,
+            initial_state={"x": 0}, step_budget=5,
+            review_interval=0,
+        )
+
+
+def test_review_interval_skip():
+    """With review_interval=3 and 4 steps, steps 1 and 2 should be auto-merged (no resolution)."""
+    import asyncio
+
+    from minimal_agora.loop import _run_flat_step
+
+    scenario = Scenario(
+        name="test", mode=SimMode.COUNTERFACTUAL,
+        initial_state={"value": 0},
+        step_budget=4,
+        review_interval=3,
+        agents=[
+            AgentConfig(role=AgentRole.ACTOR, name="actor_a", perspective="test"),
+            AgentConfig(role=AgentRole.CRITIC, name="critic_a", perspective="test"),
+        ],
+    )
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        from minimal_agora.scenario import setup_workspace
+
+        workspace = setup_workspace(scenario, Path(tmpdir), trajectory_id=0)
+        board = Board(workspace)
+        semaphore = asyncio.Semaphore(8)
+
+        import minimal_agora.loop as loop_module
+
+        def _write_mock_proposal(agent, workspace, step_num):
+            proposal = Proposal(
+                agent=agent.name, role=AgentRole.ACTOR,
+                proposed_changes={"value": step_num + 1},
+                reasoning="test",
+            )
+            path = workspace / "proposals" / f"step_{step_num:03d}_{agent.name}.json"
+            path.parent.mkdir(parents=True, exist_ok=True)
+            with open(path, "w") as f:
+                f.write(proposal.model_dump_json(indent=2))
+
+        async def mock_invoke(agent, workspace, step_num, prompt, timeout, max_retries=1):
+            if agent.role == AgentRole.ACTOR:
+                _write_mock_proposal(agent, workspace, step_num)
+
+        original = loop_module._invoke_with_retry
+        loop_module._invoke_with_retry = mock_invoke
+
+        try:
+            max_steps = 4
+            steps = []
+            for step_num in range(max_steps):
+                state_before = board.read_state()
+                step = asyncio.run(_run_flat_step(
+                    scenario, board, step_num, 60, state_before,
+                    trajectory_id=0, agent_semaphore=semaphore, max_steps=max_steps,
+                ))
+                steps.append(step)
+
+            # Step 0: review step (0 % 3 == 0), has resolution
+            assert steps[0].resolution is not None
+            assert len(steps[0].proposals) == 1
+
+            # Steps 1 and 2: auto-merged, no resolution
+            assert steps[1].resolution is None
+            assert steps[1].critiques == []
+            assert len(steps[1].proposals) == 1
+
+            assert steps[2].resolution is None
+            assert steps[2].critiques == []
+
+            # Step 3: last step, always reviewed, has resolution
+            assert steps[3].resolution is not None
+        finally:
+            loop_module._invoke_with_retry = original
+
+
+def test_expand_dotted_keys():
+    from minimal_agora.board import _expand_dotted_keys
+
+    result = _expand_dotted_keys({"a.b.c": 1, "a.b.d": 2, "x": 3})
+    assert result == {"a": {"b": {"c": 1, "d": 2}}, "x": 3}
+
+
+def test_expand_dotted_keys_no_dots():
+    from minimal_agora.board import _expand_dotted_keys
+
+    result = _expand_dotted_keys({"a": 1, "b": {"c": 2}})
+    assert result == {"a": 1, "b": {"c": 2}}
+
+
+def test_apply_resolution_with_dotted_paths():
+    scenario = load_scenario(EXAMPLES_DIR / "intelligence.yaml")
+    with tempfile.TemporaryDirectory() as tmpdir:
+        workspace = setup_workspace(scenario, Path(tmpdir), trajectory_id=0)
+        board = Board(workspace)
+
+        resolution = Resolution(
+            state_delta={"life.photosynthesis": True, "environment.biodiversity": "high"},
+            narrative="Dotted path test.",
+            reasoning="Testing dotted key expansion.",
+        )
+
+        state_after = board.apply_resolution(resolution, step=0)
+        assert state_after["life"]["photosynthesis"] is True
+        assert state_after["environment"]["biodiversity"] == "high"

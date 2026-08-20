@@ -1,94 +1,118 @@
 # Factory Configuration
+<!-- This file configures the Remote Factory for your project. -->
+<!-- The factory reads this during Init mode and generates .factory/config.json from it. -->
 
 ## Goal
 
-Counterfactual world simulation engine where LLM agents debate and interact to explore hypotheses and population dynamics. Supports counterfactual, population, and open-ended simulation modes with parallel trajectory execution and statistical analysis.
+A world simulation engine where LLM agents debate and interact to explore counterfactual hypotheses and population dynamics — implement open issues, improve the simulation (make it better/faster), and improve the visualizations.
 
 ## Scope
 
 ### Modifiable
 
-- src/minimal_agora/**/*.py
-- tests/**/*.py
-- eval/**/*.py
-- scenarios/**/*.yaml
-- pyproject.toml
-- README.md
-- CLAUDE.md
-- AGENTS.md
+- src/minimal_agora/**
+- tests/**
+- scenarios/**
+- eval/**
 
 ### Read-only
 
-- .factory/eval_profile.json
-- .factory/eval_spec.json
-- state/features.json
-- verification/rubric.md
+- CLAUDE.md
+- AGENTS.md
+- README.md
+- pyproject.toml
 
 ## Guards
 
 - Do not delete or overwrite existing tests
+- Do not break the CLI interface (`minimal-agora run`, `minimal-agora report`)
 - Do not modify files outside the declared scope
 - Do not introduce secrets or credentials into the repository
-- Do not modify scenario YAML files that other tests depend on
-- Do not remove or weaken Pydantic model validation
+- Do not modify CLAUDE.md, AGENTS.md, or pyproject.toml structure
 
 ## Eval
 
 ### Command
 
 ```bash
-python eval/score.py
+uv run python eval/score.py
 ```
 
 ### Threshold
 
-0.6
-
-## Eval Spec
-
-- Run the CLI with --help and verify it prints usage information
-- Run the CLI with a sample input and verify it produces expected output
+0.60
 
 ## Target Branch
 
 main
 
-## Project Eval
+## Eval Spec
 
-### Dimensions
+- name: tests
+  command: uv run pytest -v
+  weight: 0.4167
+  parser: exit_code
+  description: Run test suite
+  source: discovered
 
-| Dimension | Command | Weight | Parser | Description |
-|-----------|---------|--------|--------|-------------|
-| tests | `uv run pytest -v` | 0.417 | exit_code | Run test suite |
-| lint | `uv run ruff check .` | 0.250 | exit_code | Run linter |
-| type_check | `uv run mypy ./` | 0.125 | exit_code | Run type checker |
-| coverage | `uv run pytest --cov=src/minimal_agora --cov-report=term -q` | 0.125 | exit_code | Measure test coverage |
-| observability | (inline) | 0.083 | json | Analyze logging coverage and structured logging |
+- name: lint
+  command: uv run ruff check .
+  weight: 0.25
+  parser: exit_code
+  description: Run linter
+  source: discovered
 
-## Eval Weights
+- name: type_check
+  command: uv run mypy ./
+  weight: 0.125
+  parser: exit_code
+  description: Run type checker
+  source: researched
 
-- Hygiene: 50%
-- Growth: 50%
+- name: coverage
+  command: uv run pytest --cov=src/minimal_agora --cov-report=term -q
+  weight: 0.125
+  parser: exit_code
+  description: Measure test coverage
+  source: researched
 
-## Hypothesis Budget
-
-- min_growth: 1
-- max_new: 2
+- name: observability
+  command: (inline)
+  weight: 0.0833
+  parser: json
+  description: Analyze logging coverage, structured logging, and request tracing
+  source: researched
 
 ## Smoke Test
 
 ```bash
-uv run minimal-agora --help
+uv run pytest tests/ -v
 ```
-
-## Test Timeout
-
-300
 
 ## Constraints
 
 - Prefer small, incremental changes over large rewrites
 - Each change should be accompanied by at least one test
 - Follow the existing code style and conventions
-- Maintain Pydantic v2 strict validation patterns
-- Keep scenario YAML schema backward-compatible
+- Work on one feature at a time
+- Keep changes within the selected feature scope
+- Maintain backward compatibility with existing scenario YAML files
+
+## Project Eval
+
+### test_suite
+- command: uv run pytest tests/ -v
+- parser: exit_code
+- description: Run the full pytest test suite
+
+### test_coverage
+- command: uv run pytest --cov=src/minimal_agora --cov-report=term -q
+- parser: regex
+- pattern: TOTAL.*?(\d+)%
+- description: Measure test coverage percentage
+
+## Eval Weights
+
+hygiene: 0.30
+growth: 0.20
+project: 0.50

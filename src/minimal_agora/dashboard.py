@@ -5,22 +5,33 @@ import time
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
 from typing import Any
+from urllib.parse import parse_qs, urlparse
 
-from minimal_agora.analysis import compute_statistics, extract_field_timelines, load_trajectories
+from minimal_agora.analysis import (
+    _get_nested,
+    compute_statistics,
+    extract_field_timelines,
+    load_trajectories,
+)
 
 
 class DashboardHandler(SimpleHTTPRequestHandler):
     run_dir: Path
+    runs_root: Path
     fields: list[str]
     populations: list[str]
     score_fields: list[str]
 
     def do_GET(self):
-        if self.path == "/":
+        parsed = urlparse(self.path)
+        path = parsed.path
+        if path == "/":
             self._serve_html()
-        elif self.path == "/api/data":
+        elif path == "/api/data":
             self._serve_data()
-        elif self.path == "/api/stream":
+        elif path == "/api/runs":
+            self._serve_runs()
+        elif path == "/api/stream":
             self._serve_sse()
         else:
             self.send_error(404)
@@ -33,9 +44,30 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(html.encode())
 
+    def _resolve_run_dir(self) -> Path:
+        parsed = urlparse(self.path)
+        params = parse_qs(parsed.query)
+        run_name = params.get("run", [None])[0]
+        if run_name and self.runs_root:
+            candidate = self.runs_root / run_name
+            if candidate.is_dir():
+                return candidate
+        return self.run_dir
+
     def _serve_data(self):
-        data = _collect_data(self.run_dir, self.fields, self.populations, self.score_fields)
+        run_dir = self._resolve_run_dir()
+        data = _collect_data(run_dir, self.fields, self.populations, self.score_fields)
+        data["run_dir"] = run_dir.name
         body = json.dumps(data).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _serve_runs(self):
+        runs = _list_runs(self.runs_root, self.run_dir)
+        body = json.dumps(runs).encode()
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
@@ -67,6 +99,34 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         pass
 
 
+def _list_runs(runs_root: Path, current_run_dir: Path) -> list[dict]:
+    runs = []
+    if not runs_root or not runs_root.is_dir():
+        return [{"dirname": current_run_dir.name, "scenario": current_run_dir.name,
+                 "n_trajectories": 0, "current": True}]
+    for d in sorted(runs_root.iterdir()):
+        if not d.is_dir():
+            continue
+        traj_dirs = list(d.glob("trajectory_*"))
+        scenario = d.name
+        for td in traj_dirs[:1]:
+            tj = td / "trajectory.json"
+            if tj.exists():
+                try:
+                    meta = json.loads(tj.read_text())
+                    scenario = meta.get("scenario_name", d.name)
+                except (json.JSONDecodeError, OSError):
+                    pass
+                break
+        runs.append({
+            "dirname": d.name,
+            "scenario": scenario,
+            "n_trajectories": len(traj_dirs),
+            "current": d.resolve() == current_run_dir.resolve(),
+        })
+    return runs
+
+
 def _collect_data(
     run_dir: Path, fields: list[str], populations: list[str], score_fields: list[str],
 ) -> dict:
@@ -92,6 +152,7 @@ def _collect_data(
     }
 
     timelines = {}
+    trajectory_timelines: dict[str, dict[str, list[dict]]] = {}
     if fields:
         raw = extract_field_timelines(trajectories, fields)
         for field, step_data in raw.items():
@@ -103,7 +164,19 @@ def _collect_data(
                     series.append({"step": step_num, **stats})
             timelines[field] = series
 
-    pop_data: dict[str, dict[str, Any]] = {}
+        for field in fields:
+            trajectory_timelines[field] = {}
+            for t in trajectories:
+                tid = str(t.trajectory_id)
+                pts = []
+                for step in t.steps:
+                    val = _get_nested(step.state_after, field)
+                    if isinstance(val, (int, float)):
+                        pts.append({"step": step.step_number, "value": val})
+                if pts:
+                    trajectory_timelines[field][tid] = pts
+
+    pop_data: dict[str, Any] = {}
     if populations and score_fields:
         for pop in populations:
             pop_data[pop] = {}
@@ -117,25 +190,98 @@ def _collect_data(
                         series.append({"step": step_num, "mean": _mean(vals), "min": min(vals), "max": max(vals)})
                 pop_data[pop][sf] = series
 
+    ess_data: list[dict[str, Any]] = []
+    for t in trajectories:
+        if "ess_history" in t.metadata:
+            for step_idx, ess_val in enumerate(t.metadata["ess_history"]):
+                if step_idx >= len(ess_data):
+                    ess_data.append({"step": step_idx, "values": []})
+                ess_data[step_idx]["values"].append(ess_val)
+    ess_timeline: list[dict[str, Any]] = []
+    for entry in ess_data:
+        vals = entry["values"]
+        if vals:
+            ess_timeline.append({
+                "step": entry["step"],
+                "mean": _mean(vals),
+                "min": min(vals),
+                "max": max(vals),
+            })
+
     fitness_data = []
     if all_fitness:
         max_len = max(len(h) for h in all_fitness)
         for i in range(max_len):
-            vals = [v for h in all_fitness if i < len(h) for v in [h[i]] if v is not None]
-            if vals:
-                fitness_data.append({"step": i, "mean": _mean(vals), "min": min(vals), "max": max(vals)})
+            raw_vals = [h[i] for h in all_fitness if i < len(h)]
+            fit_vals: list[int | float] = [v for v in raw_vals if v is not None]
+            if fit_vals:
+                fitness_data.append({"step": i, "mean": _mean(fit_vals), "min": min(fit_vals), "max": max(fit_vals)})
 
     events = _collect_events(trajectories, run_dir)
+
+    token_summary, token_timeline = _collect_token_data(trajectories)
 
     return {
         "scenario": trajectories[0].scenario_name,
         "n_trajectories": n,
         "outcomes": outcome_data,
         "timelines": timelines,
+        "trajectory_timelines": trajectory_timelines,
         "populations": pop_data,
         "fitness": fitness_data,
         "events": events,
+        "token_summary": token_summary,
+        "token_timeline": token_timeline,
+        "ess_timeline": ess_timeline,
     }
+
+
+def _collect_token_data(trajectories: list) -> tuple[dict, list[dict]]:
+    total_input = 0
+    total_output = 0
+    per_role: dict[str, dict[str, int]] = {}
+    step_totals: dict[int, dict[str, int]] = {}
+
+    for t in trajectories:
+        if t.total_tokens:
+            total_input += t.total_tokens.get("total_input_tokens", 0)
+            total_output += t.total_tokens.get("total_output_tokens", 0)
+            for role, counts in t.total_tokens.get("per_role", {}).items():
+                if role not in per_role:
+                    per_role[role] = {"input_tokens": 0, "output_tokens": 0}
+                per_role[role]["input_tokens"] += counts.get("input_tokens", 0)
+                per_role[role]["output_tokens"] += counts.get("output_tokens", 0)
+        for step in t.steps:
+            if step.token_usage is None:
+                continue
+            sn = step.step_number
+            if sn not in step_totals:
+                step_totals[sn] = {"input_tokens": 0, "output_tokens": 0}
+            step_totals[sn]["input_tokens"] += step.token_usage.total_input_tokens
+            step_totals[sn]["output_tokens"] += step.token_usage.total_output_tokens
+
+    total = total_input + total_output
+    estimated_cost = (total_input / 1_000_000 * 3) + (total_output / 1_000_000 * 15) if total else 0.0
+
+    summary = {
+        "total_input_tokens": total_input,
+        "total_output_tokens": total_output,
+        "total_tokens": total,
+        "estimated_cost_usd": round(estimated_cost, 4),
+        "per_role": per_role,
+    }
+
+    timeline = []
+    for sn in sorted(step_totals.keys()):
+        st = step_totals[sn]
+        timeline.append({
+            "step": sn,
+            "input_tokens": st["input_tokens"],
+            "output_tokens": st["output_tokens"],
+            "total_tokens": st["input_tokens"] + st["output_tokens"],
+        })
+
+    return summary, timeline
 
 
 def _collect_events(trajectories: list, run_dir: Path) -> list[dict]:
@@ -152,14 +298,27 @@ def _collect_events(trajectories: list, run_dir: Path) -> list[dict]:
                     "text": step.resolution.narrative,
                 })
 
+            if step.resolution and step.resolution.validation_warnings:
+                for warning in step.resolution.validation_warnings:
+                    events.append({
+                        "trajectory": tid,
+                        "step": step.step_number,
+                        "type": "validation",
+                        "text": warning,
+                    })
+
+            delta_keys = set(step.resolution.state_delta.keys()) if step.resolution else set()
             for p in step.proposals:
+                accepted = bool(delta_keys & set(p.proposed_changes.keys())) if delta_keys else False
                 if p.reasoning:
                     events.append({
                         "trajectory": tid,
                         "step": step.step_number,
                         "type": "proposal",
                         "agent": p.agent,
-                        "text": p.reasoning[:200],
+                        "text": p.reasoning,
+                        "accepted": accepted,
+                        "proposed_fields": list(p.proposed_changes.keys()),
                     })
 
         # Check for wildcards in board directory
@@ -174,6 +333,7 @@ def _collect_events(trajectories: list, run_dir: Path) -> list[dict]:
                         "trajectory": tid,
                         "step": step_num,
                         "type": "wildcard",
+                        "name": wc.get("name", "unknown"),
                         "text": f"{wc.get('name', 'unknown')}: {wc.get('description', '')[:150]}",
                     })
                 except (ValueError, OSError, KeyError):
@@ -197,71 +357,137 @@ def _mean(vals: list) -> float:
 
 def _build_html() -> str:
     return """<!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>minimal-agora dashboard</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3"></script>
 <style>
+  :root[data-theme="dark"] {
+    --bg: #0a0a0a; --card-bg: #141414; --card-bg-alt: #1a1a1a;
+    --text: #e0e0e0; --text-heading: #fff; --text-muted: #888; --text-secondary: #aaa;
+    --text-tertiary: #ccc; --border: #222; --border-light: #333;
+    --grid: #222; --tooltip-bg: rgba(20,20,20,0.95); --tooltip-border: #333;
+    --event-gradient-end: #141414; --event-bg-alt: #0f0f0f;
+    --status-live-bg: #1a3a1a; --status-done-bg: #1a2a3a;
+    --crosshair: rgba(255,255,255,0.12);
+  }
+  :root[data-theme="light"] {
+    --bg: #f5f5f5; --card-bg: #fff; --card-bg-alt: #f0f0f0;
+    --text: #333; --text-heading: #111; --text-muted: #777; --text-secondary: #555;
+    --text-tertiary: #444; --border: #ddd; --border-light: #ccc;
+    --grid: #e5e5e5; --tooltip-bg: rgba(255,255,255,0.97); --tooltip-border: #ccc;
+    --event-gradient-end: #fff; --event-bg-alt: #f8f8f8;
+    --status-live-bg: #d4edda; --status-done-bg: #d6eaf8;
+    --crosshair: rgba(0,0,0,0.08);
+  }
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
-         background: #0a0a0a; color: #e0e0e0; padding: 20px; }
-  h1 { font-size: 1.4rem; margin-bottom: 4px; color: #fff; }
-  .subtitle { color: #888; font-size: 0.85rem; margin-bottom: 20px; }
+         background: var(--bg); color: var(--text); padding: 20px; transition: background 0.3s, color 0.3s; }
+  h1 { font-size: 1.4rem; margin-bottom: 4px; color: var(--text-heading); }
+  .subtitle { color: var(--text-muted); font-size: 0.85rem; margin-bottom: 20px; }
+  .header-bar { display: flex; align-items: center; gap: 12px; margin-bottom: 4px; flex-wrap: wrap; }
+  .header-controls { display: flex; align-items: center; gap: 8px; margin-left: auto; }
   .status { display: inline-block; padding: 2px 8px; border-radius: 4px;
             font-size: 0.75rem; font-weight: 600; }
-  .status.live { background: #1a3a1a; color: #4ade80; }
-  .status.done { background: #1a2a3a; color: #60a5fa; }
+  .status.live { background: var(--status-live-bg); color: #4ade80; animation: pulse 2s ease-in-out infinite; }
+  .status.done { background: var(--status-done-bg); color: #60a5fa; }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
+  .run-select, .theme-toggle { background: var(--card-bg-alt); color: var(--text);
+    border: 1px solid var(--border-light); border-radius: 4px; padding: 4px 8px;
+    font-size: 0.8rem; cursor: pointer; }
+  .theme-toggle { font-size: 1rem; line-height: 1; padding: 4px 6px; }
   .page-layout { display: grid; grid-template-columns: 1fr 360px; gap: 20px; }
   @media (max-width: 1000px) { .page-layout { grid-template-columns: 1fr; } }
   .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
           gap: 16px; margin-bottom: 20px; }
-  .card { background: #141414; border: 1px solid #222; border-radius: 8px; padding: 16px; }
-  .card h2 { font-size: 0.9rem; color: #aaa; margin-bottom: 12px; text-transform: uppercase;
+  .card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px; padding: 16px;
+          box-shadow: 0 2px 8px rgba(0,0,0,0.1); border-top: 2px solid #4e79a7;
+          transition: background 0.3s, border-color 0.3s; }
+  .card h2 { font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 12px; text-transform: uppercase;
              letter-spacing: 0.05em; }
   .stats-row { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 16px; }
-  .stat { background: #1a1a1a; border-radius: 6px; padding: 12px 16px; min-width: 100px; }
-  .stat .value { font-size: 1.8rem; font-weight: 700; color: #fff; }
-  .stat .label { font-size: 0.75rem; color: #888; margin-top: 2px; }
+  .stat { background: var(--card-bg-alt); border-radius: 6px; padding: 12px 16px; min-width: 100px;
+          box-shadow: 0 2px 8px rgba(0,0,0,0.1); border-top: 2px solid #4e79a7;
+          transition: background 0.3s; }
+  .stat .value { font-size: 1.8rem; font-weight: 700; color: var(--text-heading); }
+  .stat .label { font-size: 0.75rem; color: var(--text-muted); margin-top: 2px; }
   .outcome-bar { display: flex; align-items: center; margin: 6px 0; }
-  .outcome-bar .name { width: 120px; font-size: 0.85rem; color: #ccc; }
-  .outcome-bar .bar-bg { flex: 1; height: 24px; background: #1a1a1a; border-radius: 4px;
+  .outcome-bar .name { width: 120px; font-size: 0.85rem; color: var(--text-tertiary); }
+  .outcome-bar .bar-bg { flex: 1; height: 24px; background: var(--card-bg-alt); border-radius: 6px;
                           overflow: hidden; position: relative; }
-  .outcome-bar .bar-fill { height: 100%; border-radius: 4px; transition: width 0.5s ease; }
+  .outcome-bar .bar-fill { height: 100%; border-radius: 6px; transition: width 0.5s ease; }
   .outcome-bar .bar-label { position: absolute; right: 8px; top: 3px; font-size: 0.75rem;
                              color: #fff; font-weight: 600; }
-  canvas { max-height: 300px; }
+  canvas { max-height: 350px; }
+  .field-select { background: var(--card-bg-alt); color: var(--text-tertiary); border: 1px solid var(--border-light);
+                  border-radius: 4px; padding: 4px 8px; font-size: 0.8rem; margin-bottom: 8px; }
+  .wc-heatmap { width: 100%; border-collapse: collapse; margin-bottom: 12px; }
+  .wc-heatmap td, .wc-heatmap th { padding: 2px 4px; font-size: 0.7rem; text-align: center; }
+  .wc-heatmap th { color: var(--text-muted); font-weight: 400; }
+  .wc-heatmap .wc-cell { width: 22px; height: 22px; border-radius: 3px; cursor: default; }
+  .wc-heatmap .wc-hit { background: #edc948; }
+  .wc-heatmap .wc-miss { background: var(--card-bg-alt); }
+  .wc-heatmap .traj-label { text-align: right; color: var(--text-muted); padding-right: 6px; }
+  .wc-tooltip { position: relative; }
+  .wc-tooltip:hover::after { content: attr(data-tip); position: absolute; bottom: 120%;
+    left: 50%; transform: translateX(-50%); background: var(--border); color: #edc948; padding: 3px 8px;
+    border-radius: 4px; font-size: 0.7rem; white-space: nowrap; z-index: 10;
+    pointer-events: none; }
   .empty { color: #555; font-style: italic; padding: 40px; text-align: center; }
-  .event-log { background: #141414; border: 1px solid #222; border-radius: 8px;
+  .event-log { background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px;
                padding: 16px; height: calc(100vh - 120px); overflow-y: auto;
-               position: sticky; top: 20px; }
-  .event-log h2 { font-size: 0.9rem; color: #aaa; margin-bottom: 12px;
+               position: sticky; top: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+               border-top: 2px solid #4e79a7; transition: background 0.3s, border-color 0.3s; }
+  .event-log h2 { font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 12px;
                    text-transform: uppercase; letter-spacing: 0.05em; }
-  .event { margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid #1a1a1a; }
+  .event { margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid var(--card-bg-alt); }
   .event:last-child { border-bottom: none; }
   .event .meta { font-size: 0.7rem; color: #666; margin-bottom: 3px; display: flex;
                  align-items: center; gap: 6px; }
   .event .meta .tag { padding: 1px 6px; border-radius: 3px; font-weight: 600;
                        font-size: 0.65rem; text-transform: uppercase; }
   .tag.narrative { background: #1a2a3a; color: #60a5fa; }
-  .tag.proposal { background: #1a3a2a; color: #4ade80; }
-  .tag.wildcard { background: #3a2a1a; color: #fbbf24; }
+  .tag.proposal { background: #1a3a2a; color: #4ade80; font-size: 0.7rem; font-weight: 700; }
+  .tag.wildcard { background: #3a2a1a; color: #edc948; }
   .tag.outcome { background: #2a1a3a; color: #c084fc; }
-  .event .text { font-size: 0.8rem; color: #ccc; line-height: 1.4; }
+  .tag.validation { background: #3a3a1a; color: #edc948; }
+  .event .text { font-size: 0.8rem; color: var(--text-tertiary); line-height: 1.4;
+    max-height: 2.8em; overflow: hidden; cursor: pointer; position: relative; }
+  .event .text.expanded { max-height: none; }
+  .event .text:not(.expanded)::after { content: '... click to expand'; position: absolute;
+    right: 0; bottom: 0; background: linear-gradient(to right, transparent, var(--event-gradient-end) 40%);
+    padding-left: 20px; color: #666; font-size: 0.7rem; }
   .event-filter { display: flex; gap: 6px; margin-bottom: 12px; flex-wrap: wrap; }
-  .event-filter button { background: #1a1a1a; border: 1px solid #333; color: #888;
+  .event-filter button { background: var(--card-bg-alt); border: 1px solid var(--border-light); color: var(--text-muted);
                           padding: 3px 10px; border-radius: 4px; cursor: pointer;
                           font-size: 0.7rem; }
-  .event-filter button.active { border-color: #555; color: #fff; }
-  .colors { --c0: #2196F3; --c1: #F44336; --c2: #4CAF50; --c3: #FF9800; --c4: #9C27B0;
-            --c5: #00BCD4; --c6: #795548; --c7: #607D8B; }
+  .event-filter button.active { border-color: #555; color: var(--text-heading); }
+  .proposal-fields { margin: 4px 0; font-size: 0.75rem; color: var(--text-muted); }
+  .proposal-fields code { background: #1a2a1a; padding: 1px 5px; border-radius: 3px;
+                           font-size: 0.7rem; color: #4ade80; margin-right: 4px; }
+  .proposal-reasoning { margin: 6px 0 0 0; padding: 6px 10px; border-left: 3px solid var(--border-light);
+                         font-size: 0.78rem; color: var(--text-secondary); line-height: 1.5;
+                         background: var(--event-bg-alt); border-radius: 0 4px 4px 0; }
+  .proposal-status { margin-left: auto; font-weight: 600; font-size: 0.75rem; }
+  .wc-legend { display: flex; gap: 12px; align-items: center; margin-top: 8px;
+               font-size: 0.7rem; color: var(--text-muted); }
+  .wc-legend-swatch { display: inline-block; width: 14px; height: 14px; border-radius: 3px;
+                       vertical-align: middle; margin-right: 4px; }
+  .stat .icon { font-size: 1rem; margin-bottom: 4px; }
+  .footer { text-align: center; padding: 16px 0 4px; font-size: 0.7rem; color: #444; }
 </style>
 </head>
-<body class="colors">
-<div style="display:flex; align-items:center; gap:12px; margin-bottom:4px;">
+<body>
+<div class="header-bar">
   <h1 id="title">minimal-agora dashboard</h1>
   <span class="status live" id="status">connecting...</span>
+  <div class="header-controls">
+    <select class="run-select" id="run-select" title="Switch simulation run"></select>
+    <button class="theme-toggle" id="theme-toggle" title="Toggle light/dark mode">&#9790;</button>
+  </div>
 </div>
 <p class="subtitle" id="subtitle"></p>
 
@@ -280,7 +506,8 @@ def _build_html() -> str:
   </div>
   <div class="grid">
     <div class="card" id="timelines-card" style="display:none">
-      <h2>Field Timelines</h2>
+      <h2 id="timelines-title">Field Timelines</h2>
+      <select class="field-select" id="timeline-field-select" style="display:none"></select>
       <canvas id="timelines-chart"></canvas>
     </div>
     <div class="card" id="fitness-card" style="display:none">
@@ -289,6 +516,32 @@ def _build_html() -> str:
     </div>
   </div>
   <div class="grid" id="pop-grid"></div>
+  <div class="grid">
+    <div class="card" id="traj-compare-card" style="display:none">
+      <h2>Trajectory Comparison</h2>
+      <select class="field-select" id="traj-field-select"></select>
+      <canvas id="traj-compare-chart"></canvas>
+    </div>
+    <div class="card" id="agent-activity-card" style="display:none">
+      <h2>Agent Activity</h2>
+      <canvas id="agent-activity-chart"></canvas>
+    </div>
+  </div>
+  <div class="grid">
+    <div class="card" id="ess-card" style="display:none">
+      <h2>Effective Sample Size (ESS)</h2>
+      <canvas id="ess-chart"></canvas>
+    </div>
+    <div class="card" id="token-usage-card" style="display:none">
+      <h2>Token Usage</h2>
+      <canvas id="token-usage-chart"></canvas>
+    </div>
+    <div class="card" id="wildcard-impact-card" style="display:none">
+      <h2>Wildcard Impact</h2>
+      <div id="wc-heatmap-container"></div>
+      <canvas id="wc-histogram-chart"></canvas>
+    </div>
+  </div>
 </div>
 <div class="event-log" id="event-log">
   <h2>Simulation Log</h2>
@@ -297,16 +550,107 @@ def _build_html() -> str:
     <button class="active" data-type="narrative">Narrative</button>
     <button class="active" data-type="wildcard">Wildcards</button>
     <button class="active" data-type="outcome">Outcomes</button>
-    <button data-type="proposal">Proposals</button>
+    <button class="active" data-type="proposal">Proposals</button>
+    <button class="active" data-type="validation">Validation</button>
   </div>
   <div id="events"><div class="empty">waiting for events...</div></div>
 </div>
 </div>
+<div class="footer">minimal-agora v0.1 &bull; powered by Chart.js</div>
 
 <script>
-const COLORS = ['#2196F3','#F44336','#4CAF50','#FF9800','#9C27B0',
-                '#00BCD4','#795548','#607D8B','#E91E63','#3F51B5'];
+const COLORS = ['#4e79a7','#f28e2b','#e15759','#76b7b2','#59a14f',
+                '#edc948','#b07aa1','#ff9da7','#9c755f','#bab0ac'];
 const charts = {};
+
+function getThemeColors() {
+  const cs = getComputedStyle(document.documentElement);
+  return {
+    grid: cs.getPropertyValue('--grid').trim(),
+    text: cs.getPropertyValue('--text').trim(),
+    textMuted: cs.getPropertyValue('--text-muted').trim(),
+    textSecondary: cs.getPropertyValue('--text-secondary').trim(),
+    textTertiary: cs.getPropertyValue('--text-tertiary').trim(),
+    textHeading: cs.getPropertyValue('--text-heading').trim(),
+    tooltipBg: cs.getPropertyValue('--tooltip-bg').trim(),
+    tooltipBorder: cs.getPropertyValue('--tooltip-border').trim(),
+    crosshair: cs.getPropertyValue('--crosshair').trim(),
+  };
+}
+
+function applyChartDefaults() {
+  const tc = getThemeColors();
+  Chart.defaults.animation.duration = 800;
+  Chart.defaults.animation.easing = 'easeOutQuart';
+  Chart.defaults.interaction.mode = 'index';
+  Chart.defaults.interaction.intersect = false;
+  Chart.defaults.plugins.tooltip.backgroundColor = tc.tooltipBg;
+  Chart.defaults.plugins.tooltip.borderColor = tc.tooltipBorder;
+  Chart.defaults.plugins.tooltip.borderWidth = 1;
+  Chart.defaults.plugins.tooltip.titleColor = tc.textHeading;
+  Chart.defaults.plugins.tooltip.bodyColor = tc.textTertiary;
+  Chart.defaults.plugins.tooltip.padding = 10;
+  Chart.defaults.plugins.tooltip.cornerRadius = 6;
+}
+applyChartDefaults();
+
+Chart.register({
+  id: 'crosshair',
+  afterDraw(chart) {
+    if (chart.tooltip && chart.tooltip._active && chart.tooltip._active.length) {
+      const x = chart.tooltip._active[0].element.x;
+      const ctx = chart.ctx;
+      const top = chart.chartArea.top;
+      const bottom = chart.chartArea.bottom;
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(x, top);
+      ctx.lineTo(x, bottom);
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = getThemeColors().crosshair;
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+});
+
+function gradientBg(color) {
+  return function(context) {
+    if (!context.chart.chartArea) return color + '00';
+    const {top, bottom} = context.chart.chartArea;
+    const ctx = context.chart.ctx;
+    const g = ctx.createLinearGradient(0, top, 0, bottom);
+    g.addColorStop(0, color + '40');
+    g.addColorStop(1, color + '00');
+    return g;
+  };
+}
+
+function lineDataset(label, data, color, fill) {
+  return {
+    label, data,
+    borderColor: color,
+    backgroundColor: fill !== false ? gradientBg(color) : color + '22',
+    fill: fill !== false,
+    tension: 0.3,
+    pointRadius: 2,
+    pointHoverRadius: 6,
+    borderWidth: 2.5,
+  };
+}
+
+function themedScales(opts) {
+  const tc = getThemeColors();
+  const result = {};
+  for (const [axis, cfg] of Object.entries(opts)) {
+    result[axis] = Object.assign({}, cfg, {
+      grid: Object.assign({ color: tc.grid }, cfg.grid || {}),
+      ticks: Object.assign({ color: axis === 'x' ? tc.textTertiary : tc.textMuted }, cfg.ticks || {}),
+    });
+    if (cfg.title) result[axis].title = Object.assign({}, cfg.title, { color: tc.textMuted });
+  }
+  return result;
+}
 
 function initChart(id, config) {
   if (charts[id]) charts[id].destroy();
@@ -314,13 +658,32 @@ function initChart(id, config) {
   return charts[id];
 }
 
+function formatTokens(n) {
+  if (n >= 1e6) return (n / 1e6).toFixed(1) + 'M';
+  if (n >= 1e3) return (n / 1e3).toFixed(1) + 'K';
+  return String(n);
+}
+
 function renderStats(data) {
   const el = document.getElementById('stats');
   const n = data.n_trajectories || 0;
   const nOutcomes = Object.keys(data.outcomes || {}).length;
+  const nValidation = (data.events || []).filter(e => e.type === 'validation').length;
+  let validationStat = '';
+  if (nValidation > 0) {
+    validationStat = `<div class="stat"><div class="icon">&#x26a0;</div><div class="value" style="color:#edc948">${nValidation}</div><div class="label">validation warnings</div></div>`;
+  }
+  const ts = data.token_summary || {};
+  let tokenStats = '';
+  if (ts.total_tokens > 0) {
+    tokenStats = `<div class="stat"><div class="icon">&#x1f4ac;</div><div class="value">${formatTokens(ts.total_tokens)}</div><div class="label">total tokens</div></div>` +
+      `<div class="stat"><div class="icon">&#x1f4b0;</div><div class="value">$${ts.estimated_cost_usd.toFixed(2)}</div><div class="label">est. cost</div></div>`;
+  }
   el.innerHTML = `
-    <div class="stat"><div class="value">${n}</div><div class="label">trajectories</div></div>
-    <div class="stat"><div class="value">${nOutcomes}</div><div class="label">distinct outcomes</div></div>
+    <div class="stat"><div class="icon">&#x1f4ca;</div><div class="value">${n}</div><div class="label">trajectories</div></div>
+    <div class="stat"><div class="icon">&#x1f3af;</div><div class="value">${nOutcomes}</div><div class="label">distinct outcomes</div></div>
+    ${validationStat}
+    ${tokenStats}
   `;
 }
 
@@ -348,53 +711,131 @@ function renderStepsChart(data) {
   const outcomes = data.outcomes || {};
   const labels = Object.keys(outcomes).sort();
   if (!labels.length) return;
-
+  const tc = getThemeColors();
+  const values = labels.map(l => outcomes[l].mean_steps);
   initChart('steps-chart', {
     type: 'bar',
     data: {
       labels,
       datasets: [{
-        data: labels.map(l => outcomes[l].mean_steps),
+        data: values,
         backgroundColor: labels.map((_, i) => COLORS[i % COLORS.length] + '99'),
         borderColor: labels.map((_, i) => COLORS[i % COLORS.length]),
-        borderWidth: 1
+        borderWidth: 1,
+        borderRadius: 4
       }]
     },
     options: {
       responsive: true, plugins: { legend: { display: false } },
-      scales: { y: { title: { display: true, text: 'mean steps', color: '#888' },
-                      grid: { color: '#222' }, ticks: { color: '#888' } },
-                x: { grid: { color: '#222' }, ticks: { color: '#ccc' } } }
-    }
+      scales: themedScales({
+        y: { title: { display: true, text: 'mean steps' } },
+        x: {}
+      })
+    },
+    plugins: [{
+      afterDatasetsDraw(chart) {
+        const ctx = chart.ctx;
+        chart.getDatasetMeta(0).data.forEach((bar, i) => {
+          if (values[i] == null) return;
+          ctx.save();
+          ctx.fillStyle = tc.textTertiary;
+          ctx.font = '11px -apple-system, system-ui, sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'bottom';
+          ctx.fillText(values[i].toFixed(1), bar.x, bar.y - 4);
+          ctx.restore();
+        });
+      }
+    }]
   });
 }
 
 function renderTimelines(data) {
+  const tt = data.trajectory_timelines || {};
   const timelines = data.timelines || {};
-  const fields = Object.keys(timelines);
+  const fields = Object.keys(tt);
   if (!fields.length) return;
 
   document.getElementById('timelines-card').style.display = '';
-  const datasets = fields.map((f, i) => {
-    const series = timelines[f];
-    return {
-      label: f,
-      data: series.map(s => ({ x: s.step, y: s.mean })),
-      borderColor: COLORS[i % COLORS.length],
-      backgroundColor: COLORS[i % COLORS.length] + '22',
-      fill: false, tension: 0.3, pointRadius: 3
+  const sel = document.getElementById('timeline-field-select');
+  if (fields.length > 1) {
+    sel.style.display = '';
+    const prev = sel.value;
+    sel.innerHTML = fields.map(f =>
+      `<option value="${f}"${f === prev ? ' selected' : ''}>${f}</option>`
+    ).join('');
+  } else {
+    sel.style.display = 'none';
+  }
+  const field = sel.value || fields[0];
+  document.getElementById('timelines-title').textContent = 'Field Timelines: ' + field;
+
+  const trajData = tt[field] || {};
+  const tids = Object.keys(trajData);
+  if (!tids.length) return;
+
+  const datasets = [];
+  const tc = getThemeColors();
+
+  tids.forEach((tid, i) => {
+    const color = COLORS[i % COLORS.length];
+    datasets.push({
+      label: 'T' + tid + ': ' + field,
+      data: trajData[tid].map(p => ({x: p.step, y: p.value})),
+      borderColor: color + '99',
+      backgroundColor: color + '22',
+      fill: false,
+      tension: 0.3,
+      pointRadius: 1,
+      pointHoverRadius: 5,
+      borderWidth: 1.5,
+    });
+  });
+
+  const meanSeries = timelines[field];
+  if (meanSeries && meanSeries.length) {
+    datasets.push({
+      label: 'mean',
+      data: meanSeries.map(s => ({x: s.step, y: s.mean})),
+      borderColor: '#fff',
+      backgroundColor: 'transparent',
+      fill: false,
+      tension: 0.3,
+      pointRadius: 0,
+      pointHoverRadius: 4,
+      borderWidth: 3,
+    });
+  }
+
+  const wcEvents = (data.events || []).filter(e => e.type === 'wildcard');
+  const wcSteps = {};
+  wcEvents.forEach(e => { wcSteps[e.step] = e.name || 'wildcard'; });
+  const wcAnnotations = {};
+  Object.entries(wcSteps).forEach(([step, name]) => {
+    wcAnnotations['wc' + step] = {
+      type: 'line', xMin: +step, xMax: +step,
+      borderColor: '#edc94866', borderWidth: 1.5, borderDash: [5, 3],
+      label: { display: true, content: name, position: 'start',
+               color: '#edc948', backgroundColor: 'rgba(20,20,20,0.8)',
+               font: { size: 9 }, padding: 2 }
     };
   });
+  const hasAnnotations = Object.keys(wcAnnotations).length > 0;
 
   initChart('timelines-chart', {
     type: 'line',
     data: { datasets },
     options: {
       responsive: true,
-      scales: { x: { type: 'linear', title: { display: true, text: 'step', color: '#888' },
-                      grid: { color: '#222' }, ticks: { color: '#888' } },
-                y: { grid: { color: '#222' }, ticks: { color: '#888' } } },
-      plugins: { legend: { labels: { color: '#ccc' } } }
+      scales: themedScales({
+        x: { type: 'linear', title: { display: true, text: 'step' },
+             ticks: { callback: function(v) { return 'Step ' + v; } } },
+        y: { title: { display: true, text: field } }
+      }),
+      plugins: {
+        legend: { labels: { color: tc.textTertiary } },
+        annotation: hasAnnotations ? { annotations: wcAnnotations } : undefined
+      }
     }
   });
 }
@@ -402,28 +843,27 @@ function renderTimelines(data) {
 function renderFitness(data) {
   const fitness = data.fitness || [];
   if (!fitness.length) return;
-
+  const tc = getThemeColors();
   document.getElementById('fitness-card').style.display = '';
   initChart('fitness-chart', {
     type: 'line',
     data: {
       datasets: [
-        { label: 'mean', data: fitness.map(f => ({x: f.step, y: f.mean})),
-          borderColor: '#4CAF50', fill: false, tension: 0.3 },
+        Object.assign(lineDataset('mean', fitness.map(f => ({x: f.step, y: f.mean})), '#59a14f'), {}),
         { label: 'range', data: fitness.map(f => ({x: f.step, y: f.max})),
-          borderColor: '#4CAF5044', backgroundColor: '#4CAF5011',
-          fill: { target: '+1', above: '#4CAF5011' }, tension: 0.3, pointRadius: 0 },
+          borderColor: '#59a14f44', backgroundColor: '#59a14f11',
+          fill: { target: '+1', above: '#59a14f11' }, tension: 0.3, pointRadius: 0, borderWidth: 1 },
         { label: '_min', data: fitness.map(f => ({x: f.step, y: f.min})),
-          borderColor: '#4CAF5044', fill: false, tension: 0.3, pointRadius: 0 }
+          borderColor: '#59a14f44', fill: false, tension: 0.3, pointRadius: 0, borderWidth: 1 }
       ]
     },
     options: {
       responsive: true,
-      scales: { x: { type: 'linear', title: { display: true, text: 'step', color: '#888' },
-                      grid: { color: '#222' }, ticks: { color: '#888' } },
-                y: { title: { display: true, text: 'fitness', color: '#888' },
-                     grid: { color: '#222' }, ticks: { color: '#888' } } },
-      plugins: { legend: { labels: { color: '#ccc', filter: (item) => !item.text.startsWith('_') } } }
+      scales: themedScales({
+        x: { type: 'linear', title: { display: true, text: 'step' } },
+        y: { title: { display: true, text: 'fitness' } }
+      }),
+      plugins: { legend: { labels: { color: tc.textTertiary, filter: (item) => !item.text.startsWith('_') } } }
     }
   });
 }
@@ -432,7 +872,7 @@ function renderPopulations(data) {
   const pops = data.populations || {};
   const popNames = Object.keys(pops);
   if (!popNames.length) return;
-
+  const tc = getThemeColors();
   const grid = document.getElementById('pop-grid');
   const scoreFields = new Set();
   popNames.forEach(p => Object.keys(pops[p]).forEach(s => scoreFields.add(s)));
@@ -450,12 +890,8 @@ function renderPopulations(data) {
 
     const datasets = popNames.map((pop, i) => {
       const series = pops[pop][sf] || [];
-      return {
-        label: pop,
-        data: series.map(s => ({x: s.step, y: s.mean})),
-        borderColor: COLORS[i % COLORS.length],
-        fill: false, tension: 0.3, pointRadius: 3
-      };
+      const color = COLORS[i % COLORS.length];
+      return lineDataset(pop, series.map(s => ({x: s.step, y: s.mean})), color);
     });
 
     initChart(`pop-chart-${sf}`, {
@@ -463,17 +899,242 @@ function renderPopulations(data) {
       data: { datasets },
       options: {
         responsive: true,
-        scales: { x: { type: 'linear', title: { display: true, text: 'step', color: '#888' },
-                        grid: { color: '#222' }, ticks: { color: '#888' } },
-                  y: { title: { display: true, text: sf, color: '#888' },
-                       grid: { color: '#222' }, ticks: { color: '#888' } } },
-        plugins: { legend: { labels: { color: '#ccc' } } }
+        scales: themedScales({
+          x: { type: 'linear', title: { display: true, text: 'step' } },
+          y: { title: { display: true, text: sf } }
+        }),
+        plugins: { legend: { labels: { color: tc.textTertiary } } }
       }
     });
   });
 }
 
-let activeFilters = new Set(['narrative', 'wildcard', 'outcome']);
+function renderTrajectoryComparison(data) {
+  const tt = data.trajectory_timelines || {};
+  const fields = Object.keys(tt);
+  if (!fields.length) return;
+  const tc = getThemeColors();
+  document.getElementById('traj-compare-card').style.display = '';
+  const sel = document.getElementById('traj-field-select');
+  const prev = sel.value;
+  sel.innerHTML = fields.map(f => `<option value="${f}"${f === prev ? ' selected' : ''}>${f}</option>`).join('');
+  const field = sel.value || fields[0];
+  const trajData = tt[field] || {};
+  const tids = Object.keys(trajData);
+  if (!tids.length) return;
+
+  const datasets = tids.map((tid, i) => {
+    const color = COLORS[i % COLORS.length];
+    return lineDataset('T' + tid, trajData[tid].map(p => ({x: p.step, y: p.value})), color);
+  });
+
+  initChart('traj-compare-chart', {
+    type: 'line',
+    data: { datasets },
+    options: {
+      responsive: true,
+      scales: themedScales({
+        x: { type: 'linear', title: { display: true, text: 'step' } },
+        y: { title: { display: true, text: field } }
+      }),
+      plugins: { legend: { labels: { color: tc.textTertiary } } }
+    }
+  });
+}
+
+function renderWildcardImpact(data) {
+  const events = (data.events || []).filter(e => e.type === 'wildcard');
+  if (!events.length) return;
+
+  document.getElementById('wildcard-impact-card').style.display = '';
+
+  const tids = [...new Set(events.map(e => e.trajectory))].sort((a,b) => a - b);
+  const maxStep = Math.max(...events.map(e => e.step));
+  const steps = Array.from({length: maxStep + 1}, (_, i) => i);
+
+  const wcMap = {};
+  events.forEach(e => { wcMap[e.trajectory + '-' + e.step] = e.name || e.text.split(':')[0]; });
+
+  const headerCells = steps.map(s => `<th>${s}</th>`).join('');
+  const rows = tids.map(tid => {
+    const cells = steps.map(s => {
+      const key = tid + '-' + s;
+      const name = wcMap[key];
+      if (name) return `<td><div class="wc-cell wc-hit wc-tooltip" data-tip="${escapeHtml(name)}"></div></td>`;
+      return `<td><div class="wc-cell wc-miss"></div></td>`;
+    }).join('');
+    return `<tr><td class="traj-label">T${tid}</td>${cells}</tr>`;
+  }).join('');
+
+  document.getElementById('wc-heatmap-container').innerHTML =
+    `<div style="overflow-x:auto"><table class="wc-heatmap"><tr><th></th>${headerCells}</tr>${rows}</table></div>` +
+    `<div class="wc-legend"><span><span class="wc-legend-swatch" style="background:#edc948"></span>Wildcard fired</span>` +
+    `<span><span class="wc-legend-swatch" style="background:var(--card-bg-alt);border:1px solid var(--border-light)"></span>No wildcard</span></div>`;
+
+  const freq = new Array(maxStep + 1).fill(0);
+  events.forEach(e => { freq[e.step] = (freq[e.step] || 0) + 1; });
+
+  initChart('wc-histogram-chart', {
+    type: 'bar',
+    data: {
+      labels: steps.map(s => 'Step ' + s),
+      datasets: [{
+        label: 'Wildcards fired',
+        data: freq,
+        backgroundColor: '#edc94899',
+        borderColor: '#edc948',
+        borderRadius: 4,
+        borderWidth: 1
+      }]
+    },
+    options: {
+      responsive: true,
+      scales: themedScales({
+        y: { title: { display: true, text: 'count' }, ticks: { stepSize: 1 } },
+        x: {}
+      }),
+      plugins: { legend: { display: false } }
+    }
+  });
+}
+
+function renderAgentActivity(data) {
+  const proposals = (data.events || []).filter(e => e.type === 'proposal');
+  if (!proposals.length) return;
+  const tc = getThemeColors();
+  document.getElementById('agent-activity-card').style.display = '';
+
+  const agentStats = {};
+  proposals.forEach(e => {
+    if (!agentStats[e.agent]) agentStats[e.agent] = { total: 0, accepted: 0 };
+    agentStats[e.agent].total++;
+    if (e.accepted) agentStats[e.agent].accepted++;
+  });
+
+  const agents = Object.keys(agentStats).sort();
+  const totals = agents.map(a => agentStats[a].total);
+  const accepted = agents.map(a => agentStats[a].accepted);
+  const rates = agents.map(a => {
+    const s = agentStats[a];
+    return s.total ? Math.round(s.accepted / s.total * 100) : 0;
+  });
+
+  initChart('agent-activity-chart', {
+    type: 'bar',
+    data: {
+      labels: agents,
+      datasets: [
+        { label: 'Total proposals', data: totals,
+          backgroundColor: COLORS[0] + '99', borderColor: COLORS[0], borderWidth: 1, borderRadius: 4 },
+        { label: 'Accepted', data: accepted,
+          backgroundColor: COLORS[4] + '99', borderColor: COLORS[4], borderWidth: 1, borderRadius: 4 }
+      ]
+    },
+    options: {
+      indexAxis: 'y', responsive: true,
+      scales: themedScales({
+        x: { title: { display: true, text: 'count' }, ticks: { stepSize: 1 } },
+        y: {}
+      }),
+      plugins: { legend: { labels: { color: tc.textTertiary } } }
+    },
+    plugins: [{
+      afterDatasetsDraw(chart) {
+        const meta = chart.getDatasetMeta(1);
+        const ctx = chart.ctx;
+        meta.data.forEach((bar, i) => {
+          ctx.save();
+          ctx.fillStyle = tc.textSecondary;
+          ctx.font = '11px -apple-system, system-ui, sans-serif';
+          ctx.textAlign = 'left';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(rates[i] + '%', bar.x + 6, bar.y);
+          ctx.restore();
+        });
+      }
+    }]
+  });
+}
+
+function renderESSChart(data) {
+  const ess = data.ess_timeline || [];
+  if (!ess.length) return;
+  document.getElementById('ess-card').style.display = '';
+  const tc = getThemeColors();
+  const n = data.n_trajectories || 1;
+  const threshold = n * 0.5;
+  initChart('ess-chart', {
+    type: 'line',
+    data: {
+      datasets: [
+        Object.assign(lineDataset('ESS', ess.map(e => ({x: e.step, y: e.mean})), '#76b7b2'), {}),
+      ]
+    },
+    options: {
+      responsive: true,
+      scales: themedScales({
+        x: { type: 'linear', title: { display: true, text: 'step' } },
+        y: { title: { display: true, text: 'ESS' }, min: 0 }
+      }),
+      plugins: {
+        legend: { labels: { color: tc.textTertiary } },
+        annotation: {
+          annotations: {
+            threshold: {
+              type: 'line', yMin: threshold, yMax: threshold,
+              borderColor: '#e1575966', borderWidth: 2, borderDash: [6, 3],
+              label: { display: true, content: 'threshold (N/2)', position: 'end',
+                       color: '#e15759', backgroundColor: 'rgba(20,20,20,0.8)',
+                       font: { size: 10 }, padding: 3 }
+            }
+          }
+        }
+      }
+    }
+  });
+}
+
+function renderTokenUsage(data) {
+  const timeline = data.token_timeline || [];
+  const summary = data.token_summary || {};
+  const perRole = summary.per_role || {};
+  if (!timeline.length && !Object.keys(perRole).length) return;
+
+  document.getElementById('token-usage-card').style.display = '';
+  const tc = getThemeColors();
+
+  const roles = Object.keys(perRole);
+  if (timeline.length) {
+    const roleStepData = {};
+    for (const t of (data.n_trajectories ? [data] : [])) {
+      // We need per-step per-role data from the timeline
+      // The timeline has aggregated totals; for the stacked chart, show input vs output
+    }
+
+    initChart('token-usage-chart', {
+      type: 'bar',
+      data: {
+        labels: timeline.map(t => 'Step ' + t.step),
+        datasets: [
+          { label: 'Input tokens', data: timeline.map(t => t.input_tokens),
+            backgroundColor: COLORS[0] + '99', borderColor: COLORS[0], borderWidth: 1, borderRadius: 4 },
+          { label: 'Output tokens', data: timeline.map(t => t.output_tokens),
+            backgroundColor: COLORS[1] + '99', borderColor: COLORS[1], borderWidth: 1, borderRadius: 4 },
+        ]
+      },
+      options: {
+        responsive: true,
+        scales: themedScales({
+          x: { stacked: true },
+          y: { stacked: true, title: { display: true, text: 'tokens' } }
+        }),
+        plugins: { legend: { labels: { color: tc.textTertiary } } }
+      }
+    });
+  }
+}
+
+let activeFilters = new Set(['narrative', 'wildcard', 'outcome', 'proposal', 'validation']);
 let allEvents = [];
 
 function renderEvents(data) {
@@ -494,17 +1155,31 @@ function renderEvents(data) {
   });
 
   el.innerHTML = Object.values(grouped).map(g => {
-    const items = g.items.map(e => {
-      const agent = e.agent ? ` (${e.agent})` : '';
+    return g.items.map(e => {
+      if (e.type === 'proposal') {
+        const status = e.accepted
+          ? '<span class="proposal-status" style="color:#4ade80">&#x2713; accepted</span>'
+          : '<span class="proposal-status" style="color:#f87171">&#x2717; rejected</span>';
+        const fields = (e.proposed_fields || []).map(f =>
+          '<code>' + escapeHtml(f) + '</code>').join(' ');
+        return `<div class="event">
+          <div class="meta">
+            <span class="tag proposal">${escapeHtml(e.agent)}</span>
+            <span>T${e.trajectory} Step ${e.step}</span>
+            ${status}
+          </div>
+          ${fields ? '<div class="proposal-fields">Proposed: ' + fields + '</div>' : ''}
+          <div class="proposal-reasoning"><strong>${escapeHtml(e.agent)}</strong>: ${escapeHtml(e.text)}</div>
+        </div>`;
+      }
       return `<div class="event">
         <div class="meta">
           <span class="tag ${e.type}">${e.type}</span>
-          <span>T${e.trajectory} Step ${e.step}${agent}</span>
+          <span>T${e.trajectory} Step ${e.step}</span>
         </div>
         <div class="text">${escapeHtml(e.text)}</div>
       </div>`;
     }).join('');
-    return items;
   }).join('');
 
   el.scrollTop = el.scrollHeight;
@@ -520,15 +1195,15 @@ document.getElementById('event-filter').addEventListener('click', (e) => {
   if (e.target.tagName !== 'BUTTON') return;
   const type = e.target.dataset.type;
   if (type === 'all') {
-    const allActive = ['narrative','wildcard','outcome','proposal'].every(t => activeFilters.has(t));
+    const allActive = ['narrative','wildcard','outcome','proposal','validation'].every(t => activeFilters.has(t));
     if (allActive) { activeFilters.clear(); }
-    else { activeFilters = new Set(['narrative','wildcard','outcome','proposal']); }
+    else { activeFilters = new Set(['narrative','wildcard','outcome','proposal','validation']); }
   } else {
     activeFilters.has(type) ? activeFilters.delete(type) : activeFilters.add(type);
   }
   document.querySelectorAll('#event-filter button').forEach(b => {
     if (b.dataset.type === 'all') {
-      b.classList.toggle('active', activeFilters.size === 4);
+      b.classList.toggle('active', activeFilters.size === 5);
     } else {
       b.classList.toggle('active', activeFilters.has(b.dataset.type));
     }
@@ -536,30 +1211,105 @@ document.getElementById('event-filter').addEventListener('click', (e) => {
   renderEvents({ events: allEvents });
 });
 
+document.getElementById('events').addEventListener('click', (e) => {
+  const textEl = e.target.closest('.event .text');
+  if (textEl) textEl.classList.toggle('expanded');
+});
+
+let lastData = {};
+let currentRunDir = null;
+let evtSource = null;
+
 function render(data) {
+  lastData = data;
   document.getElementById('title').textContent = data.scenario || 'minimal-agora dashboard';
-  document.getElementById('subtitle').textContent = `${data.n_trajectories || 0} trajectories`;
+  document.getElementById('subtitle').textContent =
+    `${data.n_trajectories || 0} trajectories` + (data.run_dir ? ` \\u2014 ${data.run_dir}` : '');
   renderStats(data);
   renderOutcomes(data);
   renderStepsChart(data);
   renderTimelines(data);
   renderFitness(data);
   renderPopulations(data);
+  renderTrajectoryComparison(data);
+  renderESSChart(data);
+  renderTokenUsage(data);
+  renderWildcardImpact(data);
+  renderAgentActivity(data);
   renderEvents(data);
 }
 
-// Connect via SSE for live updates
-const evtSource = new EventSource('/api/stream');
-evtSource.onmessage = (e) => {
-  const data = JSON.parse(e.data);
-  document.getElementById('status').textContent = 'live';
-  document.getElementById('status').className = 'status live';
-  render(data);
-};
-evtSource.onerror = () => {
-  document.getElementById('status').textContent = 'disconnected';
+function reRenderAll() {
+  applyChartDefaults();
+  if (lastData && lastData.n_trajectories) render(lastData);
+}
+
+// Theme toggle
+function setTheme(theme) {
+  document.documentElement.setAttribute('data-theme', theme);
+  document.getElementById('theme-toggle').textContent = theme === 'dark' ? '\\u263e' : '\\u2600';
+  try { localStorage.setItem('agora-theme', theme); } catch(e) {}
+  reRenderAll();
+}
+(function initTheme() {
+  let saved = null;
+  try { saved = localStorage.getItem('agora-theme'); } catch(e) {}
+  setTheme(saved || 'dark');
+})();
+document.getElementById('theme-toggle').addEventListener('click', () => {
+  const current = document.documentElement.getAttribute('data-theme');
+  setTheme(current === 'dark' ? 'light' : 'dark');
+});
+
+// Timeline field selector
+document.getElementById('timeline-field-select').addEventListener('change', () => {
+  if (lastData.trajectory_timelines) renderTimelines(lastData);
+});
+
+document.getElementById('traj-field-select').addEventListener('change', () => {
+  if (lastData.trajectory_timelines) renderTrajectoryComparison(lastData);
+});
+
+// Simulation switcher
+function loadRuns() {
+  fetch('/api/runs').then(r => r.json()).then(runs => {
+    const sel = document.getElementById('run-select');
+    sel.innerHTML = runs.map(r =>
+      `<option value="${r.dirname}"${r.current ? ' selected' : ''}>${r.scenario} (${r.n_trajectories} traj)</option>`
+    ).join('');
+    const current = runs.find(r => r.current);
+    if (current) currentRunDir = current.dirname;
+  }).catch(() => {});
+}
+loadRuns();
+
+document.getElementById('run-select').addEventListener('change', (e) => {
+  const dirname = e.target.value;
+  currentRunDir = dirname;
+  if (evtSource) { evtSource.close(); evtSource = null; }
+  document.getElementById('status').textContent = 'loading...';
   document.getElementById('status').className = 'status done';
-};
+  fetch('/api/data?run=' + encodeURIComponent(dirname))
+    .then(r => r.json())
+    .then(render)
+    .catch(() => {});
+});
+
+// Connect via SSE for live updates
+function connectSSE() {
+  evtSource = new EventSource('/api/stream');
+  evtSource.onmessage = (e) => {
+    const data = JSON.parse(e.data);
+    document.getElementById('status').textContent = 'live';
+    document.getElementById('status').className = 'status live';
+    render(data);
+  };
+  evtSource.onerror = () => {
+    document.getElementById('status').textContent = 'disconnected';
+    document.getElementById('status').className = 'status done';
+  };
+}
+connectSSE();
 
 // Also fetch once immediately
 fetch('/api/data').then(r => r.json()).then(render).catch(() => {});
@@ -575,18 +1325,16 @@ def start_dashboard(
     populations: list[str] | None = None,
     score_fields: list[str] | None = None,
 ) -> None:
-    configured = type(
-        "ConfiguredDashboardHandler",
-        (DashboardHandler,),
-        {
-            "run_dir": run_dir,
-            "fields": fields or [],
-            "populations": populations or [],
-            "score_fields": score_fields or [],
-        },
-    )
+    class ConfiguredHandler(DashboardHandler):
+        pass
 
-    server = HTTPServer(("127.0.0.1", port), configured)
+    ConfiguredHandler.run_dir = run_dir
+    ConfiguredHandler.runs_root = run_dir.parent
+    ConfiguredHandler.fields = fields or []
+    ConfiguredHandler.populations = populations or []
+    ConfiguredHandler.score_fields = score_fields or []
+
+    server = HTTPServer(("127.0.0.1", port), ConfiguredHandler)
     print(f"Dashboard: http://127.0.0.1:{port}")
     print(f"Watching: {run_dir}")
     print("Press Ctrl+C to stop\n")

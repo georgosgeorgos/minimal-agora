@@ -3,7 +3,7 @@ from __future__ import annotations
 from enum import Enum
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class SimMode(str, Enum):
@@ -16,9 +16,12 @@ class AgentRole(str, Enum):
     ACTOR = "actor"
     CRITIC = "critic"
     JUDGE = "judge"
+    RESAMPLING_CRITIC = "resampling_critic"
 
 
 class AgentConfig(BaseModel):
+    """Configuration for a single LLM agent within a simulation."""
+
     model_config = ConfigDict(extra="forbid")
 
     role: AgentRole
@@ -74,6 +77,8 @@ class InteractionConfig(BaseModel):
 
 
 class EntityConfig(BaseModel):
+    """Configuration for an entity (population, force, critic, or evaluator) in population mode."""
+
     model_config = ConfigDict(extra="forbid")
 
     name: str
@@ -93,6 +98,28 @@ class SimRule(BaseModel):
     applies_to: list[str] = Field(default_factory=list)
 
 
+class ConditionOperator(str, Enum):
+    GT = "gt"
+    LT = "lt"
+    EQ = "eq"
+    GTE = "gte"
+    LTE = "lte"
+
+
+class TriggerCondition(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    field: str
+    operator: ConditionOperator
+    threshold: float
+
+
+class WildcardMode(str, Enum):
+    RANDOM = "random"
+    CONDITIONAL = "conditional"
+    HYBRID = "hybrid"
+
+
 class WildcardEvent(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -100,6 +127,15 @@ class WildcardEvent(BaseModel):
     probability: float = 0.1
     description: str = ""
     state_impact: dict[str, Any] = Field(default_factory=dict)
+    trigger_conditions: list[TriggerCondition] = Field(default_factory=list)
+    mode: WildcardMode = WildcardMode.RANDOM
+    probability_boost: float = 2.0
+
+    @model_validator(mode="after")
+    def _validate_conditional_has_conditions(self) -> WildcardEvent:
+        if self.mode == WildcardMode.CONDITIONAL and not self.trigger_conditions:
+            raise ValueError("CONDITIONAL mode requires at least one trigger_condition")
+        return self
 
 
 class FitnessConfig(BaseModel):
@@ -109,7 +145,41 @@ class FitnessConfig(BaseModel):
     direction: str = "maximize"
 
 
+class ResamplingConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    interval: int = Field(default=5, ge=1)
+    criteria: list[str] = Field(default_factory=list)
+    min_particles: int = Field(default=2, ge=1)
+    ess_threshold: float = Field(default=0.5, ge=0.0, le=1.0)
+
+
+class ResamplingScore(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    trajectory_id: int
+    scores: list[int]
+    total: int
+    notes: str = ""
+
+
+DEFAULT_RESAMPLING_CRITERIA = [
+    "Did the system state change meaningfully this period?",
+    "Did a novel entity, force, or dynamic emerge?",
+    "Is there active conflict or tension between forces?",
+    "Did complexity increase (new structures, relationships, or hierarchies)?",
+    "Did an unexpected or surprising event occur?",
+    "Are there unresolved tensions that could drive future change?",
+    "Is this trajectory exploring a unique path compared to the initial state?",
+    "Did the environment or external conditions change significantly?",
+    "Are there second-order effects or cascading consequences unfolding?",
+    "Would continuing this trajectory likely produce new information?",
+]
+
+
 class Scenario(BaseModel):
+    """Top-level simulation scenario defining agents, rules, and termination conditions."""
+
     model_config = ConfigDict(extra="forbid")
 
     name: str
@@ -125,7 +195,12 @@ class Scenario(BaseModel):
     fitness: FitnessConfig | None = None
     wildcards: list[WildcardEvent] = Field(default_factory=list)
     wildcards_enabled: bool = False
+    wildcard_warmup: float = Field(default=0.05, ge=0.0, le=1.0)
+    narrative_window: int | None = None
     description: str = ""
+    max_concurrent_agents: int = Field(default=8, ge=1)
+    review_interval: int = Field(default=1, ge=1)
+    resampling: ResamplingConfig | None = None
 
 
 class ConflictSource(BaseModel):
@@ -168,6 +243,7 @@ class Resolution(BaseModel):
     state_delta: dict[str, Any] = Field(default_factory=dict)
     narrative: str = ""
     reasoning: str = ""
+    validation_warnings: list[str] = Field(default_factory=list)
 
 
 class Evaluation(BaseModel):
@@ -179,6 +255,22 @@ class Evaluation(BaseModel):
     rewards: dict[str, float] = Field(default_factory=dict)
 
 
+class AgentCallTokens(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    role: str
+    input_tokens: int
+    output_tokens: int
+
+
+class StepTokenUsage(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    agent_calls: list[AgentCallTokens] = Field(default_factory=list)
+    total_input_tokens: int = 0
+    total_output_tokens: int = 0
+
+
 class Step(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -188,6 +280,7 @@ class Step(BaseModel):
     resolution: Resolution | None = None
     state_before: dict[str, Any] = Field(default_factory=dict)
     state_after: dict[str, Any] = Field(default_factory=dict)
+    token_usage: StepTokenUsage | None = None
 
 
 class TrajectoryOutcome(BaseModel):
@@ -199,6 +292,8 @@ class TrajectoryOutcome(BaseModel):
 
 
 class Trajectory(BaseModel):
+    """Record of a single simulation run including steps and final outcome."""
+
     model_config = ConfigDict(extra="forbid")
 
     scenario_name: str
@@ -206,6 +301,7 @@ class Trajectory(BaseModel):
     steps: list[Step] = Field(default_factory=list)
     outcome: TrajectoryOutcome | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
+    total_tokens: dict[str, Any] | None = None
 
 
 class AggregateResult(BaseModel):
@@ -217,3 +313,18 @@ class AggregateResult(BaseModel):
     outcomes: dict[str, int] = Field(default_factory=dict)
     outcome_rates: dict[str, float] = Field(default_factory=dict)
     mean_steps_per_outcome: dict[str, float] = Field(default_factory=dict)
+    outcome_rates_ci: dict[str, tuple[float, float]] | None = None
+    monte_carlo_se: dict[str, float] | None = None
+
+
+class CrossRunComparison(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    run_a_name: str
+    run_b_name: str
+    n_trajectories_a: int
+    n_trajectories_b: int
+    outcome_comparisons: list[dict[str, Any]] = Field(default_factory=list)
+    metric_comparisons: list[dict[str, Any]] = Field(default_factory=list)
+    effect_sizes: dict[str, Any] = Field(default_factory=dict)
+    summary: str = ""

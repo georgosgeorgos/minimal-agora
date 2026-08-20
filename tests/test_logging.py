@@ -1,53 +1,76 @@
+from __future__ import annotations
+
+import json
 import logging
 
-from minimal_agora.logging import configure_logging, get_logger, trajectory_context
+from structlog.testing import capture_logs
+
+from minimal_agora.logging_config import configure_logging
+from minimal_agora.models import Resolution, Trajectory, TrajectoryOutcome
+from minimal_agora.scenario import load_scenario
 
 
-def test_get_logger_returns_bound_logger():
-    configure_logging()
-    log = get_logger("test.module")
-    assert hasattr(log, "info")
-    assert hasattr(log, "warning")
-    assert hasattr(log, "bind")
+def test_configure_logging_sets_level():
+    configure_logging(verbose=False)
+    assert logging.getLogger().level == logging.INFO
+
+    configure_logging(verbose=True)
+    assert logging.getLogger().level == logging.DEBUG
 
 
-def test_configure_logging_console_mode():
-    configure_logging(force_json=False)
-    log = get_logger("test.console")
-    log.info("test_event", key="value")
+def test_scenario_load_emits_log_events():
+    with capture_logs() as cap:
+        load_scenario("scenarios/examples/intelligence.yaml")
+
+    events = [e["event"] for e in cap]
+    assert "scenario.load" in events
+    assert "scenario.loaded" in events
+
+    loaded = next(e for e in cap if e["event"] == "scenario.loaded")
+    assert "name" in loaded
+    assert "mode" in loaded
 
 
-def test_configure_logging_json_mode():
-    configure_logging(force_json=True)
-    log = get_logger("test.json")
-    log.info("test_event", key="value")
+def test_aggregate_outcomes_emits_log_events():
+    from minimal_agora.analysis import aggregate_outcomes
+
+    trajectories = [
+        Trajectory(
+            scenario_name="test",
+            trajectory_id=i,
+            outcome=TrajectoryOutcome(classification="a", final_step=3, final_state={}),
+        )
+        for i in range(3)
+    ]
+
+    with capture_logs() as cap:
+        aggregate_outcomes(trajectories, "q")
+
+    events = [e["event"] for e in cap]
+    assert "analysis.aggregate_outcomes" in events
+    assert "analysis.aggregate_outcomes.done" in events
 
 
-def test_trajectory_id_binding():
-    configure_logging()
-    token = trajectory_context.set(42)
-    try:
-        tid = trajectory_context.get()
-        assert tid == 42
-    finally:
-        trajectory_context.reset(token)
-    assert trajectory_context.get() is None
+def test_board_apply_resolution_emits_log_events(tmp_path):
+    from minimal_agora.board import Board
 
+    workspace = tmp_path / "ws"
+    board_dir = workspace / "board"
+    board_dir.mkdir(parents=True)
+    (workspace / "history").mkdir()
 
-def test_trajectory_id_default_none():
-    assert trajectory_context.get() is None
+    with open(board_dir / "state.json", "w") as f:
+        json.dump({"x": 1}, f)
 
+    with open(board_dir / "narrative.md", "w") as f:
+        f.write("# Narrative\n")
 
-def test_logger_with_trajectory_context(capfd):
-    configure_logging(force_json=True)
-    root = logging.getLogger()
-    root.setLevel(logging.INFO)
-    token = trajectory_context.set(7)
-    try:
-        log = get_logger("test.ctx")
-        log.info("ctx_event", step=1)
-        captured = capfd.readouterr()
-        assert "trajectory_id" in captured.err
-        assert "7" in captured.err
-    finally:
-        trajectory_context.reset(token)
+    board = Board(workspace)
+    resolution = Resolution(state_delta={"x": 2}, narrative="update", reasoning="test")
+
+    with capture_logs() as cap:
+        board.apply_resolution(resolution, step=0)
+
+    events = [e["event"] for e in cap]
+    assert "board.apply_resolution" in events
+    assert "board.snapshot_state" in events
