@@ -71,6 +71,8 @@ class TestAnthropicAPIProvider:
         assert provider.max_tokens == 4096
         assert provider.temperature == 1.0
         assert provider.max_retries == 2
+        assert provider.api_key is None
+        assert provider.base_url is None
 
     def test_custom_params(self) -> None:
         provider = AnthropicAPIProvider(
@@ -78,14 +80,128 @@ class TestAnthropicAPIProvider:
             max_tokens=1024,
             temperature=0.5,
             max_retries=5,
+            api_key="sk-test",
+            base_url="http://localhost:8080",
         )
         assert provider.model == "claude-haiku-4-5-20251001"
         assert provider.max_tokens == 1024
         assert provider.temperature == 0.5
         assert provider.max_retries == 5
+        assert provider.api_key == "sk-test"
+        assert provider.base_url == "http://localhost:8080"
 
     def test_satisfies_protocol(self) -> None:
         assert isinstance(AnthropicAPIProvider(), AgentProvider)
+
+    def test_invoke_calls_messages_create(self) -> None:
+        mock_response = MagicMock()
+        mock_response.usage.input_tokens = 10
+        mock_response.usage.output_tokens = 20
+        text_block = MagicMock()
+        text_block.type = "text"
+        text_block.text = "hello world"
+        mock_response.content = [text_block]
+        mock_response.model = "claude-sonnet-4-20250514"
+
+        mock_create = AsyncMock(return_value=mock_response)
+        mock_client = MagicMock()
+        mock_client.messages.create = mock_create
+
+        with patch(
+            "minimal_agora.providers.api_provider._HAS_ANTHROPIC", True
+        ), patch(
+            "minimal_agora.providers.api_provider.anthropic"
+        ) as mock_anthropic:
+            mock_anthropic.AsyncAnthropic.return_value = mock_client
+
+            provider = AnthropicAPIProvider()
+            with tempfile.TemporaryDirectory() as tmp:
+                result = asyncio.run(provider.invoke("test prompt", Path(tmp)))
+
+        mock_create.assert_awaited_once()
+        call_kwargs = mock_create.call_args[1]
+        assert call_kwargs["model"] == "claude-sonnet-4-20250514"
+        assert call_kwargs["messages"] == [{"role": "user", "content": "test prompt"}]
+        assert call_kwargs["max_tokens"] == 4096
+        assert call_kwargs["temperature"] == 1.0
+
+        assert result.output == "hello world"
+        assert result.tokens_used == 30
+        assert result.input_tokens == 10
+        assert result.output_tokens == 20
+        assert result.model == "claude-sonnet-4-20250514"
+
+    def test_invoke_passes_api_key_and_base_url_to_client(self) -> None:
+        mock_response = MagicMock()
+        mock_response.usage.input_tokens = 1
+        mock_response.usage.output_tokens = 1
+        text_block = MagicMock()
+        text_block.type = "text"
+        text_block.text = "ok"
+        mock_response.content = [text_block]
+        mock_response.model = "m"
+
+        mock_create = AsyncMock(return_value=mock_response)
+        mock_client = MagicMock()
+        mock_client.messages.create = mock_create
+
+        with patch(
+            "minimal_agora.providers.api_provider._HAS_ANTHROPIC", True
+        ), patch(
+            "minimal_agora.providers.api_provider.anthropic"
+        ) as mock_anthropic:
+            mock_anthropic.AsyncAnthropic.return_value = mock_client
+
+            provider = AnthropicAPIProvider(
+                api_key="sk-explicit", base_url="http://localhost:9090"
+            )
+            with tempfile.TemporaryDirectory() as tmp:
+                asyncio.run(provider.invoke("p", Path(tmp)))
+
+        client_kwargs = mock_anthropic.AsyncAnthropic.call_args[1]
+        assert client_kwargs["api_key"] == "sk-explicit"
+        assert client_kwargs["base_url"] == "http://localhost:9090"
+
+    def test_client_reused_across_invokes(self) -> None:
+        mock_response = MagicMock()
+        mock_response.usage.input_tokens = 1
+        mock_response.usage.output_tokens = 1
+        text_block = MagicMock()
+        text_block.type = "text"
+        text_block.text = "ok"
+        mock_response.content = [text_block]
+        mock_response.model = "m"
+
+        mock_create = AsyncMock(return_value=mock_response)
+        mock_client = MagicMock()
+        mock_client.messages.create = mock_create
+
+        with patch(
+            "minimal_agora.providers.api_provider._HAS_ANTHROPIC", True
+        ), patch(
+            "minimal_agora.providers.api_provider.anthropic"
+        ) as mock_anthropic:
+            mock_anthropic.AsyncAnthropic.return_value = mock_client
+
+            provider = AnthropicAPIProvider()
+            with tempfile.TemporaryDirectory() as tmp:
+                asyncio.run(provider.invoke("a", Path(tmp)))
+                asyncio.run(provider.invoke("b", Path(tmp)))
+
+        # The HTTP client must be constructed once and shared, not rebuilt
+        # per invocation — otherwise concurrent runs leak connection pools.
+        mock_anthropic.AsyncAnthropic.assert_called_once()
+        assert mock_create.await_count == 2
+
+    def test_invoke_without_anthropic_raises(self) -> None:
+        with patch("minimal_agora.providers.api_provider._HAS_ANTHROPIC", False):
+            provider = AnthropicAPIProvider()
+            with tempfile.TemporaryDirectory() as tmp:
+                try:
+                    asyncio.run(provider.invoke("test", Path(tmp)))
+                    assert False, "Should have raised RuntimeError"
+                except RuntimeError as e:
+                    assert "anthropic package not installed" in str(e)
 
 
 class TestClaudeSubprocessProvider:

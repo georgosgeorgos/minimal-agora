@@ -14,12 +14,14 @@ from minimal_agora.analysis import (
     save_artifacts,
     save_report,
 )
+from minimal_agora.env import load_env
 from minimal_agora.logging_config import configure_logging
 from minimal_agora.runner import run_batch, run_particle_filter
 from minimal_agora.scenario import load_scenario
 
 
 def main() -> int:
+    load_env()
     parser = argparse.ArgumentParser(description="minimal-agora — counterfactual world simulation")
     parser.add_argument("-v", "--verbose", action="store_true", help="Enable DEBUG level logging")
     subparsers = parser.add_subparsers(dest="command")
@@ -40,8 +42,16 @@ def main() -> int:
         help="LLM provider backend (default: subprocess)",
     )
     run_parser.add_argument("--model", default=None, help="Model name (provider-specific)")
-    run_parser.add_argument("--api-base", default=None, help="API base URL for litellm provider")
-    run_parser.add_argument("--api-key", default=None, help="API key (overrides environment)")
+    run_parser.add_argument(
+        "--api-base",
+        default=None,
+        help="API base URL (anthropic base_url / litellm api_base). Defaults to the provider's env var.",
+    )
+    run_parser.add_argument(
+        "--api-key",
+        default=None,
+        help="API key (overrides ANTHROPIC_API_KEY / provider env vars).",
+    )
 
     report_parser = subparsers.add_parser("report", help="Generate report from completed run")
     report_parser.add_argument("run_dir", nargs="?", type=Path, default=None, help="Path to run output directory (default: latest in runs/)")
@@ -171,6 +181,10 @@ def _create_provider(args):
         kwargs = {}
         if args.model:
             kwargs["model"] = args.model
+        if args.api_base:
+            kwargs["base_url"] = args.api_base
+        if args.api_key:
+            kwargs["api_key"] = args.api_key
         return AnthropicAPIProvider(**kwargs)
 
     from minimal_agora.providers.subprocess_provider import ClaudeSubprocessProvider

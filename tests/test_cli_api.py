@@ -217,3 +217,63 @@ def test_report_json_format():
         parsed = json.loads(result.stdout)
         assert parsed["scenario_name"] == "test"
         assert parsed["n_trajectories"] == 1
+
+
+def _run_namespace(**kwargs):
+    """Build an argparse.Namespace matching the `run` subcommand's args."""
+    from argparse import Namespace
+
+    defaults = {
+        "provider": None,
+        "model": None,
+        "api_base": None,
+        "api_key": None,
+    }
+    defaults.update(kwargs)
+    return Namespace(**defaults)
+
+
+def test_create_provider_anthropic_passes_api_key_and_base():
+    from minimal_agora.cli import _create_provider
+    from minimal_agora.providers import AnthropicAPIProvider
+
+    args = _run_namespace(
+        provider="anthropic",
+        model="claude-haiku-4-5-20251001",
+        api_base="http://localhost:8080",
+        api_key="sk-test",
+    )
+    provider = _create_provider(args)
+    assert isinstance(provider, AnthropicAPIProvider)
+    assert provider.model == "claude-haiku-4-5-20251001"
+    assert provider.base_url == "http://localhost:8080"
+    assert provider.api_key == "sk-test"
+
+
+def test_create_provider_anthropic_defaults_to_none():
+    """Without flags, api_key/base_url are None so the SDK reads env vars."""
+    from minimal_agora.cli import _create_provider
+    from minimal_agora.providers import AnthropicAPIProvider
+
+    args = _run_namespace(provider="anthropic")
+    provider = _create_provider(args)
+    assert isinstance(provider, AnthropicAPIProvider)
+    assert provider.api_key is None
+    assert provider.base_url is None
+
+
+def test_create_provider_litellm_passes_api_key_and_base():
+    from minimal_agora.cli import _create_provider
+    from minimal_agora.providers import LiteLLMProvider
+
+    args = _run_namespace(
+        provider="litellm",
+        model="openai/gpt-4o",
+        api_base="http://localhost:8000/v1",
+        api_key="sk-test",
+    )
+    provider = _create_provider(args)
+    assert isinstance(provider, LiteLLMProvider)
+    assert provider.model == "openai/gpt-4o"
+    assert provider.api_base == "http://localhost:8000/v1"
+    assert provider.api_key == "sk-test"

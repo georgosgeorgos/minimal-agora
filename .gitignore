@@ -16,6 +16,9 @@ build/
 .ruff_cache/
 htmlcov/
 .venv/
-*.env
+# Secrets — local env files must never be committed. .env.example is kept.
+.env
+.env.*
+!.env.example
 skills/
 media/

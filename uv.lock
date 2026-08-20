@@ -1641,6 +1641,7 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "pydantic" },
+    { name = "python-dotenv" },
     { name = "pyyaml" },
     { name = "scipy" },
     { name = "statsmodels" },
@@ -1661,6 +1662,8 @@ viz = [
 
 [package.dev-dependencies]
 dev = [
+    { name = "anthropic" },
+    { name = "litellm" },
     { name = "matplotlib" },
     { name = "mypy" },
     { name = "pytest" },
@@ -1676,6 +1679,7 @@ requires-dist = [
     { name = "manim", marker = "extra == 'viz'", specifier = ">=0.18" },
     { name = "matplotlib", marker = "extra == 'viz'", specifier = ">=3.8" },
     { name = "pydantic", specifier = ">=2.0" },
+    { name = "python-dotenv", specifier = ">=1.0" },
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "scipy", specifier = ">=1.11.0" },
     { name = "statsmodels", specifier = ">=0.14.0" },
@@ -1685,6 +1689,8 @@ provides-extras = ["api", "litellm", "viz"]
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "anthropic", specifier = ">=0.40.0" },
+    { name = "litellm", specifier = ">=1.40" },
     { name = "matplotlib", specifier = ">=3.8" },
     { name = "mypy", specifier = ">=1.10" },
     { name = "mypy", specifier = ">=2.3.1" },
