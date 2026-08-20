@@ -33,6 +33,15 @@ def main() -> int:
     run_parser.add_argument("--steps", type=int, default=None, help="Override step budget")
     run_parser.add_argument("--timeout", type=int, default=300, help="Agent timeout in seconds")
     run_parser.add_argument("--dry-run", action="store_true", help="Validate and summarize scenario without running")
+    run_parser.add_argument(
+        "--provider",
+        choices=["subprocess", "anthropic", "litellm"],
+        default=None,
+        help="LLM provider backend (default: subprocess)",
+    )
+    run_parser.add_argument("--model", default=None, help="Model name (provider-specific)")
+    run_parser.add_argument("--api-base", default=None, help="API base URL for litellm provider")
+    run_parser.add_argument("--api-key", default=None, help="API key (overrides environment)")
 
     report_parser = subparsers.add_parser("report", help="Generate report from completed run")
     report_parser.add_argument("run_dir", nargs="?", type=Path, default=None, help="Path to run output directory (default: latest in runs/)")
@@ -140,6 +149,35 @@ def _extract_numeric_field_paths(state: dict, prefix: str = "") -> list[str]:
     return paths
 
 
+def _create_provider(args):
+    """Create an AgentProvider from CLI arguments."""
+    provider_type = args.provider or "subprocess"
+
+    if provider_type == "litellm":
+        from minimal_agora.providers.litellm_provider import LiteLLMProvider
+
+        kwargs: dict = {}
+        if args.model:
+            kwargs["model"] = args.model
+        if args.api_base:
+            kwargs["api_base"] = args.api_base
+        if args.api_key:
+            kwargs["api_key"] = args.api_key
+        return LiteLLMProvider(**kwargs)
+
+    if provider_type == "anthropic":
+        from minimal_agora.providers.api_provider import AnthropicAPIProvider
+
+        kwargs = {}
+        if args.model:
+            kwargs["model"] = args.model
+        return AnthropicAPIProvider(**kwargs)
+
+    from minimal_agora.providers.subprocess_provider import ClaudeSubprocessProvider
+
+    return ClaudeSubprocessProvider()
+
+
 def cmd_run(args) -> int:
     from minimal_agora.models import SimMode
 
@@ -156,6 +194,11 @@ def cmd_run(args) -> int:
     if args.steps is not None:
         scenario.step_budget = args.steps
         scenario.termination["max_steps"] = args.steps
+
+    if args.provider:
+        from minimal_agora.agents import set_default_provider
+
+        set_default_provider(_create_provider(args))
 
     output_dir = args.output / scenario.name
     has_entities = len(scenario.entities) > 0

@@ -15,6 +15,9 @@ dependencies = [
 api = [
     "anthropic>=0.40.0",
 ]
+litellm = [
+    "litellm>=1.40",
+]
 viz = [
     "matplotlib>=3.8",
     "manim>=0.18",

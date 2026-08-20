@@ -1,6 +1,7 @@
 import asyncio
 import tempfile
 from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from minimal_agora.agents import get_default_provider, invoke_agent, set_default_provider
 from minimal_agora.models import AgentConfig, AgentRole
@@ -9,6 +10,7 @@ from minimal_agora.providers import (
     AgentProvider,
     AnthropicAPIProvider,
     ClaudeSubprocessProvider,
+    LiteLLMProvider,
     MockProvider,
 )
 
@@ -159,6 +161,111 @@ class TestSetDefaultProvider:
         assert explicit.call_count == 1
 
 
+class TestLiteLLMProvider:
+    def test_default_params(self) -> None:
+        provider = LiteLLMProvider()
+        assert provider.model == "claude-sonnet-4-20250514"
+        assert provider.max_tokens == 4096
+        assert provider.temperature == 1.0
+        assert provider.api_base is None
+        assert provider.api_key is None
+
+    def test_custom_params(self) -> None:
+        provider = LiteLLMProvider(
+            model="openai/gpt-4o",
+            max_tokens=2048,
+            temperature=0.7,
+            api_base="http://localhost:8000",
+            api_key="test-key",
+        )
+        assert provider.model == "openai/gpt-4o"
+        assert provider.max_tokens == 2048
+        assert provider.temperature == 0.7
+        assert provider.api_base == "http://localhost:8000"
+        assert provider.api_key == "test-key"
+
+    def test_satisfies_protocol(self) -> None:
+        assert isinstance(LiteLLMProvider(), AgentProvider)
+
+    def test_invoke_calls_acompletion(self) -> None:
+        mock_usage = MagicMock()
+        mock_usage.prompt_tokens = 50
+        mock_usage.completion_tokens = 100
+
+        mock_choice = MagicMock()
+        mock_choice.message.content = '{"agent": "test", "result": "ok"}'
+
+        mock_response = MagicMock()
+        mock_response.usage = mock_usage
+        mock_response.model = "openai/gpt-4o"
+        mock_response.choices = [mock_choice]
+
+        with patch(
+            "minimal_agora.providers.litellm_provider.litellm"
+        ) as mock_litellm, patch(
+            "minimal_agora.providers.litellm_provider._HAS_LITELLM", True
+        ):
+            mock_litellm.acompletion = AsyncMock(return_value=mock_response)
+
+            provider = LiteLLMProvider(model="openai/gpt-4o")
+            with tempfile.TemporaryDirectory() as tmp:
+                result = asyncio.run(provider.invoke("test prompt", Path(tmp)))
+
+            mock_litellm.acompletion.assert_awaited_once()
+            call_kwargs = mock_litellm.acompletion.call_args[1]
+            assert call_kwargs["model"] == "openai/gpt-4o"
+            assert call_kwargs["messages"] == [{"role": "user", "content": "test prompt"}]
+            assert call_kwargs["max_tokens"] == 4096
+
+            assert result.output == '{"agent": "test", "result": "ok"}'
+            assert result.tokens_used == 150
+            assert result.model == "openai/gpt-4o"
+            assert result.input_tokens == 50
+            assert result.output_tokens == 100
+
+    def test_invoke_passes_api_base(self) -> None:
+        mock_usage = MagicMock()
+        mock_usage.prompt_tokens = 10
+        mock_usage.completion_tokens = 20
+
+        mock_choice = MagicMock()
+        mock_choice.message.content = "response"
+
+        mock_response = MagicMock()
+        mock_response.usage = mock_usage
+        mock_response.model = "local-model"
+        mock_response.choices = [mock_choice]
+
+        with patch(
+            "minimal_agora.providers.litellm_provider.litellm"
+        ) as mock_litellm, patch(
+            "minimal_agora.providers.litellm_provider._HAS_LITELLM", True
+        ):
+            mock_litellm.acompletion = AsyncMock(return_value=mock_response)
+
+            provider = LiteLLMProvider(
+                model="local-model",
+                api_base="http://localhost:8000",
+                api_key="sk-test",
+            )
+            with tempfile.TemporaryDirectory() as tmp:
+                asyncio.run(provider.invoke("prompt", Path(tmp)))
+
+            call_kwargs = mock_litellm.acompletion.call_args[1]
+            assert call_kwargs["api_base"] == "http://localhost:8000"
+            assert call_kwargs["api_key"] == "sk-test"
+
+    def test_invoke_without_litellm_raises(self) -> None:
+        with patch("minimal_agora.providers.litellm_provider._HAS_LITELLM", False):
+            provider = LiteLLMProvider()
+            with tempfile.TemporaryDirectory() as tmp:
+                try:
+                    asyncio.run(provider.invoke("test", Path(tmp)))
+                    assert False, "Should have raised RuntimeError"
+                except RuntimeError as e:
+                    assert "litellm package not installed" in str(e)
+
+
 class TestTopLevelExports:
     def test_provider_exports(self) -> None:
         import minimal_agora
@@ -175,6 +282,12 @@ class TestTopLevelExports:
         assert hasattr(minimal_agora, "AnthropicAPIProvider")
         assert minimal_agora.AnthropicAPIProvider is AnthropicAPIProvider
 
+    def test_litellm_provider_export(self) -> None:
+        import minimal_agora
+
+        assert hasattr(minimal_agora, "LiteLLMProvider")
+        assert minimal_agora.LiteLLMProvider is LiteLLMProvider
+
     def test_all_contains_provider_names(self) -> None:
         import minimal_agora
 
@@ -183,6 +296,7 @@ class TestTopLevelExports:
             "AgentInvocationResult",
             "AnthropicAPIProvider",
             "ClaudeSubprocessProvider",
+            "LiteLLMProvider",
             "MockProvider",
             "set_default_provider",
         }

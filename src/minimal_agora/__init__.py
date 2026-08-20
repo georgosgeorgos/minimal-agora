@@ -8,6 +8,7 @@ from minimal_agora.providers import (
     AgentProvider,
     AnthropicAPIProvider,
     ClaudeSubprocessProvider,
+    LiteLLMProvider,
     MockProvider,
 )
 from minimal_agora.runner import run_batch
@@ -20,6 +21,7 @@ __all__ = [
     "AnthropicAPIProvider",
     "ClaudeSubprocessProvider",
     "EntityConfig",
+    "LiteLLMProvider",
     "MockProvider",
     "Scenario",
     "Trajectory",
