@@ -68,7 +68,7 @@ class TestAnthropicAPIProvider:
     def test_default_params(self) -> None:
         provider = AnthropicAPIProvider()
         assert provider.model == "claude-sonnet-4-20250514"
-        assert provider.max_tokens == 4096
+        assert provider.max_tokens == 2048
         assert provider.temperature == 1.0
         assert provider.max_retries == 2
         assert provider.api_key is None
@@ -122,7 +122,7 @@ class TestAnthropicAPIProvider:
         call_kwargs = mock_create.call_args[1]
         assert call_kwargs["model"] == "claude-sonnet-4-20250514"
         assert call_kwargs["messages"] == [{"role": "user", "content": "test prompt"}]
-        assert call_kwargs["max_tokens"] == 4096
+        assert call_kwargs["max_tokens"] == 2048
         assert call_kwargs["temperature"] == 1.0
 
         assert result.output == "hello world"
@@ -268,7 +268,7 @@ class TestSetDefaultProvider:
 
     def test_invoke_agent_uses_explicit_provider(self) -> None:
         explicit = MockProvider(responses={"critic": "explicit output"})
-        agent = _make_agent(role=AgentRole.CRITIC)
+        agent = _make_agent(role=AgentRole.CONSTRAINT_EVALUATOR)
         with tempfile.TemporaryDirectory() as tmp:
             result = asyncio.run(
                 invoke_agent(agent, Path(tmp), step=1, prompt="critic test", provider=explicit)
@@ -281,7 +281,7 @@ class TestLiteLLMProvider:
     def test_default_params(self) -> None:
         provider = LiteLLMProvider()
         assert provider.model == "claude-sonnet-4-20250514"
-        assert provider.max_tokens == 4096
+        assert provider.max_tokens == 2048
         assert provider.temperature == 1.0
         assert provider.api_base is None
         assert provider.api_key is None
@@ -331,7 +331,7 @@ class TestLiteLLMProvider:
             call_kwargs = mock_litellm.acompletion.call_args[1]
             assert call_kwargs["model"] == "openai/gpt-4o"
             assert call_kwargs["messages"] == [{"role": "user", "content": "test prompt"}]
-            assert call_kwargs["max_tokens"] == 4096
+            assert call_kwargs["max_tokens"] == 2048
 
             assert result.output == '{"agent": "test", "result": "ok"}'
             assert result.tokens_used == 150

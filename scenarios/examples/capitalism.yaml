@@ -2,6 +2,7 @@ name: "emergence-of-capitalism"
 mode: counterfactual
 n_trajectories: 10
 step_budget: 800
+review_interval: 8
 description: >
   Simulate economic evolution from agrarian subsistence to modern
   economic systems. Each step represents roughly 5 years. We test
@@ -99,7 +100,7 @@ agents:
       engine required specific metallurgy, fuel availability, and
       economic incentive.
 
-  - role: critic
+  - role: constraint_evaluator
     name: economic_historian
     perspective: >
       You evaluate whether proposed economic changes are historically
@@ -109,7 +110,7 @@ agents:
       Economic transitions that took centuries in reality should not
       happen in decades in the simulation.
 
-  - role: judge
+  - role: resolver
     name: economic_arbiter
     perspective: >
       Synthesize proposals into the most plausible economic evolution.

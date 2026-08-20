@@ -29,10 +29,10 @@ agents:                     # who participates (flat mode)
   - role: actor
     name: environmental_change
     perspective: "You represent geological and climate forces..."
-  - role: critic
+  - role: constraint_evaluator
     name: biologist
     perspective: "You evaluate biological plausibility..."
-  - role: judge
+  - role: resolver
     name: historian_of_life
     perspective: "You synthesize competing proposals..."
 
@@ -50,7 +50,7 @@ wildcards:                  # stochastic shocks (Poisson-distributed)
       planet:
         biodiversity: collapse
 
-review_interval: 3          # skip critic/judge on non-review steps (2-3x speedup)
+review_interval: 3          # full constraint_evaluator + resolver on review steps
 
 resampling:                 # particle filter (optional)
   interval: 5               # resample every N steps
@@ -93,8 +93,8 @@ In population mode, `agents` is replaced by `entities` — typed groups with the
 |------|------|---------|
 | `population` | Civilization, species, faction. Owns and modifies its state subtree. | Rome, Athens |
 | `force` | World-level pressure. Modifies shared state. | Climate, disease |
-| `critic` | Plausibility checker. Read-only. | Historian, physicist |
-| `evaluator` | Judge. Resolves conflicts, scores. | Supreme arbiter |
+| `constraint_evaluator` | Plausibility checker. Read-only. | Historian, physicist |
+| `resolver` | Resolver. Resolves conflicts, scores. | Supreme arbiter |
 
 ```yaml
 entities:
@@ -125,8 +125,8 @@ trajectory_000/
     scenario.md         # human-readable scenario description
     wildcard_step_NNN.json  # active wildcard (if any)
   proposals/            # actor outputs per step
-  critiques/            # critic outputs per step
-  resolutions/          # judge outputs per step
+  critiques/            # constraint_evaluator outputs per step
+  resolutions/          # resolver outputs per step
   history/              # step snapshots for checkpointing
     step_000_state.json
     step_000_full.json
@@ -154,11 +154,16 @@ For each step:
    Each returns: {proposed_changes, reasoning, confidence}
    Proposals are parsed from stdout (inline JSON, single inference call)
 
-3. CRITIQUE — All critics run in parallel (on review steps only)
+3. CONFLICT-GATE — Proposals are checked for conflicts:
+   - No conflicts + not review step: auto-merge all proposals (0 extra LLM calls)
+   - Conflicts detected: resolver synthesizes (1 LLM call)
+   - Review step: constraint_evaluator evaluates, then resolver synthesizes (2 LLM calls)
+
+   CONSTRAINT_EVALUATE (review steps only) — All constraint_evaluators run in parallel
    Each receives: state + narrative + all proposals + wildcard
    Each returns: {assessment, plausibility, issues}
 
-4. RESOLVE — Single judge synthesizes everything
+   RESOLVE (conflicts or review steps) — Single resolver synthesizes everything
    Receives: state + narrative + all proposals + all critiques + wildcard
    Returns: {state_delta, narrative, reasoning}
 
@@ -169,18 +174,20 @@ For each step:
    If met: stop trajectory. If open_ended: also check fitness plateau.
 ```
 
-### Review Interval Optimization
+### Conflict-Gated Resolution
 
-Not every step needs a full critique + judge pass. With `review_interval: 3`:
+Not every step needs full evaluation. The conflict gate checks proposals for
+overlapping state changes. With `review_interval: 3`:
 
 ```
-Step 0:  WILDCARD -> PROPOSE -> CRITIQUE -> RESOLVE -> UPDATE   (full review)
-Step 1:  WILDCARD -> PROPOSE -> auto-merge proposals -> UPDATE  (fast)
-Step 2:  WILDCARD -> PROPOSE -> auto-merge proposals -> UPDATE  (fast)
-Step 3:  WILDCARD -> PROPOSE -> CRITIQUE -> RESOLVE -> UPDATE   (full review)
+Step 0:  WILDCARD -> PROPOSE -> CONSTRAIN + RESOLVE -> UPDATE   (review step: 2 LLM calls)
+Step 1:  WILDCARD -> PROPOSE -> conflict check -> UPDATE        (no conflicts: auto-merge, 0 calls)
+Step 1:  WILDCARD -> PROPOSE -> conflict check -> RESOLVE -> UPDATE  (conflicts: resolver only, 1 call)
+Step 2:  WILDCARD -> PROPOSE -> conflict check -> UPDATE        (no conflicts: auto-merge, 0 calls)
+Step 3:  WILDCARD -> PROPOSE -> CONSTRAIN + RESOLVE -> UPDATE   (review step: 2 LLM calls)
 ```
 
-On non-review steps, all actor proposals are deep-merged directly into state without critic/judge evaluation. The last step is always a review step.
+On non-review steps without conflicts, all actor proposals are deep-merged directly into state. When conflicts are detected, only the resolver is invoked. The last step is always a review step.
 
 ### Population Mode
 
@@ -189,8 +196,8 @@ Same loop, but the propose phase runs in entity order:
 ```
 1. Forces propose (world-level changes, in parallel)
 2. Populations propose (entity-level changes, in parallel, with interaction context)
-3. Critics evaluate all proposals (in parallel)
-4. Evaluator/judge resolves everything
+3. Constraint evaluators evaluate all proposals (in parallel, on review steps)
+4. Resolver resolves everything (on conflicts or review steps)
 ```
 
 Each population agent receives **interaction context** — the visible state of entities it `can_interact_with`. This creates cross-entity dynamics (trade, war, competition) without direct agent-to-agent communication.
@@ -269,7 +276,7 @@ trajectory_semaphore = asyncio.Semaphore(concurrency)  # default: 4
 
 ### State Delta Application
 
-The judge returns a `state_delta` — a partial dict of changes. This is **deep-merged** into the current state:
+The resolver returns a `state_delta` — a partial dict of changes. This is **deep-merged** into the current state:
 
 ```python
 state_delta = {"life": {"complexity": "multicellular"}}
@@ -494,8 +501,8 @@ scenario.yaml
 │                                                                      │
 │  For each step:                                                      │
 │    ┌─────────┐    ┌─────────────┐    ┌──────────┐    ┌────────────┐ │
-│    │ Wildcard │───▶│ Actors (||) │───▶│ Critics  │───▶│   Judge    │ │
-│    │ (random) │    │ propose     │    │ evaluate │    │ synthesize │ │
+│    │ Wildcard │───▶│ Actors (||) │───▶│Constraint│───▶│  Resolver  │ │
+│    │ (random) │    │ propose     │    │evaluators│    │ synthesize │ │
 │    └─────────┘    └─────────────┘    └──────────┘    └────────────┘ │
 │                         │                                  │         │
 │                         ▼                                  ▼         │
@@ -533,7 +540,7 @@ scenario.yaml
 
 **Filesystem as shared memory.** Agents don't talk to each other. They read from and write to a shared workspace (the "board"). The loop orchestrates turn order. This eliminates coordination bugs and makes the system debuggable — you can inspect any step's state by reading the files.
 
-**Structured disagreement over monologue.** Multiple agents with different perspectives propose, then critics filter, then a judge resolves. This produces better trajectories than a single agent generating everything, because bad proposals get caught before they affect state.
+**Structured disagreement over monologue.** Multiple agents with different perspectives propose, then constraint evaluators filter, then a resolver resolves. This produces better trajectories than a single agent generating everything, because bad proposals get caught before they affect state.
 
 **Monte Carlo over single runs.** Running the same scenario 30+ times with stochastic variation (wildcards, diversity lenses) and aggregating produces statistical answers: "intelligence emerges 27% of the time" rather than "intelligence emerged" (sample of one).
 

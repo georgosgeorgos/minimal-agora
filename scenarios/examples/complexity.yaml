@@ -2,6 +2,7 @@ name: "complexity-maximizer"
 mode: open_ended
 n_trajectories: 1
 step_budget: 500
+review_interval: 5
 description: >
   Open-ended simulation that maximizes complexity of life on Earth.
   The simulation tracks a complexity metric and terminates when
@@ -52,7 +53,16 @@ agents:
       complex life. Ice ages drive adaptation. Continental drift isolates
       and reconnects populations.
 
-  - role: critic
+  - role: actor
+    name: ecological_dynamics
+    perspective: >
+      You represent ecological dynamics: food web construction, niche
+      creation, ecosystem engineering, and ecological feedback loops.
+      Propose changes to biodiversity, species interactions, and ecosystem
+      complexity. New ecological relationships create selection pressures
+      that can drive evolutionary innovation.
+
+  - role: constraint_evaluator
     name: physical_constraints
     perspective: >
       You enforce physical, chemical, and thermodynamic constraints.
@@ -61,7 +71,7 @@ agents:
       transition has prerequisites. Flag proposals that skip necessary
       intermediate steps or violate known constraints.
 
-  - role: judge
+  - role: resolver
     name: synthesis_judge
     perspective: >
       Synthesize proposals into the most plausible outcome. Track the

@@ -24,10 +24,10 @@ class TestAgentCallTokens:
         assert t.output_tokens == 50
 
     def test_roundtrip_json(self):
-        t = AgentCallTokens(role="critic", input_tokens=200, output_tokens=75)
+        t = AgentCallTokens(role="constraint_evaluator", input_tokens=200, output_tokens=75)
         data = t.model_dump_json()
         t2 = AgentCallTokens.model_validate_json(data)
-        assert t2.role == "critic"
+        assert t2.role == "constraint_evaluator"
         assert t2.input_tokens == 200
         assert t2.output_tokens == 75
 
@@ -42,7 +42,7 @@ class TestStepTokenUsage:
     def test_with_calls(self):
         calls = [
             AgentCallTokens(role="actor", input_tokens=100, output_tokens=50),
-            AgentCallTokens(role="critic", input_tokens=200, output_tokens=75),
+            AgentCallTokens(role="constraint_evaluator", input_tokens=200, output_tokens=75),
         ]
         s = StepTokenUsage(
             agent_calls=calls,
@@ -53,12 +53,12 @@ class TestStepTokenUsage:
         assert s.total_input_tokens == 300
 
     def test_roundtrip_json(self):
-        calls = [AgentCallTokens(role="judge", input_tokens=500, output_tokens=200)]
+        calls = [AgentCallTokens(role="resolver", input_tokens=500, output_tokens=200)]
         s = StepTokenUsage(agent_calls=calls, total_input_tokens=500, total_output_tokens=200)
         data = s.model_dump_json()
         s2 = StepTokenUsage.model_validate_json(data)
         assert len(s2.agent_calls) == 1
-        assert s2.agent_calls[0].role == "judge"
+        assert s2.agent_calls[0].role == "resolver"
 
 
 class TestBuildStepTokenUsage:
@@ -68,8 +68,8 @@ class TestBuildStepTokenUsage:
     def test_aggregates_totals(self):
         calls = [
             AgentCallTokens(role="actor", input_tokens=100, output_tokens=50),
-            AgentCallTokens(role="critic", input_tokens=200, output_tokens=75),
-            AgentCallTokens(role="judge", input_tokens=300, output_tokens=100),
+            AgentCallTokens(role="constraint_evaluator", input_tokens=200, output_tokens=75),
+            AgentCallTokens(role="resolver", input_tokens=300, output_tokens=100),
         ]
         usage = _build_step_token_usage(calls)
         assert usage is not None
@@ -93,7 +93,7 @@ class TestAggregateTrajectoryTokens:
                 token_usage=StepTokenUsage(
                     agent_calls=[
                         AgentCallTokens(role="actor", input_tokens=100, output_tokens=50),
-                        AgentCallTokens(role="critic", input_tokens=200, output_tokens=75),
+                        AgentCallTokens(role="constraint_evaluator", input_tokens=200, output_tokens=75),
                     ],
                     total_input_tokens=300, total_output_tokens=125,
                 ),
@@ -103,7 +103,7 @@ class TestAggregateTrajectoryTokens:
                 token_usage=StepTokenUsage(
                     agent_calls=[
                         AgentCallTokens(role="actor", input_tokens=150, output_tokens=60),
-                        AgentCallTokens(role="judge", input_tokens=400, output_tokens=200),
+                        AgentCallTokens(role="resolver", input_tokens=400, output_tokens=200),
                     ],
                     total_input_tokens=550, total_output_tokens=260,
                 ),
@@ -118,8 +118,8 @@ class TestAggregateTrajectoryTokens:
         assert "actor" in result["per_role"]
         assert result["per_role"]["actor"]["input_tokens"] == 250
         assert result["per_role"]["actor"]["output_tokens"] == 110
-        assert "critic" in result["per_role"]
-        assert "judge" in result["per_role"]
+        assert "constraint_evaluator" in result["per_role"]
+        assert "resolver" in result["per_role"]
 
     def test_mixed_steps_with_and_without_tokens(self):
         steps = [
@@ -168,14 +168,14 @@ class TestStepModelWithTokens:
 
     def test_step_roundtrip_json(self):
         usage = StepTokenUsage(
-            agent_calls=[AgentCallTokens(role="judge", input_tokens=500, output_tokens=200)],
+            agent_calls=[AgentCallTokens(role="resolver", input_tokens=500, output_tokens=200)],
             total_input_tokens=500, total_output_tokens=200,
         )
         s = Step(step_number=3, state_before={"x": 1}, state_after={"x": 2}, token_usage=usage)
         data = s.model_dump_json()
         s2 = Step.model_validate_json(data)
         assert s2.token_usage is not None
-        assert s2.token_usage.agent_calls[0].role == "judge"
+        assert s2.token_usage.agent_calls[0].role == "resolver"
 
 
 class TestTrajectoryWithTokens:
@@ -248,7 +248,7 @@ class TestDashboardTokenData:
         usage = StepTokenUsage(
             agent_calls=[
                 AgentCallTokens(role="actor", input_tokens=100, output_tokens=50),
-                AgentCallTokens(role="critic", input_tokens=200, output_tokens=75),
+                AgentCallTokens(role="constraint_evaluator", input_tokens=200, output_tokens=75),
             ],
             total_input_tokens=300, total_output_tokens=125,
         )

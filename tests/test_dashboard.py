@@ -207,7 +207,7 @@ class TestProposalAcceptance:
         proposals = [[
             Proposal(agent="alice", role="actor",
                      proposed_changes={"gdp": 50}, reasoning="grow gdp"),
-            Proposal(agent="bob", role="critic",
+            Proposal(agent="bob", role="constraint_evaluator",
                      proposed_changes={"risk": 10}, reasoning="add risk"),
         ]]
         resolutions = [Resolution(state_delta={"gdp": 50}, narrative="done")]

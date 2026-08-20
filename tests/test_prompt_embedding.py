@@ -5,9 +5,9 @@ import json
 
 from minimal_agora.agents import (
     build_actor_prompt,
-    build_critic_prompt,
-    build_judge_prompt,
+    build_constraint_evaluator_prompt,
     build_prompt,
+    build_resolver_prompt,
     parse_critique_from_text,
     parse_proposal_from_text,
     parse_resolution_from_text,
@@ -106,10 +106,10 @@ class TestActorPromptEmbedsState:
         assert "trajectory 2" in prompt
 
 
-class TestCriticPromptEmbedsProposals:
+class TestConstraintEvaluatorPromptEmbedsProposals:
     def test_proposals_in_prompt(self) -> None:
-        agent = _make_agent(name="critic_1", role=AgentRole.CRITIC)
-        prompt = build_critic_prompt(
+        agent = _make_agent(name="critic_1", role=AgentRole.CONSTRAINT_EVALUATOR)
+        prompt = build_constraint_evaluator_prompt(
             agent, step=3, state=SAMPLE_STATE, narrative=SAMPLE_NARRATIVE,
             proposals=SAMPLE_PROPOSALS,
         )
@@ -117,16 +117,16 @@ class TestCriticPromptEmbedsProposals:
         assert "Growth period" in prompt
 
     def test_state_in_prompt(self) -> None:
-        agent = _make_agent(name="critic_1", role=AgentRole.CRITIC)
-        prompt = build_critic_prompt(
+        agent = _make_agent(name="critic_1", role=AgentRole.CONSTRAINT_EVALUATOR)
+        prompt = build_constraint_evaluator_prompt(
             agent, step=3, state=SAMPLE_STATE, narrative=SAMPLE_NARRATIVE,
             proposals=SAMPLE_PROPOSALS,
         )
         assert json.dumps(SAMPLE_STATE, indent=2) in prompt
 
     def test_no_file_instructions_when_embedded(self) -> None:
-        agent = _make_agent(name="critic_1", role=AgentRole.CRITIC)
-        prompt = build_critic_prompt(
+        agent = _make_agent(name="critic_1", role=AgentRole.CONSTRAINT_EVALUATOR)
+        prompt = build_constraint_evaluator_prompt(
             agent, step=3, state=SAMPLE_STATE, narrative=SAMPLE_NARRATIVE,
             proposals=SAMPLE_PROPOSALS,
         )
@@ -134,15 +134,15 @@ class TestCriticPromptEmbedsProposals:
         assert "Read ALL proposals" not in prompt
 
     def test_fallback_without_state(self) -> None:
-        agent = _make_agent(name="critic_1", role=AgentRole.CRITIC)
-        prompt = build_critic_prompt(agent, step=3)
+        agent = _make_agent(name="critic_1", role=AgentRole.CONSTRAINT_EVALUATOR)
+        prompt = build_constraint_evaluator_prompt(agent, step=3)
         assert "Read the current world state from `board/state.json`" in prompt
 
 
-class TestJudgePromptEmbedsAll:
+class TestResolverPromptEmbedsAll:
     def test_proposals_and_critiques_in_prompt(self) -> None:
-        agent = _make_agent(name="judge_1", role=AgentRole.JUDGE)
-        prompt = build_judge_prompt(
+        agent = _make_agent(name="judge_1", role=AgentRole.RESOLVER)
+        prompt = build_resolver_prompt(
             agent, step=3, state=SAMPLE_STATE, narrative=SAMPLE_NARRATIVE,
             proposals=SAMPLE_PROPOSALS, critiques=SAMPLE_CRITIQUES,
         )
@@ -152,24 +152,24 @@ class TestJudgePromptEmbedsAll:
         assert "critic_1" in prompt
 
     def test_state_in_prompt(self) -> None:
-        agent = _make_agent(name="judge_1", role=AgentRole.JUDGE)
-        prompt = build_judge_prompt(
+        agent = _make_agent(name="judge_1", role=AgentRole.RESOLVER)
+        prompt = build_resolver_prompt(
             agent, step=3, state=SAMPLE_STATE, narrative=SAMPLE_NARRATIVE,
             proposals=SAMPLE_PROPOSALS, critiques=SAMPLE_CRITIQUES,
         )
         assert json.dumps(SAMPLE_STATE, indent=2) in prompt
 
     def test_wildcard_in_prompt(self) -> None:
-        agent = _make_agent(name="judge_1", role=AgentRole.JUDGE)
-        prompt = build_judge_prompt(
+        agent = _make_agent(name="judge_1", role=AgentRole.RESOLVER)
+        prompt = build_resolver_prompt(
             agent, step=3, state=SAMPLE_STATE, narrative=SAMPLE_NARRATIVE,
             proposals=SAMPLE_PROPOSALS, critiques=SAMPLE_CRITIQUES, wildcard=SAMPLE_WILDCARD,
         )
         assert "meteor_strike" in prompt
 
     def test_no_file_instructions_when_embedded(self) -> None:
-        agent = _make_agent(name="judge_1", role=AgentRole.JUDGE)
-        prompt = build_judge_prompt(
+        agent = _make_agent(name="judge_1", role=AgentRole.RESOLVER)
+        prompt = build_resolver_prompt(
             agent, step=3, state=SAMPLE_STATE, narrative=SAMPLE_NARRATIVE,
             proposals=SAMPLE_PROPOSALS, critiques=SAMPLE_CRITIQUES,
         )
@@ -178,8 +178,8 @@ class TestJudgePromptEmbedsAll:
         assert "Read ALL critiques" not in prompt
 
     def test_fallback_without_state(self) -> None:
-        agent = _make_agent(name="judge_1", role=AgentRole.JUDGE)
-        prompt = build_judge_prompt(agent, step=3)
+        agent = _make_agent(name="judge_1", role=AgentRole.RESOLVER)
+        prompt = build_resolver_prompt(agent, step=3)
         assert "Read the current world state from `board/state.json`" in prompt
 
 
@@ -190,7 +190,7 @@ class TestBuildPromptPassesKwargs:
         assert json.dumps(SAMPLE_STATE, indent=2) in prompt
 
     def test_critic_receives_proposals(self) -> None:
-        agent = _make_agent(name="critic_1", role=AgentRole.CRITIC)
+        agent = _make_agent(name="critic_1", role=AgentRole.CONSTRAINT_EVALUATOR)
         prompt = build_prompt(
             agent, step=3, state=SAMPLE_STATE, narrative=SAMPLE_NARRATIVE,
             proposals=SAMPLE_PROPOSALS,
@@ -198,7 +198,7 @@ class TestBuildPromptPassesKwargs:
         assert "Growth period" in prompt
 
     def test_judge_receives_all(self) -> None:
-        agent = _make_agent(name="judge_1", role=AgentRole.JUDGE)
+        agent = _make_agent(name="judge_1", role=AgentRole.RESOLVER)
         prompt = build_prompt(
             agent, step=3, state=SAMPLE_STATE, narrative=SAMPLE_NARRATIVE,
             proposals=SAMPLE_PROPOSALS, critiques=SAMPLE_CRITIQUES,

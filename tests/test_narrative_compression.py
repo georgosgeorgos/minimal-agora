@@ -81,13 +81,13 @@ def test_batch_compression_groups_ten():
     assert len(paragraphs) == 2
 
 
-def test_backward_compat_no_narrative_window():
+def test_default_narrative_window():
     scenario = Scenario(
         name="test",
         mode=SimMode.COUNTERFACTUAL,
         initial_state={"x": 0},
     )
-    assert scenario.narrative_window is None
+    assert scenario.narrative_window == 20
 
 
 def test_narrative_window_field_set():

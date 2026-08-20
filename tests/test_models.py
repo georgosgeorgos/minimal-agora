@@ -33,10 +33,10 @@ def test_load_intelligence_scenario():
     assert scenario.name == "emergence-of-intelligence"
     assert scenario.mode == SimMode.COUNTERFACTUAL
     assert scenario.n_trajectories == 5
-    assert len(scenario.agents) == 4
+    assert len(scenario.agents) == 6
     assert scenario.agents[0].role == AgentRole.ACTOR
-    assert scenario.agents[2].role == AgentRole.CRITIC
-    assert scenario.agents[3].role == AgentRole.JUDGE
+    assert scenario.agents[4].role == AgentRole.CONSTRAINT_EVALUATOR
+    assert scenario.agents[5].role == AgentRole.RESOLVER
 
 
 def test_setup_workspace():
@@ -125,8 +125,8 @@ def test_load_mediterranean_scenario():
     assert len(scenario.entities) == 7
     populations = [e for e in scenario.entities if e.type.value == "population"]
     forces = [e for e in scenario.entities if e.type.value == "force"]
-    critics = [e for e in scenario.entities if e.type.value == "critic"]
-    evaluators = [e for e in scenario.entities if e.type.value == "evaluator"]
+    critics = [e for e in scenario.entities if e.type.value == "constraint_evaluator"]
+    evaluators = [e for e in scenario.entities if e.type.value == "resolver"]
     assert len(populations) == 3
     assert len(forces) == 2
     assert len(critics) == 1
@@ -164,7 +164,7 @@ def test_rules_in_prompt():
     rules = [
         SimRule(name="maximize_complexity", description="Evolve toward complexity"),
         SimRule(name="actor_only", description="Only for actors", applies_to=["actor"]),
-        SimRule(name="critic_only", description="Only for critics", applies_to=["critic"]),
+        SimRule(name="critic_only", description="Only for critics", applies_to=["constraint_evaluator"]),
     ]
     prompt = build_actor_prompt(agent, step=0, rules=rules)
     assert "maximize_complexity" in prompt
@@ -367,7 +367,7 @@ def test_load_complexity_scenario():
     assert scenario.fitness is not None
     assert scenario.fitness.metric == "life.complexity"
     assert scenario.fitness.direction == "maximize"
-    assert len(scenario.agents) == 4
+    assert len(scenario.agents) == 5
 
 
 def test_evaluate_fitness():
@@ -642,7 +642,7 @@ def test_review_interval_skip():
         review_interval=3,
         agents=[
             AgentConfig(role=AgentRole.ACTOR, name="actor_a", perspective="test"),
-            AgentConfig(role=AgentRole.CRITIC, name="critic_a", perspective="test"),
+            AgentConfig(role=AgentRole.CONSTRAINT_EVALUATOR, name="critic_a", perspective="test"),
         ],
     )
 

@@ -2,6 +2,7 @@ name: "nuclear-war"
 mode: counterfactual
 n_trajectories: 20
 step_budget: 500
+review_interval: 5
 description: >
   Simulate geopolitical dynamics from 1945 to the present and beyond.
   Each step represents roughly 1 month. We test how frequently nuclear
@@ -106,7 +107,7 @@ agents:
       Arms control treaties (SALT, START, INF) can reduce risk but
       require political will and verification.
 
-  - role: critic
+  - role: constraint_evaluator
     name: strategic_analyst
     perspective: >
       You evaluate whether proposed strategic developments are
@@ -117,7 +118,7 @@ agents:
       reflects a combination of deterrence, luck, and individual
       decisions that could have gone differently.
 
-  - role: judge
+  - role: resolver
     name: geopolitical_arbiter
     perspective: >
       Synthesize proposals into the most plausible monthly outcome.

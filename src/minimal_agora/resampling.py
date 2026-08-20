@@ -78,7 +78,7 @@ async def score_particles(
     n = len(workspaces)
 
     critic_agent = AgentConfig(
-        role=AgentRole.CRITIC,
+        role=AgentRole.RESAMPLING_CRITIC,
         name="resampling_critic",
         perspective="You evaluate trajectory quality for resampling.",
     )
@@ -120,7 +120,7 @@ async def resample_particles(
     n = len(workspaces)
 
     critic_agent = AgentConfig(
-        role=AgentRole.CRITIC,
+        role=AgentRole.RESAMPLING_CRITIC,
         name="resampling_critic",
         perspective="You evaluate trajectory quality for resampling.",
     )

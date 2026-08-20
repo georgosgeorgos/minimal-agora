@@ -66,7 +66,7 @@ class FileWritingMockProvider:
             )
             output = proposal.model_dump_json(indent=2)
 
-        elif "a critic agent" in prompt:
+        elif "a constraint evaluator agent" in prompt:
             critique = Critique(
                 agent=agent_name,
                 target_proposals=[agent_name],
@@ -76,7 +76,7 @@ class FileWritingMockProvider:
             )
             output = critique.model_dump_json(indent=2)
 
-        elif "the judge agent" in prompt:
+        elif "the resolver agent" in prompt:
             resolution = Resolution(
                 state_delta={"time": {"step": step_num + 1}},
                 narrative=f"Step {step_num}: Mock changes applied.",
@@ -110,8 +110,8 @@ def _counterfactual_scenario() -> Scenario:
         initial_state={"time": {"step": 0}, "value": 1},
         agents=[
             AgentConfig(role=AgentRole.ACTOR, name="actor_1", perspective="Test actor"),
-            AgentConfig(role=AgentRole.CRITIC, name="critic_1", perspective="Test critic"),
-            AgentConfig(role=AgentRole.JUDGE, name="judge_1", perspective="Test judge"),
+            AgentConfig(role=AgentRole.CONSTRAINT_EVALUATOR, name="critic_1", perspective="Test critic"),
+            AgentConfig(role=AgentRole.RESOLVER, name="judge_1", perspective="Test judge"),
         ],
         termination={"max_steps": 2},
         outcome=OutcomeConfig(
@@ -172,20 +172,20 @@ def _population_scenario() -> Scenario:
             ),
             EntityConfig(
                 name="critic_ent",
-                type=TrajectoryType.CRITIC,
+                type=TrajectoryType.CONSTRAINT_EVALUATOR,
                 agents=[
                     AgentConfig(
-                        role=AgentRole.CRITIC, name="balance_critic",
+                        role=AgentRole.CONSTRAINT_EVALUATOR, name="balance_critic",
                         perspective="Check ecological balance",
                     ),
                 ],
             ),
             EntityConfig(
                 name="eval_ent",
-                type=TrajectoryType.EVALUATOR,
+                type=TrajectoryType.RESOLVER,
                 agents=[
                     AgentConfig(
-                        role=AgentRole.JUDGE, name="world_judge",
+                        role=AgentRole.RESOLVER, name="world_judge",
                         perspective="Resolve all proposed changes",
                     ),
                 ],
@@ -219,7 +219,7 @@ def test_counterfactual_trajectory(
     assert (workspace / "history" / "step_000_full.json").exists()
     assert (workspace / "history" / "step_001_full.json").exists()
 
-    # 2 steps × (1 actor + 1 critic + 1 judge)
+    # 2 steps × (1 actor + 1 constraint_evaluator + 1 resolver)
     assert mock_provider.call_count == 6
 
 
@@ -242,7 +242,7 @@ def test_population_trajectory(
         assert step.resolution is not None
 
     assert (workspace / "trajectory.json").exists()
-    # 2 steps × (1 force + 2 pop + 1 critic + 1 judge)
+    # 2 steps × (1 force + 2 pop + 1 constraint_evaluator + 1 resolver)
     assert mock_provider.call_count == 10
 
 
@@ -279,9 +279,9 @@ def test_token_tracking_counterfactual(
         assert step.token_usage is not None
         assert step.token_usage.total_input_tokens > 0
         assert step.token_usage.total_output_tokens > 0
-        assert len(step.token_usage.agent_calls) == 3  # actor + critic + judge
+        assert len(step.token_usage.agent_calls) == 3  # actor + constraint_evaluator + resolver
         roles = {c.role for c in step.token_usage.agent_calls}
-        assert roles == {"actor", "critic", "judge"}
+        assert roles == {"actor", "constraint_evaluator", "resolver"}
 
     assert trajectory.total_tokens is not None
     assert trajectory.total_tokens["total_input_tokens"] > 0
@@ -290,8 +290,8 @@ def test_token_tracking_counterfactual(
     assert trajectory.total_tokens["estimated_cost_usd"] > 0
     assert "per_role" in trajectory.total_tokens
     assert "actor" in trajectory.total_tokens["per_role"]
-    assert "critic" in trajectory.total_tokens["per_role"]
-    assert "judge" in trajectory.total_tokens["per_role"]
+    assert "constraint_evaluator" in trajectory.total_tokens["per_role"]
+    assert "resolver" in trajectory.total_tokens["per_role"]
 
 
 def test_token_tracking_population(
@@ -306,7 +306,7 @@ def test_token_tracking_population(
     for step in trajectory.steps:
         assert step.token_usage is not None
         assert step.token_usage.total_input_tokens > 0
-        # 1 force + 2 pop actors + 1 critic + 1 judge = 5 calls
+        # 1 force + 2 pop actors + 1 constraint_evaluator + 1 resolver = 5 calls
         assert len(step.token_usage.agent_calls) == 5
 
     assert trajectory.total_tokens is not None

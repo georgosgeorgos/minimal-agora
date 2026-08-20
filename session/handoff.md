@@ -16,10 +16,10 @@
 - Code or behavior added:
   - Full minimal-agora engine (8 Python modules in src/minimal-agora/)
   - Three simulation modes: counterfactual, population, open_ended
-  - Entity type system: population, force, critic, evaluator
+  - Entity type system: population, force, constraint_evaluator, resolver
   - Domain rules with applies_to filtering
   - Wildcard catastrophic events (6 types in intelligence scenario, 4 in mediterranean)
-  - Phased entity execution in population mode (forces → populations → critics → evaluator)
+  - Phased entity execution in population mode (forces → populations → constraint_evaluators → resolver)
   - CLI with -n, -m, --steps overrides
 - Infrastructure or harness changes:
   - All harness files updated for minimal-agora (AGENTS.md, init.sh, features.json, progress.md, quality.md, checklist.md, handoff.md, rubric.md)
@@ -41,7 +41,7 @@
 ## Next Best Step
 
 - Highest-priority unfinished feature: fix-001 (fix _fallback_resolution deep merge)
-- Why it is next: It's a bug in existing code, 5 minutes to fix, affects correctness of simulations without a judge
+- Why it is next: It's a bug in existing code, 5 minutes to fix, affects correctness of simulations without a resolver
 - What counts as passing: Test showing two proposals with overlapping nested keys both survive in fallback resolution
 - What must not change during that step: Existing 14 tests must keep passing
 

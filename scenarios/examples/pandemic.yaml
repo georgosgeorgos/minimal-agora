@@ -2,6 +2,7 @@ name: "pandemic-spread"
 mode: counterfactual
 n_trajectories: 10
 step_budget: 200
+review_interval: 3
 description: >
   Simulate a novel pandemic spreading across three connected regions.
   Each step represents one week. Tracks disease spread, public health
@@ -76,7 +77,7 @@ agents:
       measures. Economic hardship erodes compliance. Trust in institutions
       matters. Information quality shapes behavior.
 
-  - role: critic
+  - role: constraint_evaluator
     name: epidemiologist_critic
     perspective: >
       You evaluate whether disease spread rates, policy timelines, and
@@ -85,7 +86,7 @@ agents:
       be implemented in the stated timeframe. Ground truth: real pandemic
       dynamics from historical examples (1918 flu, COVID-19, Ebola).
 
-  - role: judge
+  - role: resolver
     name: pandemic_judge
     perspective: >
       Synthesize all proposals into the most realistic month-by-month

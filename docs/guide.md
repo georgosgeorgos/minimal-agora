@@ -14,10 +14,10 @@ into statistical answers.
 ### Core Design Philosophy
 
 **Structured disagreement.** Each simulation step forces multiple agents — with
-different perspectives and domain expertise — to propose, critique, and resolve
-what happens next. A judge synthesizes the result. This adversarial loop produces
-more plausible trajectories than any single prompt could, because bad proposals
-get filtered by critics before they affect state.
+different perspectives and domain expertise — to propose and resolve what happens
+next. A resolver synthesizes the result. This conflict-gated loop produces more
+plausible trajectories than any single prompt could, because conflicting proposals
+get filtered by constraint_evaluators before they affect state.
 
 **Stateless agents.** Agents are `claude -p` subprocesses with no memory, no
 fine-tuning, no agent frameworks. They share context exclusively through a
@@ -43,19 +43,20 @@ informative branches of the simulation while preserving the total trajectory cou
 
 ### The Core Loop
 
-Every simulation step, regardless of mode, follows the same six-phase
-adversarial loop:
+Every simulation step, regardless of mode, follows a conflict-gated loop:
 
 ```
-WILDCARD → PROPOSE → CRITIQUE → RESOLVE → UPDATE → CHECK
+WILDCARD → PROPOSE → CONFLICT-GATE → UPDATE → CHECK
 ```
 
 | Phase | What happens |
 |-------|-------------|
 | **WILDCARD** | Roll for stochastic external shocks (asteroid, plague, war). If triggered, the event is written to the board and its `state_impact` is applied. |
 | **PROPOSE** | Actor agents read the board (state, narrative, scenario description, active wildcard) and write proposals — JSON files containing `proposed_changes`, `reasoning`, and `confidence`. |
-| **CRITIQUE** | Critic agents read the board and all proposals, then evaluate each for plausibility, consistency, and realism. They write critiques with `plausibility` scores and lists of `issues`. |
-| **RESOLVE** | A judge agent reads proposals and critiques, synthesizes them into a single `Resolution` containing a `state_delta` (changes to apply), a `narrative` (historical account), and `reasoning`. |
+| **CONFLICT-GATE** | Proposals are checked for conflicts. The resolution path depends on the result: |
+| | **No conflicts + not review step** — auto-merge all proposals (0 extra LLM calls). |
+| | **Conflicts detected** — a resolver agent reads proposals and synthesizes a `Resolution` containing a `state_delta`, `narrative`, and `reasoning` (1 LLM call). |
+| | **Review step** — a constraint_evaluator agent evaluates proposals for plausibility, then a resolver synthesizes the final resolution (2 LLM calls). |
 | **UPDATE** | The resolution's `state_delta` is deep-merged into the current state. The narrative is appended to the narrative log. A state snapshot is saved to the history directory. |
 | **CHECK** | Termination conditions are evaluated. If any condition matches (a field equals/exceeds a threshold), the trajectory ends. For open-ended mode, a fitness plateau check also runs. |
 
@@ -70,15 +71,20 @@ flowchart TD
     PROB -->|Fires| APPLY[Apply state_impact\nWrite wildcard file]
     PROB -->|Skips| PROPOSE
     APPLY --> PROPOSE[Propose\nActors write proposals]
-    PROPOSE --> CRITIQUE[Critique\nCritics evaluate proposals]
-    CRITIQUE --> RESOLVE[Resolve\nJudge synthesizes resolution]
-    RESOLVE --> UPDATE[Update\nDeep-merge state_delta\nAppend narrative]
+    PROPOSE --> GATE{Conflict\ngate}
+    GATE -->|No conflicts\nnot review step| AUTO[Auto-merge\n0 LLM calls]
+    GATE -->|Conflicts\ndetected| RESOLVE[Resolve\nResolver synthesizes]
+    GATE -->|Review\nstep| CONSTRAIN[Constraint evaluator\nevaluates proposals]
+    CONSTRAIN --> RESOLVE2[Resolve\nResolver synthesizes]
+    AUTO --> UPDATE[Update\nDeep-merge state_delta\nAppend narrative]
+    RESOLVE --> UPDATE
+    RESOLVE2 --> UPDATE
     UPDATE --> CHECK{Termination\ncondition met?}
     CHECK -->|Yes| END([Trajectory Complete])
     CHECK -->|No| START
 ```
 
-If no judge agent is configured, or if the judge fails to produce output, a
+If no resolver agent is configured, or if the resolver fails to produce output, a
 **fallback resolution** merges all proposals' `proposed_changes` and concatenates
 their reasoning.
 
@@ -141,19 +147,23 @@ sequenceDiagram
     participant L as Loop
     participant A as Actor Agent
     participant B as Board (filesystem)
-    participant C as Critic Agent
-    participant J as Judge Agent
+    participant CE as Constraint Evaluator
+    participant R as Resolver Agent
 
     L->>B: Write state.json, narrative.md, scenario.md
     L->>A: Invoke with prompt
     A->>B: Read state.json, narrative.md
     A->>B: Write proposals/step_N_name.json
-    L->>C: Invoke with prompt
-    C->>B: Read state.json + proposals/*
-    C->>B: Write critiques/step_N_name.json
-    L->>J: Invoke with prompt
-    J->>B: Read proposals/* + critiques/*
-    J->>B: Write resolutions/step_N_resolution.json
+    L->>L: Check for conflicts
+    Note over L: No conflicts + not review: auto-merge
+    Note over L: Conflicts: invoke resolver only
+    Note over L: Review step: invoke both
+    L->>CE: Invoke with prompt (review steps only)
+    CE->>B: Read state.json + proposals/*
+    CE->>B: Write critiques/step_N_name.json
+    L->>R: Invoke with prompt
+    R->>B: Read proposals/* + critiques/*
+    R->>B: Write resolutions/step_N_resolution.json
     L->>B: Read resolution, apply state_delta
     L->>B: Update state.json, append narrative.md
 ```
@@ -202,8 +212,8 @@ flowchart TD
         direction TB
         P1[Shared world state] --> P2[Forces act on world]
         P2 --> P3[Populations respond]
-        P3 --> P4[Critics check\nplausibility]
-        P4 --> P5[Evaluator resolves]
+        P3 --> P4[Constraint evaluators\ncheck plausibility]
+        P4 --> P5[Resolver resolves]
         P5 --> P6[N runs then\naggregate]
     end
 
@@ -261,18 +271,18 @@ mode: population
 
 Multiple **interacting entities** (civilizations, species, factions) share a
 single world state. Each entity has its own state subtree and agents. Forces
-(nature, disease) modify the shared world. Critics check plausibility.
-Evaluators score and resolve.
+(nature, disease) modify the shared world. Constraint evaluators check plausibility.
+Resolvers score and resolve.
 
 In population mode, the propose phase runs in a fixed order:
 
 ```
-forces → populations → critics → evaluator
+forces → populations → constraint_evaluators → resolver
 ```
 
 This ordering matters: forces act on the world first (earthquakes, plagues),
-then populations respond, then critics check plausibility, and finally the
-evaluator-judge resolves everything.
+then populations respond, then constraint evaluators check plausibility, and finally the
+resolver resolves everything.
 
 Run N times to get statistics across population scenarios.
 
@@ -304,8 +314,8 @@ Entities in population mode have one of four types:
 |------|------|-------------------|------------|------|
 | `population` | Civilization, species, faction | Yes (`state_prefix`) | Own state + interactions | Shared world + own state + neighbors |
 | `force` | Nature, disease, economics | No | Shared world state | Shared world |
-| `critic` | Plausibility checker | No | Nothing (read-only) | Everything |
-| `evaluator` | Judge, historian, scorer | No | Scores/rewards | Everything post-resolution |
+| `constraint_evaluator` | Plausibility checker | No | Nothing (read-only) | Everything |
+| `resolver` | Resolver, historian, scorer | No | Scores/rewards | Everything post-resolution |
 
 **Population entities** are the primary actors. Each has a `state_prefix`
 (e.g., `populations.rome`) that determines where its state lives in the global
@@ -318,10 +328,10 @@ neighbor's current state.
 any specific population — natural disasters, demographic shifts, economic
 cycles. Their agents propose changes to the shared world state.
 
-**Critic entities** evaluate all proposals for plausibility without modifying
+**Constraint evaluator entities** evaluate all proposals for plausibility without modifying
 anything.
 
-**Evaluator entities** contain a judge agent that synthesizes all proposals
+**Resolver entities** contain a resolver agent that synthesizes all proposals
 and critiques into the final resolution.
 
 #### Interaction Modes
@@ -392,7 +402,7 @@ description: ""                        # Human-readable description
 
 # Agents (flat mode — counterfactual/open_ended)
 agents:
-  - role: actor                        # actor | critic | judge
+  - role: actor                        # actor | constraint_evaluator | resolver
     name: agent_name                   # Unique agent name
     perspective: "Your role is..."     # Agent's system prompt
     model: null                        # Optional model override
@@ -400,7 +410,7 @@ agents:
 # Entities (population mode)
 entities:
   - name: rome
-    type: population                   # population | force | critic | evaluator
+    type: population                   # population | force | constraint_evaluator | resolver
     state_prefix: "populations.rome"   # Dot-path into state for this entity's subtree
     initial_state:                     # Merged into global state at state_prefix
       military_strength: 60
@@ -506,7 +516,7 @@ rules:
       Once a level of complexity is achieved, it is rarely lost entirely
       unless a catastrophic event occurs.
 
-# Flat agent list: actors propose, critics check, judge resolves
+# Flat agent list: actors propose, constraint_evaluators check, resolver resolves
 agents:
   - role: actor
     name: natural_selection
@@ -516,11 +526,11 @@ agents:
     name: geological_forces
     perspective: >
       You represent geological, atmospheric, and cosmic forces...
-  - role: critic
+  - role: constraint_evaluator
     name: plausibility_critic
     perspective: >
       You are a scientific plausibility checker...
-  - role: judge
+  - role: resolver
     name: arbiter
     perspective: >
       You synthesize evolutionary and geological proposals...
@@ -607,20 +617,20 @@ entities:
         name: environmental_forces
         perspective: "You represent natural forces..."
 
-  # Critic entities evaluate plausibility
+  # Constraint evaluator entities evaluate plausibility
   - name: historian
-    type: critic
+    type: constraint_evaluator
     agents:
-      - role: critic
+      - role: constraint_evaluator
         name: historical_critic
         perspective: "You evaluate historical plausibility..."
 
-  # Evaluator entities contain the judge
+  # Resolver entities contain the resolver
   - name: thucydides
-    type: evaluator
+    type: resolver
     agents:
-      - role: judge
-        name: thucydides_judge
+      - role: resolver
+        name: thucydides_resolver
         perspective: "You synthesize proposals into the most plausible outcome..."
 
 rules:
@@ -628,7 +638,7 @@ rules:
     description: "Populations compete for finite resources..."
   - name: military_logistics
     description: "Campaigns require supply lines and manpower..."
-    applies_to: ["population", "critic"]  # Only shown to these roles
+    applies_to: ["population", "constraint_evaluator"]  # Only shown to these roles
 ```
 
 ### Rules
@@ -639,7 +649,7 @@ empty, the rule is shown to all agents. If populated, the rule is only included
 in prompts for agents whose name or role appears in the list.
 
 Rules appear in agent prompts under a "Governing Rules" header with a preamble:
-"These rules define the dynamics of this simulation. All proposals, critiques,
+"These rules define the dynamics of this simulation. All proposals, evaluations,
 and resolutions MUST respect these rules."
 
 ### Narrative Compression
@@ -1123,8 +1133,8 @@ The `build_prompt` function dispatches to role-specific prompt builders:
 | Role | Builder | Output file |
 |------|---------|-------------|
 | `actor` | `build_actor_prompt` | `proposals/step_NNN_<name>.json` |
-| `critic` | `build_critic_prompt` | `critiques/step_NNN_<name>.json` |
-| `judge` | `build_judge_prompt` | `resolutions/step_NNN_resolution.json` |
+| `constraint_evaluator` | `build_constraint_evaluator_prompt` | `critiques/step_NNN_<name>.json` |
+| `resolver` | `build_resolver_prompt` | `resolutions/step_NNN_resolution.json` |
 | `resampling_critic` | `build_resampling_critic_prompt` | stdout (JSON) |
 
 Each prompt instructs the agent to:

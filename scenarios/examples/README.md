@@ -28,7 +28,7 @@ step count.
 
 Simulates evolution on a terrestrial planet. Two actor agents (natural
 selection, geological forces) propose changes each step. A thermodynamic
-critic checks plausibility. A judge synthesizes outcomes.
+constraint evaluator checks plausibility. A resolver synthesizes outcomes.
 
 Six wildcards (asteroid, gamma ray burst, supervolcano, snowball earth, alien
 contact, deus ex machina) inject rare catastrophic disruptions (~3 per
@@ -47,8 +47,8 @@ uv run minimal-agora run scenarios/examples/intelligence.yaml -n 10 --steps 10  
 
 Three interacting populations (Rome, Greece, Persia) with distinct agents,
 strengths, and strategies. Two force entities (nature, disease/migration)
-shape the environment. A historian critic checks plausibility. Thucydides
-serves as judge.
+shape the environment. A historian constraint evaluator checks plausibility. Thucydides
+serves as resolver.
 
 Populations see each other's state via the interaction system
 (`can_interact_with: [...]`, `interaction.mode: always`). Five rules cover
@@ -67,7 +67,7 @@ uv run minimal-agora run scenarios/examples/mediterranean.yaml -n 5
 
 Novel pathogen spreading across three regions (East Asia, Europe, Americas).
 Three actor agents model disease dynamics, policy response, and social
-behavior. An epidemiologist critic grounds proposals in real pandemic data.
+behavior. An epidemiologist constraint evaluator grounds proposals in real pandemic data.
 
 Tracks infection rates, healthcare capacity, economic impact, social
 cohesion, and vaccine progress. Wildcards include super-spreader events,
@@ -183,7 +183,7 @@ All agents are `claude -p` subprocesses. Differentiation is prompt-only:
 
 | Layer | What it controls |
 |-------|-----------------|
-| **Role** (actor/critic/judge) | Prompt template, output format, execution phase |
+| **Role** (actor/constraint_evaluator/resolver) | Prompt template, output format, execution phase |
 | **Perspective** | Domain-specific viewpoint and priorities |
 | **Rules** | Filtered by `applies_to` — each agent sees only relevant rules |
 | **Interaction** | Population agents see neighbor state when `can_interact_with` allows |
@@ -210,7 +210,7 @@ agents:           # flat mode (counterfactual/open_ended without entities)
 
 entities:         # population mode
   - name: entity_name
-    type: population | force | critic | evaluator
+    type: population | force | constraint_evaluator | resolver
     agents: [...]
     can_interact_with: ["other_entity"]
     interaction:

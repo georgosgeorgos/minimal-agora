@@ -2,6 +2,7 @@ name: "market-competition"
 mode: population
 n_trajectories: 5
 step_budget: 300
+review_interval: 3
 description: >
   Simulate market competition between three tech companies in a
   regulated environment. Each step represents one month.
@@ -134,9 +135,9 @@ entities:
           Regulation is slow but consequential.
 
   - name: analyst
-    type: critic
+    type: constraint_evaluator
     agents:
-      - role: critic
+      - role: constraint_evaluator
         name: market_analyst
         perspective: >
           You evaluate whether proposed market changes are realistic.
@@ -146,9 +147,9 @@ entities:
           Innovation requires sustained investment, not instant results.
 
   - name: board_of_directors
-    type: evaluator
+    type: resolver
     agents:
-      - role: judge
+      - role: resolver
         name: market_judge
         perspective: >
           You are an impartial market judge. Resolve competitive actions

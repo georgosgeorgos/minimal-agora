@@ -238,7 +238,7 @@ async def _run_step(
     state_before = deepcopy(board.read_state())
 
     if scenario.entities:
-        return await _run_entity_step(scenario, board, step_num, timeout, state_before, trajectory_id, agent_semaphore, state_schema)
+        return await _run_entity_step(scenario, board, step_num, timeout, state_before, trajectory_id, agent_semaphore, state_schema, max_steps)
     return await _run_flat_step(scenario, board, step_num, timeout, state_before, trajectory_id, agent_semaphore, max_steps, state_schema)
 
 
@@ -361,8 +361,8 @@ async def _run_flat_step(
     state_schema: dict | None = None,
 ) -> Step:
     actors = [a for a in scenario.agents if a.role == AgentRole.ACTOR]
-    critics = [a for a in scenario.agents if a.role == AgentRole.CRITIC]
-    judges = [a for a in scenario.agents if a.role == AgentRole.JUDGE]
+    constraint_evaluators = [a for a in scenario.agents if a.role == AgentRole.CONSTRAINT_EVALUATOR]
+    resolvers = [a for a in scenario.agents if a.role == AgentRole.RESOLVER]
 
     max_concurrent = scenario.max_concurrent_agents
     rules = scenario.rules
@@ -418,43 +418,45 @@ async def _run_flat_step(
         or (step_num % scenario.review_interval == 0)
         or (step_num == max_steps - 1)
     )
+    conflicts = detect_conflicts(proposals)
 
     critiques = []
     resolution = None
 
     if is_review_step:
-        if critics:
+        # PATH C: Full review — constraint evaluator (if defined) then resolver
+        if constraint_evaluators:
             proposals_dicts = [p.model_dump() for p in proposals]
-            critic_kwargs = {**embed_kwargs, "proposals": proposals_dicts}
+            ce_kwargs = {**embed_kwargs, "proposals": proposals_dicts}
 
-            logger.debug("flat_step.critique_start", step=step_num, n_critics=len(critics))
+            logger.debug("flat_step.evaluate_start", step=step_num, n_evaluators=len(constraint_evaluators))
             t1 = time.monotonic()
 
-            critic_results: dict[str, AgentInvocationResult | None] = {}
+            ce_results: dict[str, AgentInvocationResult | None] = {}
 
-            async def _run_critic(c):
-                prompt = build_prompt(c, step_num, rules, **critic_kwargs)
+            async def _run_constraint_evaluator(c):
+                prompt = build_prompt(c, step_num, rules, **ce_kwargs)
                 result = await _invoke_and_collect(
                     c, board.workspace, step_num, prompt, timeout, agent_semaphore, max_concurrent,
                 )
-                critic_results[c.name] = result
+                ce_results[c.name] = result
 
             try:
                 async with asyncio.TaskGroup() as tg:
-                    for c in critics:
-                        tg.create_task(_run_critic(c))
+                    for c in constraint_evaluators:
+                        tg.create_task(_run_constraint_evaluator(c))
             except ExceptionGroup as eg:
                 for exc in eg.exceptions:
                     logger.error(
-                        "flat_step.critique.unhandled_failure", step=step_num, error=str(exc),
+                        "flat_step.evaluate.unhandled_failure", step=step_num, error=str(exc),
                     )
             logger.debug(
-                "flat_step.critique_done", step=step_num,
+                "flat_step.evaluate_done", step=step_num,
                 duration_s=round(time.monotonic() - t1, 3),
             )
 
-            for c in critics:
-                result = critic_results.get(c.name)
+            for c in constraint_evaluators:
+                result = ce_results.get(c.name)
                 _collect_tokens_from_result(result, c.role.value, token_calls)
                 output = result.output if result else None
                 cr = None
@@ -466,23 +468,24 @@ async def _run_flat_step(
                     critiques.append(cr)
                     board.save_critique(cr, step_num)
 
-        if judges:
+        if resolvers:
             logger.debug("flat_step.resolve_start", step=step_num)
             t2 = time.monotonic()
-            judge = judges[0]
-            judge_kwargs = {
+            resolver = resolvers[0]
+            resolver_kwargs = {
                 **embed_kwargs,
                 "proposals": [p.model_dump() for p in proposals],
                 "critiques": [c.model_dump() for c in critiques],
+                "conflicts": conflicts,
             }
-            prompt = build_prompt(judge, step_num, rules, **judge_kwargs)
-            judge_result = await _invoke_with_retry_return(
-                judge, board.workspace, step_num, prompt, timeout,
+            prompt = build_prompt(resolver, step_num, rules, **resolver_kwargs)
+            resolver_result = await _invoke_with_retry_return(
+                resolver, board.workspace, step_num, prompt, timeout,
             )
-            _collect_tokens_from_result(judge_result, judge.role.value, token_calls)
-            judge_output = judge_result.output if judge_result else None
-            if judge_output:
-                resolution = parse_resolution_from_text(judge_output)
+            _collect_tokens_from_result(resolver_result, resolver.role.value, token_calls)
+            resolver_output = resolver_result.output if resolver_result else None
+            if resolver_output:
+                resolution = parse_resolution_from_text(resolver_output)
             if resolution is None:
                 resolution = parse_resolution(board.workspace, step_num)
             logger.debug(
@@ -501,7 +504,53 @@ async def _run_flat_step(
 
         board.save_resolution(resolution, step_num)
         state_after = board.apply_resolution(resolution, step_num)
+
+    elif conflicts:
+        # PATH B: Conflicts detected — resolver only (no constraint evaluator)
+        logger.info(
+            "step.conflict_resolution", step=step_num,
+            n_conflicts=len(conflicts),
+            fields=[c.field for c in conflicts],
+        )
+
+        if resolvers:
+            logger.debug("flat_step.resolve_start", step=step_num)
+            t2 = time.monotonic()
+            resolver = resolvers[0]
+            resolver_kwargs = {
+                **embed_kwargs,
+                "proposals": [p.model_dump() for p in proposals],
+                "conflicts": conflicts,
+            }
+            prompt = build_prompt(resolver, step_num, rules, **resolver_kwargs)
+            resolver_result = await _invoke_with_retry_return(
+                resolver, board.workspace, step_num, prompt, timeout,
+            )
+            _collect_tokens_from_result(resolver_result, resolver.role.value, token_calls)
+            resolver_output = resolver_result.output if resolver_result else None
+            if resolver_output:
+                resolution = parse_resolution_from_text(resolver_output)
+            if resolution is None:
+                resolution = parse_resolution(board.workspace, step_num)
+            logger.debug(
+                "flat_step.resolve_done", step=step_num,
+                duration_s=round(time.monotonic() - t2, 3),
+            )
+
+        if resolution is None:
+            resolution = _fallback_resolution(proposals)
+
+        if state_schema and resolution.state_delta:
+            warnings = validate_state_delta(resolution.state_delta, state_schema)
+            if warnings:
+                logger.warning("state_delta.validation", step=step_num, warnings=warnings)
+                resolution.validation_warnings = warnings
+
+        board.save_resolution(resolution, step_num)
+        state_after = board.apply_resolution(resolution, step_num)
+
     else:
+        # PATH A: No conflicts, not a review step — auto-merge
         next_review_step = ((step_num // scenario.review_interval) + 1) * scenario.review_interval
         logger.debug(
             "step.auto_merge",
@@ -547,6 +596,7 @@ async def _run_entity_step(
     trajectory_id: int = 0,
     agent_semaphore: asyncio.Semaphore | None = None,
     state_schema: dict | None = None,
+    max_steps: int = 1,
 ) -> Step:
     rules = scenario.rules
     max_concurrent = scenario.max_concurrent_agents
@@ -556,16 +606,16 @@ async def _run_entity_step(
 
     force_entities = [e for e in scenario.entities if e.type == TrajectoryType.FORCE]
     pop_entities = [e for e in scenario.entities if e.type == TrajectoryType.POPULATION]
-    critic_entities = [e for e in scenario.entities if e.type == TrajectoryType.CRITIC]
-    eval_entities = [e for e in scenario.entities if e.type == TrajectoryType.EVALUATOR]
+    ce_entities = [e for e in scenario.entities if e.type == TrajectoryType.CONSTRAINT_EVALUATOR]
+    resolver_entities = [e for e in scenario.entities if e.type == TrajectoryType.RESOLVER]
 
     logger.debug(
         "entity_step.order",
         step=step_num,
         n_forces=len(force_entities),
         n_populations=len(pop_entities),
-        n_critics=len(critic_entities),
-        n_evaluators=len(eval_entities),
+        n_constraint_evaluators=len(ce_entities),
+        n_resolvers=len(resolver_entities),
     )
 
     current_state = board.read_state()
@@ -669,91 +719,164 @@ async def _run_entity_step(
                 proposals.append(p)
                 board.save_proposal(p, step_num)
 
-    # Phase 3: Critics evaluate all proposals
-    critic_agents = [a for e in critic_entities for a in e.agents]
-    if critic_agents:
-        proposals_dicts = [p.model_dump() for p in proposals]
-        critic_kwargs = {**embed_kwargs, "proposals": proposals_dicts}
-
-        logger.debug("entity_step.critics_start", step=step_num, n_agents=len(critic_agents))
-        t2 = time.monotonic()
-        critic_results: dict[str, AgentInvocationResult | None] = {}
-
-        async def _run_critic(c):
-            prompt = build_prompt(c, step_num, rules, **critic_kwargs)
-            result = await _invoke_and_collect(
-                c, board.workspace, step_num, prompt, timeout, agent_semaphore, max_concurrent,
-            )
-            critic_results[c.name] = result
-
-        try:
-            async with asyncio.TaskGroup() as tg:
-                for c in critic_agents:
-                    tg.create_task(_run_critic(c))
-        except ExceptionGroup as eg:
-            for exc in eg.exceptions:
-                logger.error(
-                    "entity_step.critics.unhandled_failure", step=step_num, error=str(exc),
-                )
-        logger.debug(
-            "entity_step.critics_done", step=step_num,
-            duration_s=round(time.monotonic() - t2, 3),
-        )
-        for c in critic_agents:
-            result = critic_results.get(c.name)
-            _collect_tokens_from_result(result, c.role.value, token_calls)
-            output = result.output if result else None
-            cr = None
-            if output:
-                cr = parse_critique_from_text(output, c.name)
-            if cr is None:
-                cr = parse_critique(board.workspace, c.name, step_num)
-            if cr:
-                critiques.append(cr)
-                board.save_critique(cr, step_num)
-
-    # Phase 4: Detect conflicts and resolve
+    # Phase 3: Conflict-gated evaluation and resolution
     conflicts = detect_conflicts(proposals)
-    if conflicts:
-        logger.info("conflicts_detected", step=step_num, fields=[c.field for c in conflicts])
+    is_review_step = (
+        scenario.review_interval == 1
+        or (step_num % scenario.review_interval == 0)
+        or (step_num == max_steps - 1)
+    )
 
     resolution = None
-    eval_agents = [a for e in eval_entities for a in e.agents if a.role == AgentRole.JUDGE]
-    if eval_agents:
-        logger.debug("entity_step.resolve_start", step=step_num)
-        t3 = time.monotonic()
-        judge = eval_agents[0]
-        judge_kwargs = {
-            **embed_kwargs,
-            "proposals": [p.model_dump() for p in proposals],
-            "critiques": [c.model_dump() for c in critiques],
-        }
-        prompt = build_prompt(judge, step_num, rules, **judge_kwargs)
-        judge_result = await _invoke_with_retry_return(
-            judge, board.workspace, step_num, prompt, timeout,
-        )
-        _collect_tokens_from_result(judge_result, judge.role.value, token_calls)
-        judge_output = judge_result.output if judge_result else None
-        if judge_output:
-            resolution = parse_resolution_from_text(judge_output)
+
+    if is_review_step:
+        # PATH C: Full review — constraint evaluators (if defined) then resolver
+        ce_agents = [a for e in ce_entities for a in e.agents]
+        if ce_agents:
+            proposals_dicts = [p.model_dump() for p in proposals]
+            ce_kwargs = {**embed_kwargs, "proposals": proposals_dicts}
+
+            logger.debug("entity_step.evaluate_start", step=step_num, n_agents=len(ce_agents))
+            t2 = time.monotonic()
+            ce_results: dict[str, AgentInvocationResult | None] = {}
+
+            async def _run_constraint_evaluator(c):
+                prompt = build_prompt(c, step_num, rules, **ce_kwargs)
+                result = await _invoke_and_collect(
+                    c, board.workspace, step_num, prompt, timeout, agent_semaphore, max_concurrent,
+                )
+                ce_results[c.name] = result
+
+            try:
+                async with asyncio.TaskGroup() as tg:
+                    for c in ce_agents:
+                        tg.create_task(_run_constraint_evaluator(c))
+            except ExceptionGroup as eg:
+                for exc in eg.exceptions:
+                    logger.error(
+                        "entity_step.evaluate.unhandled_failure", step=step_num, error=str(exc),
+                    )
+            logger.debug(
+                "entity_step.evaluate_done", step=step_num,
+                duration_s=round(time.monotonic() - t2, 3),
+            )
+            for c in ce_agents:
+                result = ce_results.get(c.name)
+                _collect_tokens_from_result(result, c.role.value, token_calls)
+                output = result.output if result else None
+                cr = None
+                if output:
+                    cr = parse_critique_from_text(output, c.name)
+                if cr is None:
+                    cr = parse_critique(board.workspace, c.name, step_num)
+                if cr:
+                    critiques.append(cr)
+                    board.save_critique(cr, step_num)
+
+        resolver_agents = [a for e in resolver_entities for a in e.agents if a.role == AgentRole.RESOLVER]
+        if resolver_agents:
+            logger.debug("entity_step.resolve_start", step=step_num)
+            t3 = time.monotonic()
+            resolver = resolver_agents[0]
+            resolver_kwargs = {
+                **embed_kwargs,
+                "proposals": [p.model_dump() for p in proposals],
+                "critiques": [c.model_dump() for c in critiques],
+                "conflicts": conflicts,
+            }
+            prompt = build_prompt(resolver, step_num, rules, **resolver_kwargs)
+            resolver_result = await _invoke_with_retry_return(
+                resolver, board.workspace, step_num, prompt, timeout,
+            )
+            _collect_tokens_from_result(resolver_result, resolver.role.value, token_calls)
+            resolver_output = resolver_result.output if resolver_result else None
+            if resolver_output:
+                resolution = parse_resolution_from_text(resolver_output)
+            if resolution is None:
+                resolution = parse_resolution(board.workspace, step_num)
+            logger.debug(
+                "entity_step.resolve_done", step=step_num,
+                duration_s=round(time.monotonic() - t3, 3),
+            )
+
         if resolution is None:
-            resolution = parse_resolution(board.workspace, step_num)
-        logger.debug(
-            "entity_step.resolve_done", step=step_num,
-            duration_s=round(time.monotonic() - t3, 3),
+            resolution = _fallback_resolution(proposals)
+
+        if state_schema and resolution.state_delta:
+            warnings = validate_state_delta(resolution.state_delta, state_schema)
+            if warnings:
+                logger.warning("state_delta.validation", step=step_num, warnings=warnings)
+                resolution.validation_warnings = warnings
+
+        board.save_resolution(resolution, step_num)
+        state_after = board.apply_resolution(resolution, step_num)
+
+    elif conflicts:
+        # PATH B: Conflicts detected — resolver only
+        logger.info(
+            "step.conflict_resolution", step=step_num,
+            n_conflicts=len(conflicts),
+            fields=[c.field for c in conflicts],
         )
 
-    if resolution is None:
-        resolution = _fallback_resolution(proposals)
+        resolver_agents = [a for e in resolver_entities for a in e.agents if a.role == AgentRole.RESOLVER]
+        if resolver_agents:
+            logger.debug("entity_step.resolve_start", step=step_num)
+            t3 = time.monotonic()
+            resolver = resolver_agents[0]
+            resolver_kwargs = {
+                **embed_kwargs,
+                "proposals": [p.model_dump() for p in proposals],
+                "conflicts": conflicts,
+            }
+            prompt = build_prompt(resolver, step_num, rules, **resolver_kwargs)
+            resolver_result = await _invoke_with_retry_return(
+                resolver, board.workspace, step_num, prompt, timeout,
+            )
+            _collect_tokens_from_result(resolver_result, resolver.role.value, token_calls)
+            resolver_output = resolver_result.output if resolver_result else None
+            if resolver_output:
+                resolution = parse_resolution_from_text(resolver_output)
+            if resolution is None:
+                resolution = parse_resolution(board.workspace, step_num)
+            logger.debug(
+                "entity_step.resolve_done", step=step_num,
+                duration_s=round(time.monotonic() - t3, 3),
+            )
 
-    if state_schema and resolution.state_delta:
-        warnings = validate_state_delta(resolution.state_delta, state_schema)
-        if warnings:
-            logger.warning("state_delta.validation", step=step_num, warnings=warnings)
-            resolution.validation_warnings = warnings
+        if resolution is None:
+            resolution = _fallback_resolution(proposals)
 
-    board.save_resolution(resolution, step_num)
-    state_after = board.apply_resolution(resolution, step_num)
+        if state_schema and resolution.state_delta:
+            warnings = validate_state_delta(resolution.state_delta, state_schema)
+            if warnings:
+                logger.warning("state_delta.validation", step=step_num, warnings=warnings)
+                resolution.validation_warnings = warnings
+
+        board.save_resolution(resolution, step_num)
+        state_after = board.apply_resolution(resolution, step_num)
+
+    else:
+        # PATH A: No conflicts, not a review step — auto-merge
+        next_review_step = ((step_num // scenario.review_interval) + 1) * scenario.review_interval
+        logger.debug(
+            "step.auto_merge", step=step_num,
+            n_proposals=len(proposals), next_review_step=next_review_step,
+        )
+
+        merged_state = deepcopy(state_before)
+        for p in proposals:
+            expanded = _expand_dotted_keys(p.proposed_changes)
+            _deep_merge(merged_state, expanded)
+        board.write_state(merged_state)
+        board.snapshot_state(step_num + 1)
+
+        narrative = (
+            f"Step {step_num}: Auto-merged {len(proposals)} entity proposals "
+            f"(review scheduled at step {next_review_step})."
+        )
+        board._append_narrative(narrative, step_num)
+        state_after = merged_state
 
     step = Step(
         step_number=step_num,
@@ -777,7 +900,7 @@ def _fallback_resolution(proposals: list) -> Resolution:
 
     return Resolution(
         state_delta=merged,
-        narrative="Changes applied from all proposals without judge resolution.",
+        narrative="Changes applied from all proposals without resolver arbitration.",
         reasoning="\n".join(reasoning_parts),
     )
 

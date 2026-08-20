@@ -2,6 +2,7 @@ name: "mediterranean-powers"
 mode: population
 n_trajectories: 5
 step_budget: 500
+review_interval: 5
 description: >
   Simulate the rise and interaction of Mediterranean civilizations.
   Each step represents roughly 2 years. Populations compete for
@@ -135,9 +136,9 @@ entities:
           booms from agricultural advances are all in your domain.
 
   - name: historian
-    type: critic
+    type: constraint_evaluator
     agents:
-      - role: critic
+      - role: constraint_evaluator
         name: historical_critic
         perspective: >
           You are a historian evaluating plausibility. Check whether proposed
@@ -148,9 +149,9 @@ entities:
           capacity. Cultural diffusion takes generations, not years.
 
   - name: thucydides
-    type: evaluator
+    type: resolver
     agents:
-      - role: judge
+      - role: resolver
         name: thucydides_judge
         perspective: >
           You are Thucydides, historian and judge. You synthesize all

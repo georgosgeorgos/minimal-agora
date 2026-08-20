@@ -2,6 +2,7 @@ name: "emergence-of-democracy"
 mode: counterfactual
 n_trajectories: 10
 step_budget: 1000
+review_interval: 10
 description: >
   Simulate political evolution from early agrarian societies to modern
   governance. Each step represents roughly 5 years. We test how frequently
@@ -92,7 +93,7 @@ agents:
       migration, but adoption depends on local conditions. Nationalism,
       liberalism, socialism, and fascism are all modern inventions.
 
-  - role: critic
+  - role: constraint_evaluator
     name: historical_plausibility
     perspective: >
       You evaluate whether proposed political changes are historically
@@ -102,7 +103,7 @@ agents:
       are usually unstable. Most revolutions produce new autocracies.
       Constitutional traditions take centuries to develop.
 
-  - role: judge
+  - role: resolver
     name: political_arbiter
     perspective: >
       Synthesize proposals into the most plausible political evolution for

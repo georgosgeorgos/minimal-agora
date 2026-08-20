@@ -249,14 +249,12 @@ def build_actor_prompt(
             f"{wildcard_block}"
             f"\n## Instructions\n"
             f"Based on the current state, any active wildcard, and your perspective, propose\n"
-            f"what happens next in this time step. Think carefully about what changes are\n"
-            f"most likely given your domain of influence.\n\n"
+            f"what happens next in this time step.\n\n"
             f"Respond with ONLY a JSON object (no markdown fences, no explanation):\n"
             f'{{"agent": "{agent.name}", "role": "actor", '
             f'"proposed_changes": {{"path.to.field": "new_value"}}, '
-            f'"reasoning": "Why these changes happen", "confidence": 0.7}}\n\n'
-            f"The `proposed_changes` should be a flat or nested dict matching the structure\n"
-            f"of the world state. Only include fields you want to change.\n"
+            f'"reasoning": "Brief explanation (under 100 words)", "confidence": 0.7}}\n\n'
+            f"Only include fields you want to change. Keep reasoning concise.\n"
         )
     else:
         state_section = ""
@@ -302,7 +300,7 @@ def build_actor_prompt(
     )
 
 
-def build_critic_prompt(
+def build_constraint_evaluator_prompt(
     agent: AgentConfig,
     step: int,
     rules: list[SimRule] | None = None,
@@ -312,7 +310,7 @@ def build_critic_prompt(
     wildcard: dict | None = None,
 ) -> str:
     logger.debug(
-        "prompt.build_critic",
+        "prompt.build_constraint_evaluator",
         agent=agent.name,
         step=step,
         embedded_state=state is not None,
@@ -323,7 +321,7 @@ def build_critic_prompt(
     if state is not None:
         proposals_json = json.dumps(proposals or [], indent=2)
         return (
-            f"You are **{agent.name}**, a critic agent in a world simulation.\n\n"
+            f"You are **{agent.name}**, a constraint evaluator agent in a world simulation.\n\n"
             f"## Your Perspective\n{agent.perspective}\n\n"
             f"## Current World State\n```json\n{json.dumps(state, indent=2)}\n```\n\n"
             f"## Narrative History\n{narrative or '(No narrative yet.)'}\n\n"
@@ -331,16 +329,21 @@ def build_critic_prompt(
             f"{rules_block}"
             f"{wildcard_block}"
             f"\n## Instructions\n"
-            f"Evaluate each proposal for plausibility, consistency, and realism.\n"
-            f"Flag anything impossible, contradictory, or highly unlikely.\n\n"
-            f"Respond with ONLY a JSON object (no markdown fences, no explanation):\n"
+            f"Evaluate proposals across these categories. Score each 0.0-1.0:\n"
+            f"- **physical**: Are changes physically/scientifically possible?\n"
+            f"- **consistency**: Do proposals contradict each other or the current state?\n"
+            f"- **pacing**: Are changes plausible within one step_scale?\n"
+            f"- **rules**: Do proposals respect the governing rules?\n\n"
+            f"Be concise. List only critical issues.\n\n"
+            f"Respond with ONLY a JSON object (no markdown fences):\n"
             f'{{"agent": "{agent.name}", "target_proposals": ["agent1", "agent2"], '
-            f'"assessment": "Overall assessment", "plausibility": 0.8, '
-            f'"issues": ["Issue 1", "Issue 2"]}}\n'
+            f'"scores": {{"physical": 0.9, "consistency": 0.7, "pacing": 0.8, "rules": 1.0}}, '
+            f'"plausibility": 0.8, '
+            f'"issues": ["One-line issue"]}}\n'
         )
 
     return (
-        f"You are **{agent.name}**, a critic agent in a world simulation.\n\n"
+        f"You are **{agent.name}**, a constraint evaluator agent in a world simulation.\n\n"
         f"## Your Perspective\n{agent.perspective}\n\n"
         f"{rules_block}\n"
         f"## Instructions\n"
@@ -351,7 +354,7 @@ def build_critic_prompt(
         f"If present, evaluate whether proposals adequately account for its impact.\n\n"
         f"Evaluate each proposal for plausibility, consistency, and realism.\n"
         f"Flag anything impossible, contradictory, or highly unlikely.\n\n"
-        f"4. Write your critique as a JSON file to `critiques/step_{step:03d}_{agent.name}.json`\n\n"
+        f"4. Write your evaluation as a JSON file to `critiques/step_{step:03d}_{agent.name}.json`\n\n"
         f"The JSON must have this structure:\n"
         f"```json\n"
         f"{{\n"
@@ -365,7 +368,7 @@ def build_critic_prompt(
     )
 
 
-def build_judge_prompt(
+def build_resolver_prompt(
     agent: AgentConfig,
     step: int,
     rules: list[SimRule] | None = None,
@@ -374,9 +377,10 @@ def build_judge_prompt(
     proposals: list[dict] | None = None,
     critiques: list[dict] | None = None,
     wildcard: dict | None = None,
+    conflicts: list | None = None,
 ) -> str:
     logger.debug(
-        "prompt.build_judge",
+        "prompt.build_resolver",
         agent=agent.name,
         step=step,
         embedded_state=state is not None,
@@ -386,44 +390,67 @@ def build_judge_prompt(
 
     if state is not None:
         proposals_json = json.dumps(proposals or [], indent=2)
-        critiques_json = json.dumps(critiques or [], indent=2)
+
+        if critiques:
+            evaluation_block = (
+                f"## Constraint Evaluations for Step {step}\n```json\n"
+                f"{json.dumps(critiques, indent=2)}\n```\n\n"
+            )
+            instruction_preamble = (
+                "Synthesize the proposals into a single coherent outcome for this\n"
+                "time step. Consider the constraint evaluations when resolving\n"
+                "conflicts between proposals. Weight proposals by their plausibility\n"
+                "as assessed by constraint evaluators.\n\n"
+            )
+        elif conflicts:
+            evaluation_block = f"\n{_format_conflicts(conflicts)}\n"
+            instruction_preamble = (
+                "No constraint evaluation was performed this step. Evaluate\n"
+                "plausibility yourself. The conflicts listed above were detected\n"
+                "between proposals and MUST be explicitly resolved.\n\n"
+            )
+        else:
+            evaluation_block = ""
+            instruction_preamble = (
+                "Synthesize the proposals into a single coherent outcome for this\n"
+                "time step.\n\n"
+            )
+
         return (
-            f"You are **{agent.name}**, the judge agent in a world simulation.\n\n"
+            f"You are **{agent.name}**, the resolver agent in a world simulation.\n\n"
             f"## Your Perspective\n{agent.perspective}\n\n"
             f"## Current World State\n```json\n{json.dumps(state, indent=2)}\n```\n\n"
             f"## Narrative History\n{narrative or '(No narrative yet.)'}\n\n"
             f"## Proposals for Step {step}\n```json\n{proposals_json}\n```\n\n"
-            f"## Critiques for Step {step}\n```json\n{critiques_json}\n```\n\n"
+            f"{evaluation_block}"
             f"{rules_block}"
             f"{wildcard_block}"
             f"\n## Instructions\n"
-            f"Synthesize the proposals and critiques into a single coherent outcome for this\n"
-            f"time step. Resolve conflicts between proposals. Weight proposals by their\n"
-            f"plausibility as assessed by critics.\n\n"
+            f"{instruction_preamble}"
             f"The `state_delta` will be deep-merged into the current state. Only include\n"
-            f"fields that change. The narrative should be written as a historical account,\n"
-            f"not a technical description.\n\n"
+            f"fields that change. Keep the narrative under 200 words — write as a\n"
+            f"historical account, not a technical description.\n\n"
             f"Respond with ONLY a JSON object (no markdown fences, no explanation):\n"
             f'{{"state_delta": {{"path.to.field": "new_value"}}, '
-            f'"narrative": "A paragraph describing what happened", '
-            f'"reasoning": "Why you resolved conflicts this way"}}\n'
+            f'"narrative": "What happened (under 200 words)", '
+            f'"reasoning": "Brief conflict resolution rationale"}}\n'
         )
 
     return (
-        f"You are **{agent.name}**, the judge agent in a world simulation.\n\n"
+        f"You are **{agent.name}**, the resolver agent in a world simulation.\n\n"
         f"## Your Perspective\n{agent.perspective}\n\n"
         f"{rules_block}\n"
         f"## Instructions\n"
         f"1. Read the current world state from `board/state.json`\n"
         f"2. Read the narrative history from `board/narrative.md`\n"
         f"3. Read ALL proposals in `proposals/` for step {step:03d}\n"
-        f"4. Read ALL critiques in `critiques/` for step {step:03d}\n\n"
+        f"4. Read ALL evaluations in `critiques/` for step {step:03d}\n\n"
         f"Check if a wildcard event file exists at `board/wildcard_step_{step:03d}.json`.\n"
         f"If present, ensure the resolution fully accounts for the wildcard's impact,\n"
         f"including applying its `state_impact` and any cascading effects.\n\n"
-        f"Synthesize the proposals and critiques into a single coherent outcome for this\n"
+        f"Synthesize the proposals and evaluations into a single coherent outcome for this\n"
         f"time step. Resolve conflicts between proposals. Weight proposals by their\n"
-        f"plausibility as assessed by critics.\n\n"
+        f"plausibility as assessed by constraint evaluators.\n\n"
         f"5. Write your resolution as a JSON file to `resolutions/step_{step:03d}_resolution.json`\n\n"
         f"The JSON must have this structure:\n"
         f"```json\n"
@@ -523,10 +550,10 @@ def build_prompt(
 ) -> str:
     if agent.role == AgentRole.ACTOR:
         return build_actor_prompt(agent, step, rules, interaction_context, trajectory_id, **kwargs)
-    elif agent.role == AgentRole.CRITIC:
-        return build_critic_prompt(agent, step, rules, **kwargs)
-    elif agent.role == AgentRole.JUDGE:
-        return build_judge_prompt(agent, step, rules, **kwargs)
+    elif agent.role == AgentRole.CONSTRAINT_EVALUATOR:
+        return build_constraint_evaluator_prompt(agent, step, rules, **kwargs)
+    elif agent.role == AgentRole.RESOLVER:
+        return build_resolver_prompt(agent, step, rules, **kwargs)
     elif agent.role == AgentRole.RESAMPLING_CRITIC:
         raise ValueError(
             "RESAMPLING_CRITIC must be invoked via build_resampling_critic_prompt() directly, "

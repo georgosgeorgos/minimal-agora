@@ -396,14 +396,14 @@ def cmd_init_scenario(args) -> int:
                 "perspective": "You propose changes to the world state.",
             },
             {
-                "role": "critic",
-                "name": f"{name}_critic",
-                "perspective": "You evaluate proposed changes for plausibility.",
+                "role": "constraint_evaluator",
+                "name": f"{name}_constraint_evaluator",
+                "perspective": "You evaluate proposed changes for plausibility and constraint compliance.",
             },
             {
-                "role": "judge",
-                "name": f"{name}_judge",
-                "perspective": "You synthesize proposals and critiques into a resolution.",
+                "role": "resolver",
+                "name": f"{name}_resolver",
+                "perspective": "You synthesize proposals and evaluations into a resolution.",
             },
         ]
 

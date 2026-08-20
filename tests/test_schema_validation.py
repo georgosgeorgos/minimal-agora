@@ -152,7 +152,7 @@ class TestLoopIntegration:
             initial_state=initial_state,
             agents=[
                 AgentConfig(role=AgentRole.ACTOR, name="actor1", perspective="test"),
-                AgentConfig(role=AgentRole.JUDGE, name="judge1", perspective="test"),
+                AgentConfig(role=AgentRole.RESOLVER, name="judge1", perspective="test"),
             ],
         )
 

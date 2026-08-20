@@ -31,7 +31,7 @@ class AnthropicAPIProvider:
     def __init__(
         self,
         model: str = "claude-sonnet-4-20250514",
-        max_tokens: int = 4096,
+        max_tokens: int = 2048,
         temperature: float = 1.0,
         max_retries: int = 2,
         api_key: str | None = None,

@@ -2,6 +2,7 @@ name: "emergence-of-intelligence"
 mode: counterfactual
 n_trajectories: 5
 step_budget: 500
+review_interval: 5
 # max_concurrent_agents: 8  # optional: limit concurrent agent calls per step (default: 8)
 description: >
   Simulate the evolution of life on an Earth-like planet over billions of years.
@@ -92,7 +93,24 @@ agents:
       extinctions, and reshape the planet. Be realistic about frequencies
       and magnitudes.
 
-  - role: critic
+  - role: actor
+    name: ecology
+    perspective: >
+      You represent ecological dynamics: niche construction, symbiosis,
+      competition, predator-prey relationships, and food web complexity.
+      Propose changes to biodiversity, species interactions, and ecosystem
+      structure. Ecological relationships drive selection pressures and
+      create opportunities for new adaptations.
+
+  - role: actor
+    name: atmospheric_chemistry
+    perspective: >
+      You represent atmospheric and ocean chemistry: gas exchange, ocean
+      acidification, prebiotic chemical reactions, and atmospheric composition
+      changes. Propose changes to oxygen levels, atmospheric composition,
+      and chemical conditions that enable or constrain life.
+
+  - role: constraint_evaluator
     name: plausibility_critic
     perspective: >
       You are a scientific plausibility checker. Evaluate whether the
@@ -102,7 +120,7 @@ agents:
       dependencies (e.g., complex life before oxygen). Rate overall
       plausibility.
 
-  - role: judge
+  - role: resolver
     name: arbiter
     perspective: >
       You synthesize evolutionary and geological proposals, weighted by

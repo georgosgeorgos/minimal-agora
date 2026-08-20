@@ -14,8 +14,8 @@ class SimMode(str, Enum):
 
 class AgentRole(str, Enum):
     ACTOR = "actor"
-    CRITIC = "critic"
-    JUDGE = "judge"
+    CONSTRAINT_EVALUATOR = "constraint_evaluator"
+    RESOLVER = "resolver"
     RESAMPLING_CRITIC = "resampling_critic"
 
 
@@ -57,8 +57,8 @@ class OutcomeConfig(BaseModel):
 class TrajectoryType(str, Enum):
     POPULATION = "population"
     FORCE = "force"
-    CRITIC = "critic"
-    EVALUATOR = "evaluator"
+    CONSTRAINT_EVALUATOR = "constraint_evaluator"
+    RESOLVER = "resolver"
 
 
 class InteractionMode(str, Enum):
@@ -196,7 +196,7 @@ class Scenario(BaseModel):
     wildcards: list[WildcardEvent] = Field(default_factory=list)
     wildcards_enabled: bool = False
     wildcard_warmup: float = Field(default=0.05, ge=0.0, le=1.0)
-    narrative_window: int | None = None
+    narrative_window: int | None = 20
     description: str = ""
     max_concurrent_agents: int = Field(default=8, ge=1)
     review_interval: int = Field(default=1, ge=1)
@@ -234,6 +234,7 @@ class Critique(BaseModel):
     target_proposals: list[str] = Field(default_factory=list)
     assessment: str = ""
     plausibility: float = 0.5
+    scores: dict[str, float] = Field(default_factory=dict)
     issues: list[str] = Field(default_factory=list)
 
 

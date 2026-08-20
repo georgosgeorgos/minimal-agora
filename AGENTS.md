@@ -84,11 +84,19 @@ feature work on top of a broken starting state.
 ### Core Loop (per step)
 
 ```
-WILDCARD → PROPOSE → CRITIQUE → RESOLVE → UPDATE → CHECK
+WILDCARD → PROPOSE → CONFLICT-GATE → UPDATE → CHECK
 ```
 
+The conflict gate decides how much evaluation each step needs:
+
+| Condition | Path | Extra LLM calls |
+|-----------|------|-----------------|
+| No conflicts + not review step | auto-merge | 0 |
+| Conflicts detected | resolver only | 1 |
+| Review step | constraint_evaluator + resolver | 2 |
+
 In population mode, propose phase is ordered:
-**forces → populations → critics → evaluator**
+**forces → populations → constraint_evaluators → resolver**
 
 ### Key Modules
 
@@ -112,7 +120,7 @@ n_trajectories: 10
 step_budget: 20
 initial_state: { ... }
 agents: [ ... ]           # flat mode
-entities: [ ... ]          # population mode (population/force/critic/evaluator)
+entities: [ ... ]          # population mode (population/force/constraint_evaluator/resolver)
 rules: [ ... ]             # domain-specific governing rules
 wildcards: [ ... ]         # stochastic external shocks
 termination: { ... }

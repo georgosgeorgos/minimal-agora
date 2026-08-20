@@ -17,10 +17,10 @@ aggregate outcomes into statistical answers.
 
 The core idea is **structured disagreement**. Each simulation step forces
 multiple agents — with different perspectives and domain expertise — to
-propose, critique, and resolve what happens next. A judge synthesizes the
-result. This adversarial loop produces more plausible trajectories than any
-single prompt could, because bad proposals get filtered by critics before
-they affect state.
+propose and resolve what happens next. A resolver synthesizes the
+result. This conflict-gated loop produces more plausible trajectories than any
+single prompt could, because conflicting proposals get filtered by
+constraint_evaluators before they affect state.
 
 Agents are stateless `claude -p` subprocesses. They share context through a
 filesystem board (state, narrative, proposals). No fine-tuning, no memory,
@@ -66,11 +66,11 @@ Each step follows the same loop regardless of mode:
 ![Core Simulation Loop](assets/diagrams/core-loop.png)
 
 In population mode, the propose phase runs in order:
-**forces → populations → critics → evaluator**.
+**forces → populations → constraint_evaluators → resolver**.
 
-### Review Interval Optimization
+### Conflict-Gated Resolution
 
-Skip critic/judge on routine steps for 2-3x speedup:
+Skip unnecessary LLM calls via conflict detection:
 
 ![Review Interval Optimization](assets/diagrams/review-interval.png)
 
@@ -105,7 +105,7 @@ minimal-agora run scenarios/examples/intelligence.yaml -n 30 -m counterfactual
 
 Multiple **interacting entities** (civilizations, species, factions) share a
 single world. Each entity has its own state subtree and agents. Forces modify
-the shared world. Critics check plausibility. Evaluators score and resolve.
+the shared world. Constraint evaluators check plausibility. Resolvers score and resolve.
 
 Entity types:
 
@@ -113,8 +113,8 @@ Entity types:
 |------|------|-----------|----------|------|
 | `population` | Civilization, species, faction | own subtree | own state + interactions | shared world + own state |
 | `force` | Nature, disease, economics | nothing | shared world state | shared world |
-| `critic` | Plausibility checker | nothing | nothing (read-only) | everything |
-| `evaluator` | Judge, historian, scorer | nothing | scores/rewards | everything post-resolution |
+| `constraint_evaluator` | Plausibility checker | nothing | nothing (read-only) | everything |
+| `resolver` | Resolver, historian, scorer | nothing | scores/rewards | everything post-resolution |
 
 ```bash
 minimal-agora run scenarios/examples/mediterranean.yaml -n 10 -m population
@@ -251,7 +251,7 @@ Use `--steps 10` for quick test runs.
 - **Pluggable providers** — `ClaudeSubprocessProvider` (default, uses `claude -p`), `AnthropicAPIProvider` (direct API access), `MockProvider` (deterministic testing)
 - **Atomic checkpointing** — crash-safe writes via `tempfile` + `fsync` + `rename`
 - **Statistical analysis** — z-test, bootstrap CIs, Cohen's d, cross-run comparison
-- **Review interval** — skip critic/judge on routine steps for 2-3x speedup
+- **Conflict-gated resolution** — auto-merge when no conflicts, invoke resolver on conflicts, full constraint_evaluator + resolver on review steps
 - **Particle filtering** — sequential importance resampling: duplicate high-weight trajectories, replace low-weight ones to focus compute on interesting branches
 - **Structured logging** — `structlog` with JSON/console rendering
 - **Live dashboard** — WebSocket-based web dashboard for monitoring running simulations
