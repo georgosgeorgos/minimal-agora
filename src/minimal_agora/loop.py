@@ -15,6 +15,7 @@ logger = structlog.stdlib.get_logger(__name__)
 from minimal_agora.agents import (
     build_interaction_context,
     build_prompt,
+    detect_conflicts,
     invoke_agent,
     parse_critique,
     parse_critique_from_text,
@@ -711,7 +712,11 @@ async def _run_entity_step(
                 critiques.append(cr)
                 board.save_critique(cr, step_num)
 
-    # Phase 4: Evaluator resolves everything
+    # Phase 4: Detect conflicts and resolve
+    conflicts = detect_conflicts(proposals)
+    if conflicts:
+        logger.info("conflicts_detected", step=step_num, fields=[c.field for c in conflicts])
+
     resolution = None
     eval_agents = [a for e in eval_entities for a in e.agents if a.role == AgentRole.JUDGE]
     if eval_agents:

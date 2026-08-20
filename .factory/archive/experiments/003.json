@@ -1,0 +1,15 @@
+{
+  "experiment_id": 3,
+  "hypothesis": "pytest.ini config fix",
+  "category": "EXPLOIT",
+  "verdict": "keep",
+  "score_before": 0.586,
+  "score_after": 0.589,
+  "score_delta": 0.003,
+  "dimensions_changed": {},
+  "ceo_rationale": "Config-only change is harmless and positions repo correctly for future test detection. --force flag appropriate given infrastructure-level gap in factory eval.",
+  "learned": "Factory Python environment in worktree eval lacks pytest, preventing test suite detection despite correct config. Issue is infrastructure, not config.",
+  "anti_patterns": [],
+  "playbook_proposals": [],
+  "date": "2026-08-19"
+}

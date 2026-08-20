@@ -1,0 +1,61 @@
+{
+  "goal": "Counterfactual world simulation engine where LLM agents debate and interact to explore hypotheses and population dynamics. Supports counterfactual, population, and open-ended simulation modes with parallel trajectory execution and statistical analysis.",
+  "scope": [
+    "src/minimal_agora/**/*.py",
+    "tests/**/*.py",
+    "eval/**/*.py",
+    "scenarios/**/*.yaml",
+    "pyproject.toml",
+    "README.md",
+    "CLAUDE.md",
+    "AGENTS.md"
+  ],
+  "guards": [
+    "Do not delete or overwrite existing tests",
+    "Do not modify files outside the declared scope",
+    "Do not introduce secrets or credentials into the repository",
+    "Do not modify scenario YAML files that other tests depend on",
+    "Do not remove or weaken Pydantic model validation"
+  ],
+  "eval_command": "python eval/score.py",
+  "eval_threshold": 0.6,
+  "constraints": [
+    "Prefer small, incremental changes over large rewrites",
+    "Each change should be accompanied by at least one test",
+    "Follow the existing code style and conventions",
+    "Maintain Pydantic v2 strict validation patterns",
+    "Keep scenario YAML schema backward-compatible"
+  ],
+  "hypothesis_budget": {
+    "min_growth": 1,
+    "max_new": 2
+  },
+  "target_branch": "main",
+  "smoke_test": "uv run minimal-agora --help",
+  "project_eval": [],
+  "eval_weights": {
+    "hygiene": 0.5,
+    "growth": 0.5,
+    "project": 0.0
+  },
+  "research_target": null,
+  "inner_loop": null,
+  "outer_loop": null,
+  "mutable_surfaces": [],
+  "fixed_surfaces": [],
+  "research_constraints": [],
+  "cost_budget": null,
+  "hard_constraints": [],
+  "eval_spec": [
+    "Run the CLI with --help and verify it prints usage information",
+    "Run the CLI with a sample input and verify it produces expected output"
+  ],
+  "hygiene_weights": null,
+  "growth_weights": null,
+  "adversarial": null,
+  "parallel": null,
+  "clean_pr": false,
+  "clean_pr_include": [],
+  "clean_pr_exclude": [],
+  "test_timeout": 300
+}

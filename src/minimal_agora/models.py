@@ -203,6 +203,20 @@ class Scenario(BaseModel):
     resampling: ResamplingConfig | None = None
 
 
+class ConflictSource(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    agent_name: str
+    proposed_value: Any = None
+
+
+class Conflict(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    field: str
+    sources: list[ConflictSource] = Field(default_factory=list)
+
+
 class Proposal(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

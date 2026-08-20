@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+from collections import defaultdict
 from pathlib import Path
 
 import structlog
@@ -9,6 +10,8 @@ import structlog
 from minimal_agora.models import (
     AgentConfig,
     AgentRole,
+    Conflict,
+    ConflictSource,
     Critique,
     EntityConfig,
     Proposal,
@@ -159,6 +162,46 @@ DIVERSITY_LENSES = [
 def _diversity_prefix(trajectory_id: int) -> str:
     lens = DIVERSITY_LENSES[trajectory_id % len(DIVERSITY_LENSES)]
     return f"**Exploration lens (trajectory {trajectory_id})**: {lens}"
+
+
+def _flatten_keys(d: dict, prefix: str = "") -> dict[str, object]:
+    items: dict[str, object] = {}
+    for k, v in d.items():
+        key = f"{prefix}.{k}" if prefix else k
+        if isinstance(v, dict):
+            items.update(_flatten_keys(v, key))
+        else:
+            items[key] = v
+    return items
+
+
+def detect_conflicts(proposals: list[Proposal]) -> list[Conflict]:
+    field_sources: dict[str, list[ConflictSource]] = defaultdict(list)
+    for p in proposals:
+        for field, value in _flatten_keys(p.proposed_changes).items():
+            field_sources[field].append(
+                ConflictSource(agent_name=p.agent, proposed_value=value)
+            )
+    return [
+        Conflict(field=field, sources=sources)
+        for field, sources in field_sources.items()
+        if len(sources) > 1
+    ]
+
+
+def _format_conflicts(conflicts: list[Conflict]) -> str:
+    lines = [
+        "## Conflicts Requiring Resolution",
+        "",
+    ]
+    for c in conflicts:
+        lines.append(f"**{c.field}**: Contested by {len(c.sources)} actors")
+        for s in c.sources:
+            lines.append(f"  - {s.agent_name} proposes: {s.proposed_value}")
+        lines.append("")
+    lines.append("You MUST explicitly resolve each conflict above.")
+    lines.append("")
+    return "\n".join(lines)
 
 
 def _format_wildcard(wildcard: dict | None) -> str:
