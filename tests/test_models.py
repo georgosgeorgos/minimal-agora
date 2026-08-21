@@ -521,7 +521,7 @@ def test_semaphore_limits_peak_concurrency():
     peak = 0
     current = 0
 
-    async def mock_invoke_with_retry(agent, workspace, step_num, prompt, timeout, max_retries=1):
+    async def mock_invoke_with_retry(agent, workspace, step_num, prompt, timeout, max_retries=1, temperature=None):
         nonlocal peak, current
         current += 1
         peak = max(peak, current)

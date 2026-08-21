@@ -9,6 +9,7 @@ from minimal_agora.analysis import (
     aggregate_outcomes,
     compare_runs,
     compute_agent_calibration,
+    compute_outcome_coverage,
     detect_convergence,
     format_report,
     load_trajectories,
@@ -107,6 +108,13 @@ def main() -> int:
         help="Output format",
     )
 
+    coverage_parser = subparsers.add_parser("coverage", help="Show outcome space coverage metrics")
+    coverage_parser.add_argument("run_dir", nargs="?", type=Path, default=None, help="Path to run output directory (default: latest in runs/)")
+    coverage_parser.add_argument(
+        "--format", dest="output_format", choices=["text", "json"], default="text",
+        help="Output format",
+    )
+
     explore_parser = subparsers.add_parser("explore", help="Generate interactive Plotly report")
     explore_parser.add_argument("run_dir", nargs="?", type=Path, default=None, help="Path to run output directory (default: latest in runs/)")
     explore_parser.add_argument("--fields", nargs="+", default=None, help="State fields to visualize (default: auto-detect)")
@@ -141,6 +149,8 @@ def main() -> int:
         return cmd_compare(args)
     elif args.command == "calibration":
         return cmd_calibration(args)
+    elif args.command == "coverage":
+        return cmd_coverage(args)
     elif args.command == "explore":
         return cmd_explore(args)
     elif args.command == "explore-3d":
@@ -570,6 +580,40 @@ def cmd_calibration(args) -> int:
         print("Cal = |confidence - acceptance_rate| (lower is better)")
         if any(m["mean_plausibility"] is not None for m in calibration.values()):
             print("Plaus = mean plausibility score from constraint evaluator critiques")
+    return 0
+
+
+def cmd_coverage(args) -> int:
+    err = _resolve_run_dir(args)
+    if err is not None:
+        return err
+    trajectories = load_trajectories(args.run_dir)
+    if not trajectories:
+        print(f"No trajectories found in {args.run_dir}")
+        return 1
+
+    metrics = compute_outcome_coverage(trajectories)
+
+    if args.output_format == "json":
+        import json
+
+        print(json.dumps(metrics, indent=2))
+    else:
+        print(f"=== Outcome Coverage: {args.run_dir.name} ===\n")
+        print(f"  Distinct outcomes:      {metrics['n_outcomes']}")
+        print(f"  Outcome entropy:        {metrics['outcome_entropy']:.4f} bits")
+        print(f"  Normalized entropy:     {metrics['normalized_entropy']:.4f}")
+        print(f"  State space coverage:   {metrics['state_space_coverage']:.4f}")
+        print(f"  Trajectory divergence:  {metrics['trajectory_divergence']:.4f}")
+        print(f"  Coverage score:         {metrics['coverage_score']:.4f}")
+        print()
+        ne = metrics["normalized_entropy"]
+        if ne < 0.3:
+            print("Low entropy: trajectories are converging to similar outcomes.")
+        elif ne > 0.8:
+            print("High entropy: trajectories are exploring diverse outcomes.")
+        else:
+            print("Moderate entropy: some outcome diversity present.")
     return 0
 
 

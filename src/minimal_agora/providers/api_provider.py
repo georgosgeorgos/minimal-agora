@@ -68,14 +68,17 @@ class AnthropicAPIProvider:
         workspace: Path,
         timeout: int = 300,
         model: str | None = None,
+        temperature: float | None = None,
     ) -> AgentInvocationResult:
         effective_model = model or self.model
+        effective_temperature = temperature if temperature is not None else self.temperature
         client = self._get_client()
 
         logger.debug(
             "provider.invoke",
             provider="anthropic-api",
             model=effective_model,
+            temperature=effective_temperature,
             workspace=str(workspace),
         )
 
@@ -84,7 +87,7 @@ class AnthropicAPIProvider:
         response = await client.messages.create(
             model=effective_model,
             max_tokens=self.max_tokens,
-            temperature=self.temperature,
+            temperature=effective_temperature,
             messages=[{"role": "user", "content": prompt}],
         )
 

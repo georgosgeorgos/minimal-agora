@@ -181,7 +181,7 @@ def test_adaptive_review_triggers_on_large_state_change():
             with open(path, "w") as f:
                 f.write(proposal.model_dump_json(indent=2))
 
-        async def mock_invoke(agent, workspace, step_num, prompt, timeout, max_retries=1):
+        async def mock_invoke(agent, workspace, step_num, prompt, timeout, max_retries=1, temperature=None):
             call_log.append((agent.name, agent.role.value, step_num))
             if agent.role == AgentRole.ACTOR:
                 _write_mock_proposal(agent, workspace, step_num)
@@ -266,7 +266,7 @@ def test_adaptive_review_does_not_trigger_below_threshold():
             with open(path, "w") as f:
                 f.write(proposal.model_dump_json(indent=2))
 
-        async def mock_invoke(agent, workspace, step_num, prompt, timeout, max_retries=1):
+        async def mock_invoke(agent, workspace, step_num, prompt, timeout, max_retries=1, temperature=None):
             if agent.role == AgentRole.ACTOR:
                 _write_mock_proposal(agent, workspace, step_num)
 
@@ -339,7 +339,7 @@ def test_adaptive_review_disabled_when_threshold_none():
             with open(path, "w") as f:
                 f.write(proposal.model_dump_json(indent=2))
 
-        async def mock_invoke(agent, workspace, step_num, prompt, timeout, max_retries=1):
+        async def mock_invoke(agent, workspace, step_num, prompt, timeout, max_retries=1, temperature=None):
             if agent.role == AgentRole.ACTOR:
                 _write_mock_proposal(agent, workspace, step_num)
 

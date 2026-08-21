@@ -12,7 +12,11 @@ from pathlib import Path
 
 import structlog
 
-from minimal_agora.analysis import compute_agent_calibration, load_trajectories
+from minimal_agora.analysis import (
+    compute_agent_calibration,
+    compute_outcome_coverage,
+    load_trajectories,
+)
 from minimal_agora.models import Trajectory
 
 logger = structlog.stdlib.get_logger(__name__)
@@ -419,6 +423,124 @@ def plot_agent_calibration(trajectories: list[Trajectory]) -> go.Figure | None:
     return fig
 
 
+def plot_outcome_coverage(trajectories: list[Trajectory]) -> go.Figure | None:
+    """Visualize outcome space coverage with a grouped bar chart and PCA scatter.
+
+    Returns a figure with two subplots:
+      1. Grouped bars showing normalized_entropy, state_space_coverage, trajectory_divergence
+      2. 2D scatter of final states projected onto the first two principal components
+    """
+    _require_plotly()
+    import numpy as np
+
+    metrics = compute_outcome_coverage(trajectories)
+    if not trajectories:
+        return None
+
+    fig = make_subplots(
+        rows=1, cols=2,
+        subplot_titles=["Coverage Dimensions", "Final States (PCA)"],
+        horizontal_spacing=0.12,
+    )
+
+    # --- Grouped bar chart of coverage dimensions ---
+    dim_names = ["Normalized Entropy", "State Space Coverage", "Trajectory Divergence"]
+    dim_values = [
+        metrics["normalized_entropy"],
+        min(1.0, metrics["state_space_coverage"]),
+        min(1.0, metrics["trajectory_divergence"] / max(1.0, metrics["trajectory_divergence"])),
+    ]
+
+    fig.add_trace(
+        go.Bar(
+            x=dim_names,
+            y=dim_values,
+            marker_color=[COLORS[0], COLORS[2], COLORS[4]],
+            hovertemplate="%{x}: %{y:.3f}<extra></extra>",
+            showlegend=False,
+        ),
+        row=1, col=1,
+    )
+
+    # Add a horizontal line for the combined coverage score
+    fig.add_hline(
+        y=metrics["coverage_score"],
+        line_dash="dash",
+        line_color="rgba(255,255,255,0.5)",
+        annotation_text=f"Coverage Score: {metrics['coverage_score']:.3f}",
+        annotation_position="top right",
+        row=1, col=1,
+    )
+
+    # --- PCA scatter of final states ---
+    flat_states: list[dict[str, float]] = []
+    outcome_labels: list[str] = []
+    traj_ids: list[int] = []
+    for t in trajectories:
+        final = t.outcome.final_state if t.outcome else {}
+        flat_states.append(_flatten_state(final))
+        outcome_labels.append(t.outcome.classification if t.outcome else "unclassified")
+        traj_ids.append(t.trajectory_id)
+
+    # Collect all numeric keys across all final states
+    all_keys = sorted({k for fs in flat_states for k in fs})
+
+    if len(all_keys) >= 2 and len(flat_states) >= 2:
+        # Build feature matrix
+        matrix = np.array([
+            [fs.get(k, 0.0) for k in all_keys]
+            for fs in flat_states
+        ])
+
+        # Center the data
+        mean = matrix.mean(axis=0)
+        centered = matrix - mean
+
+        # PCA via SVD
+        try:
+            _u, _s, vt = np.linalg.svd(centered, full_matrices=False)
+            projected = centered @ vt[:2].T
+
+            color_map = {}
+            unique_outcomes = sorted(set(outcome_labels))
+            for idx, o in enumerate(unique_outcomes):
+                color_map[o] = COLORS[idx % len(COLORS)]
+
+            for outcome in unique_outcomes:
+                mask = [i for i, o in enumerate(outcome_labels) if o == outcome]
+                fig.add_trace(
+                    go.Scatter(
+                        x=[float(projected[i, 0]) for i in mask],
+                        y=[float(projected[i, 1]) for i in mask],
+                        mode="markers+text",
+                        marker={"size": 10, "color": color_map[outcome]},
+                        text=[f"T{traj_ids[i]}" for i in mask],
+                        textposition="top center",
+                        textfont={"size": 9},
+                        name=outcome,
+                        hovertemplate=(
+                            "T%{text}<br>PC1: %{x:.3f}<br>PC2: %{y:.3f}"
+                            "<extra></extra>"
+                        ),
+                    ),
+                    row=1, col=2,
+                )
+        except np.linalg.LinAlgError:
+            pass  # SVD did not converge; skip PCA plot
+
+    fig.update_xaxes(title_text="Dimension", row=1, col=1)
+    fig.update_yaxes(title_text="Value", range=[0, 1.1], row=1, col=1)
+    fig.update_xaxes(title_text="PC1", row=1, col=2)
+    fig.update_yaxes(title_text="PC2", row=1, col=2)
+
+    fig.update_layout(
+        title="Outcome Space Coverage",
+        template="plotly_dark",
+        height=450,
+    )
+    return fig
+
+
 def generate_interactive_report(
     run_dir: Path,
     fields: list[str] | None = None,
@@ -460,6 +582,10 @@ def generate_interactive_report(
     cal_fig = plot_agent_calibration(trajectories)
     if cal_fig:
         figs.append(cal_fig)
+
+    coverage_fig = plot_outcome_coverage(trajectories)
+    if coverage_fig:
+        figs.append(coverage_fig)
 
     scenario_name = report_json.get("scenario_name", "unknown") if report_json else "unknown"
     question = report_json.get("question", "") if report_json else ""

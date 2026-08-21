@@ -391,6 +391,116 @@ def compare_runs(
     )
 
 
+def _flatten_state(state: dict, prefix: str = "") -> dict[str, float]:
+    """Recursively flatten nested dicts, keeping only numeric values."""
+    flat: dict[str, float] = {}
+    for k, v in state.items():
+        key = f"{prefix}.{k}" if prefix else k
+        if isinstance(v, dict):
+            flat.update(_flatten_state(v, key))
+        elif isinstance(v, (int, float)) and not isinstance(v, bool):
+            flat[key] = float(v)
+    return flat
+
+
+def compute_outcome_coverage(trajectories: list[Trajectory]) -> dict[str, Any]:
+    """Measure how well trajectories cover the outcome space.
+
+    Returns a dict with:
+      - n_outcomes: number of distinct outcome classifications
+      - outcome_entropy: Shannon entropy of the outcome distribution
+      - normalized_entropy: entropy / log2(n_outcomes), 1.0 = perfectly uniform
+      - state_space_coverage: mean normalized range of numeric final-state fields
+      - trajectory_divergence: mean pairwise distance between final states
+      - coverage_score: combined score (0-1) weighting entropy and coverage equally
+    """
+    logger.info("analysis.compute_outcome_coverage", n_trajectories=len(trajectories))
+
+    if not trajectories:
+        return {
+            "n_outcomes": 0,
+            "outcome_entropy": 0.0,
+            "normalized_entropy": 0.0,
+            "state_space_coverage": 0.0,
+            "trajectory_divergence": 0.0,
+            "coverage_score": 0.0,
+        }
+
+    # --- outcome entropy ---
+    counts: dict[str, int] = defaultdict(int)
+    for t in trajectories:
+        cls = t.outcome.classification if t.outcome else "unclassified"
+        counts[cls] += 1
+
+    n_total = len(trajectories)
+    n_outcomes = len(counts)
+
+    entropy = 0.0
+    for count in counts.values():
+        p = count / n_total
+        if p > 0:
+            entropy -= p * math.log2(p)
+
+    max_entropy = math.log2(n_outcomes) if n_outcomes > 1 else 0.0
+    normalized_entropy = entropy / max_entropy if max_entropy > 0 else 0.0
+
+    # --- state space coverage ---
+    flat_states: list[dict[str, float]] = []
+    for t in trajectories:
+        final = t.outcome.final_state if t.outcome else {}
+        flat_states.append(_flatten_state(final))
+
+    all_keys: set[str] = set()
+    for fs in flat_states:
+        all_keys.update(fs.keys())
+
+    normalized_ranges: list[float] = []
+    for key in sorted(all_keys):
+        values = [fs[key] for fs in flat_states if key in fs]
+        if len(values) < 2:
+            continue
+        val_range = max(values) - min(values)
+        mean_abs = sum(abs(v) for v in values) / len(values)
+        if mean_abs > 0:
+            normalized_ranges.append(val_range / mean_abs)
+
+    state_space_coverage = (
+        sum(normalized_ranges) / len(normalized_ranges)
+        if normalized_ranges
+        else 0.0
+    )
+
+    # --- trajectory divergence ---
+    n_states = len(flat_states)
+    pair_distances: list[float] = []
+    for i in range(n_states):
+        for j in range(i + 1, n_states):
+            shared_keys = set(flat_states[i].keys()) & set(flat_states[j].keys())
+            if not shared_keys:
+                continue
+            diffs = [abs(flat_states[i][k] - flat_states[j][k]) for k in shared_keys]
+            pair_distances.append(sum(diffs) / len(diffs))
+
+    trajectory_divergence = (
+        sum(pair_distances) / len(pair_distances) if pair_distances else 0.0
+    )
+
+    # --- combined coverage score ---
+    # Weight entropy and state_space_coverage equally, clamp to [0, 1]
+    coverage_score = min(1.0, (normalized_entropy + min(1.0, state_space_coverage)) / 2.0)
+
+    result = {
+        "n_outcomes": n_outcomes,
+        "outcome_entropy": entropy,
+        "normalized_entropy": normalized_entropy,
+        "state_space_coverage": state_space_coverage,
+        "trajectory_divergence": trajectory_divergence,
+        "coverage_score": coverage_score,
+    }
+    logger.info("analysis.compute_outcome_coverage.done", **result)
+    return result
+
+
 def compute_agent_calibration(trajectories: list[Trajectory]) -> dict[str, dict]:
     """Compute per-agent proposal acceptance rates and quality metrics.
 

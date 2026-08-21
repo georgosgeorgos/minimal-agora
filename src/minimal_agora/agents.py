@@ -45,6 +45,7 @@ async def invoke_agent(
     prompt: str,
     timeout: int = 300,
     provider: AgentProvider | None = None,
+    temperature: float | None = None,
 ) -> AgentInvocationResult:
     active = provider or _default_provider
 
@@ -55,7 +56,7 @@ async def invoke_agent(
         provider_type=type(active).__name__,
     )
 
-    result = await active.invoke(prompt, workspace, timeout, model=agent.model)
+    result = await active.invoke(prompt, workspace, timeout, model=agent.model, temperature=temperature)
 
     logger.debug(
         "provider.invoke.done",

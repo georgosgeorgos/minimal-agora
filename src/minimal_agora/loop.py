@@ -50,6 +50,14 @@ from minimal_agora.providers.protocol import AgentInvocationResult
 from minimal_agora.schema import infer_schema, validate_state_delta
 
 
+def _compute_temperature(scenario: Scenario, step_num: int, max_steps: int) -> float:
+    """Linearly interpolate temperature between start and end based on step progress."""
+    if scenario.temperature_start == scenario.temperature_end:
+        return scenario.temperature_start
+    progress = step_num / max(max_steps - 1, 1)
+    return scenario.temperature_start + (scenario.temperature_end - scenario.temperature_start) * progress
+
+
 async def _safe_invoke(coro) -> None:
     try:
         await coro
@@ -59,10 +67,11 @@ async def _safe_invoke(coro) -> None:
 
 async def _invoke_with_retry(
     agent, workspace: Path, step_num: int, prompt: str, timeout: int, max_retries: int = 1,
+    temperature: float | None = None,
 ) -> AgentInvocationResult | None:
     for attempt in range(1 + max_retries):
         try:
-            return await invoke_agent(agent, workspace, step_num, prompt, timeout)
+            return await invoke_agent(agent, workspace, step_num, prompt, timeout, temperature=temperature)
         except (OSError, RuntimeError, TimeoutError) as e:
             if attempt < max_retries:
                 logger.warning("Agent %s failed (attempt %d), retrying: %s", agent.name, attempt + 1, e)
@@ -79,12 +88,13 @@ async def _invoke_with_semaphore(
     prompt: str,
     timeout: int,
     max_concurrent: int,
+    temperature: float | None = None,
 ) -> None:
     if semaphore.locked():
         logger.debug("agent.throttled", agent=agent.name, waiting=True)
     async with semaphore:
         logger.debug("agent.semaphore_acquired", agent=agent.name, max_concurrent=max_concurrent)
-        await _invoke_with_retry(agent, workspace, step_num, prompt, timeout)
+        await _invoke_with_retry(agent, workspace, step_num, prompt, timeout, temperature=temperature)
 
 
 def _detect_resume_point(workspace: Path) -> int:
@@ -320,6 +330,7 @@ async def _invoke_and_collect(
     timeout: int,
     agent_semaphore: asyncio.Semaphore | None,
     max_concurrent: int,
+    temperature: float | None = None,
 ) -> AgentInvocationResult | None:
     try:
         if agent_semaphore:
@@ -327,9 +338,9 @@ async def _invoke_and_collect(
                 logger.debug("agent.throttled", agent=agent.name, waiting=True)
             async with agent_semaphore:
                 logger.debug("agent.semaphore_acquired", agent=agent.name, max_concurrent=max_concurrent)
-                return await _invoke_with_retry_return(agent, workspace, step_num, prompt, timeout)
+                return await _invoke_with_retry_return(agent, workspace, step_num, prompt, timeout, temperature=temperature)
         else:
-            return await _invoke_with_retry_return(agent, workspace, step_num, prompt, timeout)
+            return await _invoke_with_retry_return(agent, workspace, step_num, prompt, timeout, temperature=temperature)
     except Exception as e:  # noqa: BLE001
         logger.warning("agent.task_failed", agent=agent.name, error=str(e))
         return None
@@ -337,10 +348,11 @@ async def _invoke_and_collect(
 
 async def _invoke_with_retry_return(
     agent, workspace: Path, step_num: int, prompt: str, timeout: int, max_retries: int = 1,
+    temperature: float | None = None,
 ) -> AgentInvocationResult | None:
     for attempt in range(1 + max_retries):
         try:
-            return await invoke_agent(agent, workspace, step_num, prompt, timeout)
+            return await invoke_agent(agent, workspace, step_num, prompt, timeout, temperature=temperature)
         except (OSError, RuntimeError, TimeoutError) as e:
             if attempt < max_retries:
                 logger.warning("Agent %s failed (attempt %d), retrying: %s", agent.name, attempt + 1, e)
@@ -366,6 +378,7 @@ async def _run_flat_step(
 
     max_concurrent = scenario.max_concurrent_agents
     rules = scenario.rules
+    step_temperature = _compute_temperature(scenario, step_num, max_steps)
 
     current_state = board.read_state()
     narrative_text = _read_narrative(board)
@@ -380,7 +393,7 @@ async def _run_flat_step(
     if scenario.diversity_lenses:
         actor_extra["diversity_lenses"] = scenario.diversity_lenses
 
-    logger.debug("flat_step.propose_start", step=step_num, n_actors=len(actors))
+    logger.debug("flat_step.propose_start", step=step_num, n_actors=len(actors), temperature=step_temperature)
     t0 = time.monotonic()
 
     token_calls: list[AgentCallTokens] = []
@@ -390,6 +403,7 @@ async def _run_flat_step(
         prompt = build_prompt(a, step_num, rules, trajectory_id=trajectory_id, **embed_kwargs, **actor_extra)
         result = await _invoke_and_collect(
             a, board.workspace, step_num, prompt, timeout, agent_semaphore, max_concurrent,
+            temperature=step_temperature,
         )
         actor_results[a.name] = result
 
@@ -454,6 +468,7 @@ async def _run_flat_step(
                 prompt = build_prompt(c, step_num, rules, **ce_kwargs)
                 result = await _invoke_and_collect(
                     c, board.workspace, step_num, prompt, timeout, agent_semaphore, max_concurrent,
+                    temperature=step_temperature,
                 )
                 ce_results[c.name] = result
 
@@ -497,6 +512,7 @@ async def _run_flat_step(
             prompt = build_prompt(resolver, step_num, rules, **resolver_kwargs)
             resolver_result = await _invoke_with_retry_return(
                 resolver, board.workspace, step_num, prompt, timeout,
+                temperature=step_temperature,
             )
             _collect_tokens_from_result(resolver_result, resolver.role.value, token_calls)
             resolver_output = resolver_result.output if resolver_result else None
@@ -542,6 +558,7 @@ async def _run_flat_step(
             prompt = build_prompt(resolver, step_num, rules, **resolver_kwargs)
             resolver_result = await _invoke_with_retry_return(
                 resolver, board.workspace, step_num, prompt, timeout,
+                temperature=step_temperature,
             )
             _collect_tokens_from_result(resolver_result, resolver.role.value, token_calls)
             resolver_output = resolver_result.output if resolver_result else None
@@ -617,6 +634,7 @@ async def _run_entity_step(
 ) -> Step:
     rules = scenario.rules
     max_concurrent = scenario.max_concurrent_agents
+    step_temperature = _compute_temperature(scenario, step_num, max_steps)
     proposals = []
     critiques = []
     token_calls: list[AgentCallTokens] = []
@@ -658,6 +676,7 @@ async def _run_entity_step(
             prompt = build_prompt(a, step_num, rules, trajectory_id=trajectory_id, **embed_kwargs, **actor_extra)
             result = await _invoke_and_collect(
                 a, board.workspace, step_num, prompt, timeout, agent_semaphore, max_concurrent,
+                temperature=step_temperature,
             )
             force_results[a.name] = result
 
@@ -710,6 +729,7 @@ async def _run_entity_step(
             )
             result = await _invoke_and_collect(
                 a, board.workspace, step_num, prompt, timeout, agent_semaphore, max_concurrent,
+                temperature=step_temperature,
             )
             pop_results[a.name] = result
 
@@ -776,6 +796,7 @@ async def _run_entity_step(
                 prompt = build_prompt(c, step_num, rules, **ce_kwargs)
                 result = await _invoke_and_collect(
                     c, board.workspace, step_num, prompt, timeout, agent_semaphore, max_concurrent,
+                    temperature=step_temperature,
                 )
                 ce_results[c.name] = result
 
@@ -819,6 +840,7 @@ async def _run_entity_step(
             prompt = build_prompt(resolver, step_num, rules, **resolver_kwargs)
             resolver_result = await _invoke_with_retry_return(
                 resolver, board.workspace, step_num, prompt, timeout,
+                temperature=step_temperature,
             )
             _collect_tokens_from_result(resolver_result, resolver.role.value, token_calls)
             resolver_output = resolver_result.output if resolver_result else None
@@ -865,6 +887,7 @@ async def _run_entity_step(
             prompt = build_prompt(resolver, step_num, rules, **resolver_kwargs)
             resolver_result = await _invoke_with_retry_return(
                 resolver, board.workspace, step_num, prompt, timeout,
+                temperature=step_temperature,
             )
             _collect_tokens_from_result(resolver_result, resolver.role.value, token_calls)
             resolver_output = resolver_result.output if resolver_result else None

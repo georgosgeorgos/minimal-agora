@@ -3,6 +3,7 @@ from pathlib import Path
 
 from minimal_agora.analysis import (
     compute_agent_calibration,
+    compute_outcome_coverage,
     compute_statistics,
     extract_field_timelines,
     save_artifacts,
@@ -294,3 +295,57 @@ def test_compute_agent_calibration_no_resolution():
     cal = compute_agent_calibration([t])
     assert cal["orphan"]["proposals_made"] == 1
     assert cal["orphan"]["proposals_accepted"] == 0
+
+
+# --- Outcome coverage tests ---
+
+
+def test_outcome_coverage_single_trajectory():
+    """Single trajectory: entropy should be 0, divergence should be 0."""
+    t = _make_trajectory(0, "outcome_a", [{"x": 10, "y": 20}])
+    metrics = compute_outcome_coverage([t])
+    assert metrics["n_outcomes"] == 1
+    assert metrics["outcome_entropy"] == 0.0
+    assert metrics["normalized_entropy"] == 0.0
+    assert metrics["trajectory_divergence"] == 0.0
+
+
+def test_outcome_coverage_uniform():
+    """Equal distribution across outcomes: entropy should be maximal."""
+    import math
+
+    trajectories = [
+        _make_trajectory(0, "A", [{"x": 1}]),
+        _make_trajectory(1, "B", [{"x": 2}]),
+        _make_trajectory(2, "C", [{"x": 3}]),
+        _make_trajectory(3, "D", [{"x": 4}]),
+    ]
+    metrics = compute_outcome_coverage(trajectories)
+    assert metrics["n_outcomes"] == 4
+    assert abs(metrics["outcome_entropy"] - math.log2(4)) < 1e-9
+    assert abs(metrics["normalized_entropy"] - 1.0) < 1e-9
+
+
+def test_outcome_coverage_identical_states():
+    """All final states the same: divergence should be 0."""
+    trajectories = [
+        _make_trajectory(0, "A", [{"x": 5, "y": 10}]),
+        _make_trajectory(1, "A", [{"x": 5, "y": 10}]),
+        _make_trajectory(2, "A", [{"x": 5, "y": 10}]),
+    ]
+    metrics = compute_outcome_coverage(trajectories)
+    assert metrics["trajectory_divergence"] == 0.0
+    assert metrics["state_space_coverage"] == 0.0
+
+
+def test_outcome_coverage_diverse_states():
+    """Spread final states: divergence should be > 0."""
+    trajectories = [
+        _make_trajectory(0, "A", [{"x": 0, "y": 0}]),
+        _make_trajectory(1, "B", [{"x": 100, "y": 100}]),
+        _make_trajectory(2, "C", [{"x": 200, "y": 200}]),
+    ]
+    metrics = compute_outcome_coverage(trajectories)
+    assert metrics["trajectory_divergence"] > 0
+    assert metrics["state_space_coverage"] > 0
+    assert metrics["n_outcomes"] == 3

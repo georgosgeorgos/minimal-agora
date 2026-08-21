@@ -26,4 +26,5 @@ class AgentProvider(Protocol):
         workspace: Path,
         timeout: int = 300,
         model: str | None = None,
+        temperature: float | None = None,
     ) -> AgentInvocationResult: ...

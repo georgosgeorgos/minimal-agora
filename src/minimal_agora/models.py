@@ -203,6 +203,8 @@ class Scenario(BaseModel):
     review_threshold: float | None = None
     diversity_lenses: list[str] = Field(default_factory=list)
     resampling: ResamplingConfig | None = None
+    temperature_start: float = Field(default=1.0, ge=0.0, le=2.0)
+    temperature_end: float = Field(default=1.0, ge=0.0, le=2.0)
 
 
 class ConflictSource(BaseModel):

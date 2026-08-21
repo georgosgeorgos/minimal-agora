@@ -23,9 +23,11 @@ class MockProvider:
         workspace: Path,
         timeout: int = 300,
         model: str | None = None,
+        temperature: float | None = None,
     ) -> AgentInvocationResult:
         self.call_count += 1
         self.last_prompt = prompt
+        self.last_temperature = temperature
 
         prompt_lower = prompt.lower()
         response = "Mock response"

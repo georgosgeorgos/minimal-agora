@@ -42,6 +42,7 @@ class ClaudeSubprocessProvider:
         workspace: Path,
         timeout: int = 300,
         model: str | None = None,
+        temperature: float | None = None,
     ) -> AgentInvocationResult:
         cmd = self.build_command(prompt, workspace)
         if model:

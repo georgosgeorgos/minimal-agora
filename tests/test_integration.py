@@ -41,7 +41,7 @@ class FileWritingMockProvider:
 
     async def invoke(
         self, prompt: str, workspace: Path, timeout: int = 300,
-        model: str | None = None,
+        model: str | None = None, temperature: float | None = None,
     ) -> AgentInvocationResult:
         self.call_count += 1
 

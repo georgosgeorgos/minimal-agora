@@ -45,6 +45,7 @@ class LiteLLMProvider:
         workspace: Path,
         timeout: int = 300,
         model: str | None = None,
+        temperature: float | None = None,
     ) -> AgentInvocationResult:
         if not _HAS_LITELLM:
             raise RuntimeError(
@@ -52,11 +53,13 @@ class LiteLLMProvider:
             )
 
         effective_model = model or self.model
+        effective_temperature = temperature if temperature is not None else self.temperature
 
         logger.debug(
             "provider.invoke",
             provider="litellm",
             model=effective_model,
+            temperature=effective_temperature,
             api_base=self.api_base,
             workspace=str(workspace),
         )
@@ -67,7 +70,7 @@ class LiteLLMProvider:
             "model": effective_model,
             "messages": [{"role": "user", "content": prompt}],
             "max_tokens": self.max_tokens,
-            "temperature": self.temperature,
+            "temperature": effective_temperature,
             "timeout": timeout,
         }
         if self.api_base:
