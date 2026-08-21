@@ -6,7 +6,8 @@ subprocesses differentiated only by their prompt — role, perspective, and
 domain rules shape behavior.
 
 All scenarios use realistic step counts (200–1000) for meaningful emergent
-dynamics. Use `--steps 10` for quick test runs.
+dynamics. Use `--steps 10` for quick test runs, or `./scripts/run-validate.sh`
+for a 50-step validation pass across all 8 scenarios.
 
 ## Wildcards
 
@@ -26,8 +27,9 @@ step count.
 **Steps**: 500 at 10 million years each (5 billion years)
 **Question**: Does intelligent life emerge?
 
-Simulates evolution on a terrestrial planet. Two actor agents (natural
-selection, geological forces) propose changes each step. A thermodynamic
+Simulates evolution on a terrestrial planet. Four actor agents (natural
+selection, geological forces, ecology, atmospheric chemistry) propose changes
+each step. A thermodynamic
 constraint evaluator checks plausibility. A resolver synthesizes outcomes.
 
 Six wildcards (asteroid, gamma ray burst, supervolcano, snowball earth, alien
@@ -247,3 +249,23 @@ outcome:
     - name: default_outcome
       default: true
 ```
+
+## Validation Results
+
+All 8 scenarios validated with 50-step runs (1 trajectory each) using
+GLM-5.2 via RITS. The conflict-gated resolution architecture worked
+end-to-end across all simulation modes (counterfactual, population, open_ended).
+
+| Scenario | Mode | Steps | Outcome | Notes |
+|----------|------|-------|---------|-------|
+| pandemic | counterfactual | 50 | `controlled` | Coordinated response prevented collapse |
+| market | population | 50 | `disruption` | Market disrupted by new entrant |
+| intelligence | counterfactual | 50 | `stagnation` | 500M years insufficient for intelligence |
+| nuclear_war | counterfactual | 50 | `stable_deterrence` | Deterrence held through early Cold War |
+| complexity | open_ended | 50 | `simple_life` | Reached multicellular but not complex |
+| mediterranean | population | 35 | `balance_of_power` | Early termination — no single dominant power |
+| capitalism | counterfactual | 50 | `command_economy` | State control dominated over markets |
+| democracy | counterfactual | 50 | `autocracy_persists` | 250 years insufficient for democratic transition |
+
+Run with `./scripts/run-validate.sh` to reproduce. Full runs require
+`./scripts/run-all.sh` (12-20 hours depending on endpoint throughput).

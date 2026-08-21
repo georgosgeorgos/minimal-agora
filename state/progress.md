@@ -5,10 +5,11 @@
 - Repository root: `/Users/ggiannon/minimal-harness`
 - Standard startup path: `./init.sh` (runs `uv sync`, `ruff check`, `pytest`)
 - Standard verification path: `uv run pytest tests/ -v && uv run ruff check src/ tests/`
-- All 15 features passing (14/15 implemented, feat-004 requires manual e2e test)
+- All features passing, feat-004 validated (8 scenarios ran end-to-end with API provider)
 - Current blocker: None
-- Test count: 44 tests, all green
+- Test count: 344 tests, all green
 - Lint: clean (ruff, 0 errors)
+- Simulation validated: all 8 scenarios completed 50-step runs via RITS GLM-5.2
 
 ## Session Log
 
@@ -50,6 +51,26 @@
 - Commits: fab9603, e9aa35e, 9b13558, 295f3d4, dc6e0fb, b8a5a30, 44eb681
 - Known risk: feat-004 (e2e test with real Claude CLI) not implemented — requires
   manual testing with authenticated claude CLI
+
+### Session 004
+
+- Date: 2026-08-20 to 2026-08-21
+- Goal: Finalize architecture, run simulations
+- Completed:
+  - LiteLLM provider + .env support + lazy client reuse (feat-009)
+  - Conflict-gated resolution: 3-path loop (auto-merge / resolver / full review)
+  - Role renames: CRITIC → CONSTRAINT_EVALUATOR, JUDGE → RESOLVER
+  - Per-category plausibility scores (physical, consistency, pacing, rules)
+  - Token optimization: max_tokens 4096→2048, conciser prompts
+  - Narrative windowing enabled (default 20 steps)
+  - Expanded actors: intelligence (4→6), complexity (4→5)
+  - review_interval set per scenario (step_budget/100)
+  - Run scripts: run-all.sh, run-single.sh, run-validate.sh
+  - Validated all 8 scenarios (50-step runs via RITS GLM-5.2)
+  - Removed .factory/ from git tracking
+- Verification run: `uv run pytest tests/ -v` — 344 passed, `ruff check` — 0 errors
+- Commits: 3427019, ae59431, afebe0f
+- Open issues: #62 (parallel evaluator+resolver), #63 (Plotly viz), #64 (Three.js dashboard)
 
 ## Roadmap (priority order)
 
