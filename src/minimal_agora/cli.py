@@ -76,6 +76,8 @@ def main() -> int:
     dash_parser.add_argument("--fields", nargs="+", default=None, help="State fields to track")
     dash_parser.add_argument("--populations", nargs="+", default=None, help="Population names")
     dash_parser.add_argument("--scores", nargs="+", default=None, help="Score fields for populations")
+    dash_parser.add_argument("--static", action="store_true", help="Generate static HTML instead of launching server")
+    dash_parser.add_argument("-o", "--output", type=Path, default=None, dest="dash_output", help="Output path for static HTML")
 
     validate_parser = subparsers.add_parser("validate", help="Validate a scenario YAML/JSON file")
     validate_parser.add_argument("scenario", type=Path, help="Path to scenario YAML/JSON")
@@ -346,7 +348,6 @@ def cmd_dashboard(args) -> int:
     err = _resolve_run_dir(args)
     if err is not None:
         return err
-    from minimal_agora.dashboard import start_dashboard
 
     if not args.fields:
         trajectories = load_trajectories(args.run_dir)
@@ -356,6 +357,21 @@ def cmd_dashboard(args) -> int:
             if detected:
                 args.fields = detected
                 print(f"Auto-detected fields: {', '.join(detected)}")
+
+    if args.static:
+        from minimal_agora.dashboard import generate_static_dashboard
+
+        out = generate_static_dashboard(
+            args.run_dir,
+            output_path=getattr(args, "dash_output", None),
+            fields=args.fields,
+            populations=args.populations,
+            score_fields=args.scores,
+        )
+        print(f"Static dashboard: {out}")
+        return 0
+
+    from minimal_agora.dashboard import start_dashboard
 
     start_dashboard(
         args.run_dir,

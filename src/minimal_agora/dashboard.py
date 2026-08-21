@@ -1318,6 +1318,50 @@ fetch('/api/data').then(r => r.json()).then(render).catch(() => {});
 </html>"""
 
 
+def _auto_detect_fields(run_dir: Path) -> list[str]:
+    trajectories = load_trajectories(run_dir)
+    if not trajectories or not trajectories[0].steps:
+        return []
+    from minimal_agora.visualize_interactive import _flatten_state
+    sample = trajectories[0].steps[0].state_after
+    return sorted(_flatten_state(sample).keys())[:10]
+
+
+def generate_static_dashboard(
+    run_dir: Path,
+    output_path: Path | None = None,
+    fields: list[str] | None = None,
+    populations: list[str] | None = None,
+    score_fields: list[str] | None = None,
+) -> Path:
+    """Generate a standalone HTML dashboard with data inlined (no server needed)."""
+    if not fields:
+        fields = _auto_detect_fields(run_dir)
+    data = _collect_data(run_dir, fields or [], populations or [], score_fields or [])
+    data["run_dir"] = run_dir.name
+
+    html = _build_html()
+
+    data_json = json.dumps(data)
+    html = html.replace(
+        "connectSSE();\n\n// Also fetch once immediately\n"
+        "fetch('/api/data').then(r => r.json()).then(render).catch(() => {});",
+        f"// Static mode — data inlined, no server needed\n"
+        f"render({data_json});",
+    )
+    html = html.replace(
+        "fetch('/api/data?run=' + encodeURIComponent(dirname))\n"
+        "    .then(r => r.json())\n"
+        "    .then(render)\n"
+        "    .catch(() => {});",
+        "// Run switching disabled in static mode",
+    )
+
+    out = output_path or (run_dir / "dashboard.html")
+    out.write_text(html)
+    return out
+
+
 def start_dashboard(
     run_dir: Path,
     port: int = 8765,
