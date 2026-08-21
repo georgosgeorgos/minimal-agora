@@ -159,7 +159,7 @@ async def run_trajectory(
         trajectory.metadata["resume_from_step"] = resume_from
         trajectory.metadata["resume_timestamp"] = datetime.now(UTC).isoformat()
 
-    state_schema = infer_schema(scenario.initial_state)
+    state_schema = infer_schema(board.read_state())
     if state_schema:
         tlog.info("trajectory.schema_inferred", n_fields=len(state_schema))
 
