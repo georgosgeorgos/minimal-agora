@@ -99,6 +99,17 @@ def main() -> int:
         help="Generate comparison plots in the given directory",
     )
 
+    explore_parser = subparsers.add_parser("explore", help="Generate interactive Plotly report")
+    explore_parser.add_argument("run_dir", nargs="?", type=Path, default=None, help="Path to run output directory (default: latest in runs/)")
+    explore_parser.add_argument("--fields", nargs="+", default=None, help="State fields to visualize (default: auto-detect)")
+    explore_parser.add_argument("-o", "--output", type=Path, default=None, help="Output HTML path")
+    explore_parser.add_argument("--open", action="store_true", help="Open in browser after generating")
+
+    explore3d_parser = subparsers.add_parser("explore-3d", help="Generate 3D state-space explorer")
+    explore3d_parser.add_argument("run_dir", nargs="?", type=Path, default=None, help="Path to run output directory (default: latest in runs/)")
+    explore3d_parser.add_argument("-o", "--output", type=Path, default=None, help="Output HTML path")
+    explore3d_parser.add_argument("--open", action="store_true", help="Open in browser after generating")
+
     subparsers.add_parser("version", help="Show version info")
 
     args = parser.parse_args()
@@ -120,6 +131,10 @@ def main() -> int:
         return cmd_agents(args)
     elif args.command == "compare":
         return cmd_compare(args)
+    elif args.command == "explore":
+        return cmd_explore(args)
+    elif args.command == "explore-3d":
+        return cmd_explore_3d(args)
     elif args.command == "version":
         return cmd_version()
     else:
@@ -496,6 +511,38 @@ def cmd_compare(args) -> int:
         for p in paths:
             print(f"  Plot saved: {p}")
 
+    return 0
+
+
+def cmd_explore(args) -> int:
+    err = _resolve_run_dir(args)
+    if err:
+        return err
+    from minimal_agora.visualize_interactive import generate_interactive_report
+
+    out = generate_interactive_report(
+        args.run_dir,
+        fields=args.fields,
+        output_path=args.output,
+    )
+    print(f"Interactive report: {out}")
+    if args.open:
+        import webbrowser
+        webbrowser.open(f"file://{out.resolve()}")
+    return 0
+
+
+def cmd_explore_3d(args) -> int:
+    err = _resolve_run_dir(args)
+    if err:
+        return err
+    from minimal_agora.explorer_3d import generate_explorer
+
+    out = generate_explorer(args.run_dir, output_path=args.output)
+    print(f"3D explorer: {out}")
+    if args.open:
+        import webbrowser
+        webbrowser.open(f"file://{out.resolve()}")
     return 0
 
 

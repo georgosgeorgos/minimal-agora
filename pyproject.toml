@@ -22,6 +22,7 @@ litellm = [
 viz = [
     "matplotlib>=3.8",
     "manim>=0.18",
+    "plotly>=5.0",
 ]
 
 [dependency-groups]
@@ -37,6 +38,7 @@ dev = [
     # tests have the `anthropic` / `litellm` module attributes to patch.
     "anthropic>=0.40.0",
     "litellm>=1.40",
+    "plotly>=5.0",
     "types-pyyaml>=6.0.12.20260815",
 ]
 

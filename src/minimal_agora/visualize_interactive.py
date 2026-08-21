@@ -1,0 +1,404 @@
+"""Interactive Plotly visualizations for simulation results.
+
+Generates standalone HTML files with interactive charts for outcome
+distributions, state-space trajectories, field timelines, constraint
+evaluator scores, and token usage.
+"""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import structlog
+
+from minimal_agora.analysis import load_trajectories
+from minimal_agora.models import Trajectory
+
+logger = structlog.stdlib.get_logger(__name__)
+
+try:
+    import plotly.graph_objects as go  # type: ignore[import-not-found]
+    from plotly.subplots import make_subplots  # type: ignore[import-not-found]
+
+    _HAS_PLOTLY = True
+except ImportError:
+    _HAS_PLOTLY = False
+
+
+COLORS = [
+    "#636EFA", "#EF553B", "#00CC96", "#AB63FA", "#FFA15A",
+    "#19D3F3", "#FF6692", "#B6E880", "#FF97FF", "#FECB52",
+]
+
+
+def _require_plotly() -> None:
+    if not _HAS_PLOTLY:
+        raise RuntimeError(
+            "plotly not installed — install with: pip install 'minimal-agora[viz]'"
+        )
+
+
+def _flatten_state(state: dict, prefix: str = "") -> dict[str, float]:
+    flat: dict[str, float] = {}
+    for k, v in state.items():
+        key = f"{prefix}.{k}" if prefix else k
+        if isinstance(v, dict):
+            flat.update(_flatten_state(v, key))
+        elif isinstance(v, (int, float)) and not isinstance(v, bool):
+            flat[key] = float(v)
+    return flat
+
+
+def _discover_numeric_fields(trajectories: list[Trajectory]) -> list[str]:
+    fields: set[str] = set()
+    for t in trajectories:
+        for step in t.steps[:5]:
+            fields.update(_flatten_state(step.state_after).keys())
+    return sorted(fields)
+
+
+def _outcome_color_map(trajectories: list[Trajectory]) -> dict[str, str]:
+    outcomes = sorted({t.outcome.classification for t in trajectories if t.outcome})
+    return {o: COLORS[i % len(COLORS)] for i, o in enumerate(outcomes)}
+
+
+def plot_outcome_distribution(trajectories: list[Trajectory]) -> go.Figure:
+    _require_plotly()
+    from collections import Counter
+
+    counts = Counter(
+        t.outcome.classification if t.outcome else "unclassified"
+        for t in trajectories
+    )
+    names = sorted(counts.keys())
+    values = [counts[n] for n in names]
+    total = sum(values)
+    rates = [v / total if total else 0 for v in values]
+
+    fig = go.Figure()
+    fig.add_trace(go.Bar(
+        x=names, y=rates,
+        text=[f"{v}/{total}" for v in values],
+        textposition="auto",
+        marker_color=[COLORS[i % len(COLORS)] for i in range(len(names))],
+        hovertemplate="%{x}: %{text} (%{y:.1%})<extra></extra>",
+    ))
+    fig.update_layout(
+        title="Outcome Distribution",
+        xaxis_title="Outcome",
+        yaxis_title="Rate",
+        yaxis_tickformat=".0%",
+        template="plotly_dark",
+        height=400,
+    )
+    return fig
+
+
+def plot_state_trajectories_3d(
+    trajectories: list[Trajectory],
+    x_field: str,
+    y_field: str,
+    z_field: str,
+) -> go.Figure:
+    _require_plotly()
+    color_map = _outcome_color_map(trajectories)
+
+    fig = go.Figure()
+    for i, t in enumerate(trajectories):
+        outcome = t.outcome.classification if t.outcome else "unclassified"
+        xs, ys, zs, hovers = [], [], [], []
+        for step in t.steps:
+            flat = _flatten_state(step.state_after)
+            x_val = flat.get(x_field)
+            y_val = flat.get(y_field)
+            z_val = flat.get(z_field)
+            if x_val is not None and y_val is not None and z_val is not None:
+                xs.append(x_val)
+                ys.append(y_val)
+                zs.append(z_val)
+                hovers.append(f"Step {step.step_number}<br>{outcome}")
+
+        color = color_map.get(outcome, COLORS[i % len(COLORS)])
+        fig.add_trace(go.Scatter3d(
+            x=xs, y=ys, z=zs,
+            mode="lines+markers",
+            marker={"size": 2, "color": color},
+            line={"color": color, "width": 2},
+            name=f"T{i} ({outcome})",
+            hovertext=hovers,
+            hoverinfo="text",
+        ))
+
+    fig.update_layout(
+        title="State-Space Trajectories",
+        scene={
+            "xaxis_title": x_field,
+            "yaxis_title": y_field,
+            "zaxis_title": z_field,
+        },
+        template="plotly_dark",
+        height=600,
+    )
+    return fig
+
+
+def plot_field_timelines(
+    trajectories: list[Trajectory],
+    fields: list[str],
+) -> go.Figure:
+    _require_plotly()
+    n_fields = len(fields)
+    fig = make_subplots(
+        rows=n_fields, cols=1,
+        shared_xaxes=True,
+        subplot_titles=fields,
+        vertical_spacing=0.05,
+    )
+    color_map = _outcome_color_map(trajectories)
+
+    for i, t in enumerate(trajectories):
+        outcome = t.outcome.classification if t.outcome else "unclassified"
+        color = color_map.get(outcome, COLORS[i % len(COLORS)])
+        for row, field in enumerate(fields, 1):
+            steps_x, vals_y = [], []
+            for step in t.steps:
+                flat = _flatten_state(step.state_after)
+                val = flat.get(field)
+                if val is not None:
+                    steps_x.append(step.step_number)
+                    vals_y.append(val)
+
+            fig.add_trace(
+                go.Scatter(
+                    x=steps_x, y=vals_y,
+                    mode="lines",
+                    line={"color": color, "width": 1},
+                    name=f"T{i}" if row == 1 else None,
+                    legendgroup=f"T{i}",
+                    showlegend=(row == 1),
+                    hovertemplate=f"T{i} step %{{x}}: %{{y:.3f}}<extra>{field}</extra>",
+                ),
+                row=row, col=1,
+            )
+
+    fig.update_layout(
+        title="State Field Timelines",
+        height=200 * n_fields + 100,
+        template="plotly_dark",
+        xaxis_title="Step",
+    )
+    return fig
+
+
+def plot_constraint_scores(trajectories: list[Trajectory]) -> go.Figure | None:
+    _require_plotly()
+    categories = ["physical", "consistency", "pacing", "rules"]
+    has_data = False
+
+    fig = make_subplots(
+        rows=1, cols=1,
+    )
+
+    for i, t in enumerate(trajectories):
+        cat_steps: dict[str, list[int]] = {c: [] for c in categories}
+        cat_vals: dict[str, list[float]] = {c: [] for c in categories}
+
+        for step in t.steps:
+            for crit in step.critiques:
+                if crit.scores:
+                    has_data = True
+                    for cat in categories:
+                        if cat in crit.scores:
+                            cat_steps[cat].append(step.step_number)
+                            cat_vals[cat].append(crit.scores[cat])
+
+        for j, cat in enumerate(categories):
+            if cat_steps[cat]:
+                fig.add_trace(go.Scatter(
+                    x=cat_steps[cat], y=cat_vals[cat],
+                    mode="lines+markers",
+                    marker={"size": 4},
+                    name=f"{cat} (T{i})" if len(trajectories) > 1 else cat,
+                    line={"color": COLORS[j % len(COLORS)]},
+                    hovertemplate=f"{cat}: %{{y:.2f}} (step %{{x}})<extra>T{i}</extra>",
+                ))
+
+    if not has_data:
+        return None
+
+    fig.update_layout(
+        title="Constraint Evaluator Scores Over Time",
+        xaxis_title="Step",
+        yaxis_title="Score",
+        yaxis_range=[0, 1.05],
+        template="plotly_dark",
+        height=400,
+    )
+    return fig
+
+
+def plot_token_usage(trajectories: list[Trajectory]) -> go.Figure:
+    _require_plotly()
+    fig = go.Figure()
+
+    for i, t in enumerate(trajectories):
+        steps_x, input_y, output_y = [], [], []
+        for step in t.steps:
+            if step.token_usage:
+                steps_x.append(step.step_number)
+                input_y.append(step.token_usage.total_input_tokens or 0)
+                output_y.append(step.token_usage.total_output_tokens or 0)
+
+        fig.add_trace(go.Bar(
+            x=steps_x, y=input_y,
+            name=f"Input (T{i})",
+            marker_color=COLORS[0],
+            opacity=0.7,
+            hovertemplate="Step %{x}: %{y:,} input tokens<extra></extra>",
+        ))
+        fig.add_trace(go.Bar(
+            x=steps_x, y=output_y,
+            name=f"Output (T{i})",
+            marker_color=COLORS[1],
+            opacity=0.7,
+            hovertemplate="Step %{x}: %{y:,} output tokens<extra></extra>",
+        ))
+
+    fig.update_layout(
+        title="Token Usage Per Step",
+        xaxis_title="Step",
+        yaxis_title="Tokens",
+        barmode="stack",
+        template="plotly_dark",
+        height=400,
+    )
+    return fig
+
+
+def plot_proposal_conflicts(trajectories: list[Trajectory]) -> go.Figure:
+    _require_plotly()
+    fig = go.Figure()
+
+    for i, t in enumerate(trajectories):
+        review_steps, auto_steps, conflict_steps = [], [], []
+        for step in t.steps:
+            s = step.step_number
+            if step.critiques:
+                review_steps.append(s)
+            elif step.resolution is not None:
+                conflict_steps.append(s)
+            else:
+                auto_steps.append(s)
+
+        fig.add_trace(go.Scatter(
+            x=auto_steps,
+            y=[i] * len(auto_steps),
+            mode="markers",
+            marker={"size": 6, "color": "#00CC96", "symbol": "circle"},
+            name="Auto-merge" if i == 0 else None,
+            legendgroup="auto",
+            showlegend=(i == 0),
+            hovertemplate="Step %{x}: auto-merge<extra></extra>",
+        ))
+        fig.add_trace(go.Scatter(
+            x=conflict_steps,
+            y=[i] * len(conflict_steps),
+            mode="markers",
+            marker={"size": 8, "color": "#FFA15A", "symbol": "diamond"},
+            name="Conflict → resolver" if i == 0 else None,
+            legendgroup="conflict",
+            showlegend=(i == 0),
+            hovertemplate="Step %{x}: conflict resolution<extra></extra>",
+        ))
+        fig.add_trace(go.Scatter(
+            x=review_steps,
+            y=[i] * len(review_steps),
+            mode="markers",
+            marker={"size": 8, "color": "#EF553B", "symbol": "star"},
+            name="Full review" if i == 0 else None,
+            legendgroup="review",
+            showlegend=(i == 0),
+            hovertemplate="Step %{x}: full review<extra></extra>",
+        ))
+
+    fig.update_layout(
+        title="Resolution Path Per Step",
+        xaxis_title="Step",
+        yaxis_title="Trajectory",
+        template="plotly_dark",
+        height=max(300, 80 * len(trajectories) + 100),
+    )
+    return fig
+
+
+def generate_interactive_report(
+    run_dir: Path,
+    fields: list[str] | None = None,
+    output_path: Path | None = None,
+) -> Path:
+    _require_plotly()
+    trajectories = load_trajectories(run_dir)
+    if not trajectories:
+        raise ValueError(f"No trajectories found in {run_dir}")
+
+    if fields is None:
+        fields = _discover_numeric_fields(trajectories)[:6]
+
+    report_json = None
+    report_path = run_dir / "report.json"
+    if report_path.exists():
+        report_json = json.loads(report_path.read_text())
+
+    figs: list[go.Figure] = []
+
+    figs.append(plot_outcome_distribution(trajectories))
+
+    if len(fields) >= 3:
+        figs.append(plot_state_trajectories_3d(
+            trajectories, fields[0], fields[1], fields[2],
+        ))
+
+    if fields:
+        figs.append(plot_field_timelines(trajectories, fields))
+
+    figs.append(plot_proposal_conflicts(trajectories))
+
+    scores_fig = plot_constraint_scores(trajectories)
+    if scores_fig:
+        figs.append(scores_fig)
+
+    figs.append(plot_token_usage(trajectories))
+
+    scenario_name = report_json.get("scenario_name", "unknown") if report_json else "unknown"
+    question = report_json.get("question", "") if report_json else ""
+
+    html_parts = [
+        "<!DOCTYPE html>",
+        "<html><head>",
+        f"<title>{scenario_name} — Interactive Report</title>",
+        '<meta charset="utf-8">',
+        '<script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>',
+        "<style>",
+        "body { background: #111; color: #eee; font-family: system-ui; margin: 0; padding: 20px; }",
+        "h1 { margin-bottom: 5px; }",
+        ".subtitle { color: #888; margin-bottom: 30px; }",
+        ".chart { margin-bottom: 30px; }",
+        "</style>",
+        "</head><body>",
+        f"<h1>{scenario_name}</h1>",
+        f'<p class="subtitle">{question}</p>',
+    ]
+
+    for i, fig in enumerate(figs):
+        div_id = f"chart-{i}"
+        html_parts.append(f'<div id="{div_id}" class="chart"></div>')
+        fig_json = fig.to_json()
+        html_parts.append(f"<script>Plotly.newPlot('{div_id}', {fig_json});</script>")
+
+    html_parts.append("</body></html>")
+
+    out = output_path or (run_dir / "report_interactive.html")
+    out.write_text("\n".join(html_parts))
+    logger.info("interactive_report.written", path=str(out), n_charts=len(figs))
+    return out
