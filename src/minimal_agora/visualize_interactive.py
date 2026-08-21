@@ -31,8 +31,8 @@ except ImportError:
 
 
 COLORS = [
-    "#636EFA", "#EF553B", "#00CC96", "#AB63FA", "#FFA15A",
-    "#19D3F3", "#FF6692", "#B6E880", "#FF97FF", "#FECB52",
+    "#00FF88", "#FF6B35", "#00D4FF", "#FF3CAC", "#FFD700",
+    "#7BFF00", "#FF4466", "#00FFCC", "#C77DFF", "#FF9F1C",
 ]
 
 
@@ -299,7 +299,7 @@ def plot_proposal_conflicts(trajectories: list[Trajectory]) -> go.Figure:
             x=auto_steps,
             y=[i] * len(auto_steps),
             mode="markers",
-            marker={"size": 6, "color": "#00CC96", "symbol": "circle"},
+            marker={"size": 6, "color": "#00FF88", "symbol": "circle"},
             name="Auto-merge" if i == 0 else None,
             legendgroup="auto",
             showlegend=(i == 0),
@@ -309,7 +309,7 @@ def plot_proposal_conflicts(trajectories: list[Trajectory]) -> go.Figure:
             x=conflict_steps,
             y=[i] * len(conflict_steps),
             mode="markers",
-            marker={"size": 8, "color": "#FFA15A", "symbol": "diamond"},
+            marker={"size": 8, "color": "#FFD700", "symbol": "diamond"},
             name="Conflict → resolver" if i == 0 else None,
             legendgroup="conflict",
             showlegend=(i == 0),
@@ -319,7 +319,7 @@ def plot_proposal_conflicts(trajectories: list[Trajectory]) -> go.Figure:
             x=review_steps,
             y=[i] * len(review_steps),
             mode="markers",
-            marker={"size": 8, "color": "#EF553B", "symbol": "star"},
+            marker={"size": 8, "color": "#FF3CAC", "symbol": "star"},
             name="Full review" if i == 0 else None,
             legendgroup="review",
             showlegend=(i == 0),
