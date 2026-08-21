@@ -22,3 +22,4 @@ htmlcov/
 !.env.example
 skills/
 media/
+_tmp/
