@@ -55,7 +55,7 @@ async def invoke_agent(
         provider_type=type(active).__name__,
     )
 
-    result = await active.invoke(prompt, workspace, timeout)
+    result = await active.invoke(prompt, workspace, timeout, model=agent.model)
 
     logger.debug(
         "provider.invoke.done",
@@ -159,8 +159,9 @@ DIVERSITY_LENSES = [
 ]
 
 
-def _diversity_prefix(trajectory_id: int) -> str:
-    lens = DIVERSITY_LENSES[trajectory_id % len(DIVERSITY_LENSES)]
+def _diversity_prefix(trajectory_id: int, custom_lenses: list[str] | None = None) -> str:
+    lenses = custom_lenses if custom_lenses else DIVERSITY_LENSES
+    lens = lenses[trajectory_id % len(lenses)]
     return f"**Exploration lens (trajectory {trajectory_id})**: {lens}"
 
 
@@ -225,6 +226,7 @@ def build_actor_prompt(
     state: dict | None = None,
     narrative: str | None = None,
     wildcard: dict | None = None,
+    diversity_lenses: list[str] | None = None,
 ) -> str:
     logger.debug(
         "prompt.build_actor",
@@ -236,7 +238,7 @@ def build_actor_prompt(
     )
     rules_block = _format_rules(rules or [], agent.name, agent.role.value)
     interaction_block = f"\n{interaction_context}\n" if interaction_context else ""
-    diversity_block = f"\n{_diversity_prefix(trajectory_id)}\n" if trajectory_id is not None else ""
+    diversity_block = f"\n{_diversity_prefix(trajectory_id, diversity_lenses or None)}\n" if trajectory_id is not None else ""
     wildcard_block = _format_wildcard(wildcard)
 
     if state is not None:

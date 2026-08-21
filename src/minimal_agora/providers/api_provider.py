@@ -67,20 +67,22 @@ class AnthropicAPIProvider:
         prompt: str,
         workspace: Path,
         timeout: int = 300,
+        model: str | None = None,
     ) -> AgentInvocationResult:
+        effective_model = model or self.model
         client = self._get_client()
 
         logger.debug(
             "provider.invoke",
             provider="anthropic-api",
-            model=self.model,
+            model=effective_model,
             workspace=str(workspace),
         )
 
         t0 = time.monotonic()
 
         response = await client.messages.create(
-            model=self.model,
+            model=effective_model,
             max_tokens=self.max_tokens,
             temperature=self.temperature,
             messages=[{"role": "user", "content": prompt}],

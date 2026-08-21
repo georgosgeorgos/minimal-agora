@@ -44,16 +44,19 @@ class LiteLLMProvider:
         prompt: str,
         workspace: Path,
         timeout: int = 300,
+        model: str | None = None,
     ) -> AgentInvocationResult:
         if not _HAS_LITELLM:
             raise RuntimeError(
                 "litellm package not installed — install with: pip install 'minimal-agora[litellm]'"
             )
 
+        effective_model = model or self.model
+
         logger.debug(
             "provider.invoke",
             provider="litellm",
-            model=self.model,
+            model=effective_model,
             api_base=self.api_base,
             workspace=str(workspace),
         )
@@ -61,7 +64,7 @@ class LiteLLMProvider:
         t0 = time.monotonic()
 
         kwargs: dict = {
-            "model": self.model,
+            "model": effective_model,
             "messages": [{"role": "user", "content": prompt}],
             "max_tokens": self.max_tokens,
             "temperature": self.temperature,
@@ -83,7 +86,7 @@ class LiteLLMProvider:
         logger.debug(
             "provider.invoke.done",
             provider="litellm",
-            model=getattr(response, "model", self.model),
+            model=getattr(response, "model", effective_model),
             tokens_used=tokens_used,
             elapsed_s=round(elapsed, 2),
         )
@@ -93,7 +96,7 @@ class LiteLLMProvider:
         return AgentInvocationResult(
             output=output,
             tokens_used=tokens_used,
-            model=getattr(response, "model", self.model),
+            model=getattr(response, "model", effective_model),
             input_tokens=input_tokens,
             output_tokens=output_tokens,
         )

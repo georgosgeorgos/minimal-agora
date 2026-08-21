@@ -22,6 +22,7 @@ class MockProvider:
         prompt: str,
         workspace: Path,
         timeout: int = 300,
+        model: str | None = None,
     ) -> AgentInvocationResult:
         self.call_count += 1
         self.last_prompt = prompt
@@ -43,5 +44,5 @@ class MockProvider:
         return AgentInvocationResult(
             output=response,
             tokens_used=100,
-            model="mock-model",
+            model=model or "mock-model",
         )

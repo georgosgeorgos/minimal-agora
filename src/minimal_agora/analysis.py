@@ -391,6 +391,119 @@ def compare_runs(
     )
 
 
+def compute_agent_calibration(trajectories: list[Trajectory]) -> dict[str, dict]:
+    """Compute per-agent proposal acceptance rates and quality metrics.
+
+    For each actor agent, returns:
+      - proposals_made: total proposals
+      - proposals_accepted: proposals where at least one proposed field
+        appears in the resolution state_delta with a matching value
+      - acceptance_rate: accepted / made
+      - mean_confidence: average of the agent's confidence scores
+      - confidence_calibration: |mean_confidence - acceptance_rate|
+      - fields_proposed: set of state fields this agent typically proposes
+      - mean_plausibility: average plausibility from critiques targeting this agent
+    """
+    logger.info("analysis.compute_agent_calibration", n_trajectories=len(trajectories))
+
+    agent_data: dict[str, dict[str, Any]] = {}
+
+    for t in trajectories:
+        for step in t.steps:
+            resolution_flat = _flatten_dict(step.resolution.state_delta) if step.resolution else {}
+
+            for proposal in step.proposals:
+                name = proposal.agent
+                if name not in agent_data:
+                    agent_data[name] = {
+                        "proposals_made": 0,
+                        "proposals_accepted": 0,
+                        "confidences": [],
+                        "fields_proposed": set(),
+                        "plausibilities": [],
+                    }
+
+                entry = agent_data[name]
+                entry["proposals_made"] += 1
+                entry["confidences"].append(proposal.confidence)
+
+                proposal_flat = _flatten_dict(proposal.proposed_changes)
+                entry["fields_proposed"].update(proposal_flat.keys())
+
+                if resolution_flat and proposal_flat:
+                    accepted = False
+                    for key, proposed_val in proposal_flat.items():
+                        if key in resolution_flat:
+                            resolved_val = resolution_flat[key]
+                            if _values_match(proposed_val, resolved_val):
+                                accepted = True
+                                break
+                    if accepted:
+                        entry["proposals_accepted"] += 1
+
+            # Collect plausibility scores from critiques targeting each agent
+            for critique in step.critiques:
+                for target_name in critique.target_proposals:
+                    if target_name in agent_data:
+                        agent_data[target_name]["plausibilities"].append(critique.plausibility)
+
+    # Build final result
+    result: dict[str, dict] = {}
+    for name, data in agent_data.items():
+        made = data["proposals_made"]
+        accepted = data["proposals_accepted"]
+        acceptance_rate = accepted / made if made > 0 else 0.0
+
+        confidences = data["confidences"]
+        mean_confidence = sum(confidences) / len(confidences) if confidences else 0.0
+
+        plausibilities = data["plausibilities"]
+        mean_plausibility = (
+            sum(plausibilities) / len(plausibilities) if plausibilities else None
+        )
+
+        result[name] = {
+            "proposals_made": made,
+            "proposals_accepted": accepted,
+            "acceptance_rate": acceptance_rate,
+            "mean_confidence": mean_confidence,
+            "confidence_calibration": abs(mean_confidence - acceptance_rate),
+            "fields_proposed": sorted(data["fields_proposed"]),
+            "mean_plausibility": mean_plausibility,
+        }
+
+    logger.info("analysis.compute_agent_calibration.done", n_agents=len(result))
+    return result
+
+
+def _flatten_dict(d: dict, prefix: str = "") -> dict[str, Any]:
+    """Flatten a nested dict into dot-separated key paths."""
+    flat: dict[str, Any] = {}
+    for k, v in d.items():
+        key = f"{prefix}.{k}" if prefix else k
+        if isinstance(v, dict):
+            flat.update(_flatten_dict(v, key))
+        else:
+            flat[key] = v
+    return flat
+
+
+def _values_match(proposed: Any, resolved: Any) -> bool:
+    """Check if two values match. For floats, allows 10% tolerance."""
+    if isinstance(proposed, float) and isinstance(resolved, (int, float)):
+        resolved_f = float(resolved)
+        if resolved_f == 0.0 and proposed == 0.0:
+            return True
+        if resolved_f == 0.0:
+            return abs(proposed) < 1e-9
+        return abs(proposed - resolved_f) / abs(resolved_f) <= 0.10
+    if isinstance(proposed, (int, float)) and isinstance(resolved, (int, float)):
+        if isinstance(proposed, int) and isinstance(resolved, int):
+            return proposed == resolved
+        return _values_match(float(proposed), resolved)
+    return proposed == resolved
+
+
 def _get_nested(d: dict, path: str):
     keys = path.split(".")
     current = d

@@ -376,6 +376,9 @@ async def _run_flat_step(
         "narrative": narrative_text,
         "wildcard": wildcard_dict,
     }
+    actor_extra: dict = {}
+    if scenario.diversity_lenses:
+        actor_extra["diversity_lenses"] = scenario.diversity_lenses
 
     logger.debug("flat_step.propose_start", step=step_num, n_actors=len(actors))
     t0 = time.monotonic()
@@ -384,7 +387,7 @@ async def _run_flat_step(
     actor_results: dict[str, AgentInvocationResult | None] = {}
 
     async def _run_actor(a):
-        prompt = build_prompt(a, step_num, rules, trajectory_id=trajectory_id, **embed_kwargs)
+        prompt = build_prompt(a, step_num, rules, trajectory_id=trajectory_id, **embed_kwargs, **actor_extra)
         result = await _invoke_and_collect(
             a, board.workspace, step_num, prompt, timeout, agent_semaphore, max_concurrent,
         )
@@ -418,6 +421,19 @@ async def _run_flat_step(
         or (step_num % scenario.review_interval == 0)
         or (step_num == max_steps - 1)
     )
+
+    # Adaptive review: override if state change exceeds threshold
+    if scenario.review_threshold is not None and not is_review_step:
+        magnitude = board.get_state_delta_magnitude(state_before)
+        if magnitude is not None and magnitude > scenario.review_threshold:
+            logger.info(
+                "step.adaptive_review_triggered",
+                step=step_num,
+                magnitude=round(magnitude, 4),
+                threshold=scenario.review_threshold,
+            )
+            is_review_step = True
+
     conflicts = detect_conflicts(proposals)
 
     critiques = []
@@ -504,6 +520,7 @@ async def _run_flat_step(
 
         board.save_resolution(resolution, step_num)
         state_after = board.apply_resolution(resolution, step_num)
+        board.set_last_review_state(state_after)
 
     elif conflicts:
         # PATH B: Conflicts detected — resolver only (no constraint evaluator)
@@ -626,6 +643,9 @@ async def _run_entity_step(
         "narrative": narrative_text,
         "wildcard": wildcard_dict,
     }
+    actor_extra: dict = {}
+    if scenario.diversity_lenses:
+        actor_extra["diversity_lenses"] = scenario.diversity_lenses
 
     # Phase 1: Forces propose world-level changes
     force_agents = [a for e in force_entities for a in e.agents]
@@ -635,7 +655,7 @@ async def _run_entity_step(
         force_results: dict[str, AgentInvocationResult | None] = {}
 
         async def _run_force(a):
-            prompt = build_prompt(a, step_num, rules, trajectory_id=trajectory_id, **embed_kwargs)
+            prompt = build_prompt(a, step_num, rules, trajectory_id=trajectory_id, **embed_kwargs, **actor_extra)
             result = await _invoke_and_collect(
                 a, board.workspace, step_num, prompt, timeout, agent_semaphore, max_concurrent,
             )
@@ -686,7 +706,7 @@ async def _run_entity_step(
         async def _run_pop(a):
             prompt = build_prompt(
                 a, step_num, rules, entity_interaction.get(a.name, ""),
-                trajectory_id=trajectory_id, **embed_kwargs,
+                trajectory_id=trajectory_id, **embed_kwargs, **actor_extra,
             )
             result = await _invoke_and_collect(
                 a, board.workspace, step_num, prompt, timeout, agent_semaphore, max_concurrent,
@@ -726,6 +746,18 @@ async def _run_entity_step(
         or (step_num % scenario.review_interval == 0)
         or (step_num == max_steps - 1)
     )
+
+    # Adaptive review: override if state change exceeds threshold
+    if scenario.review_threshold is not None and not is_review_step:
+        magnitude = board.get_state_delta_magnitude(state_before)
+        if magnitude is not None and magnitude > scenario.review_threshold:
+            logger.info(
+                "step.adaptive_review_triggered",
+                step=step_num,
+                magnitude=round(magnitude, 4),
+                threshold=scenario.review_threshold,
+            )
+            is_review_step = True
 
     resolution = None
 
@@ -810,6 +842,7 @@ async def _run_entity_step(
 
         board.save_resolution(resolution, step_num)
         state_after = board.apply_resolution(resolution, step_num)
+        board.set_last_review_state(state_after)
 
     elif conflicts:
         # PATH B: Conflicts detected — resolver only

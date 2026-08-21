@@ -12,7 +12,7 @@ from pathlib import Path
 
 import structlog
 
-from minimal_agora.analysis import load_trajectories
+from minimal_agora.analysis import compute_agent_calibration, load_trajectories
 from minimal_agora.models import Trajectory
 
 logger = structlog.stdlib.get_logger(__name__)
@@ -332,6 +332,93 @@ def plot_proposal_conflicts(trajectories: list[Trajectory]) -> go.Figure:
     return fig
 
 
+def plot_agent_calibration(trajectories: list[Trajectory]) -> go.Figure | None:
+    """Create agent calibration charts: grouped bars and calibration scatter.
+
+    Returns a figure with two subplots:
+      1. Grouped bar chart: acceptance_rate vs mean_confidence per agent
+      2. Scatter: confidence vs acceptance_rate (diagonal = perfect calibration)
+    """
+    _require_plotly()
+    calibration = compute_agent_calibration(trajectories)
+    if not calibration:
+        return None
+
+    agents = sorted(calibration.keys())
+    acceptance_rates = [calibration[a]["acceptance_rate"] for a in agents]
+    mean_confidences = [calibration[a]["mean_confidence"] for a in agents]
+
+    fig = make_subplots(
+        rows=1, cols=2,
+        subplot_titles=["Acceptance Rate vs Confidence", "Calibration Plot"],
+        horizontal_spacing=0.12,
+    )
+
+    # Grouped bar chart
+    fig.add_trace(
+        go.Bar(
+            x=agents,
+            y=acceptance_rates,
+            name="Acceptance Rate",
+            marker_color=COLORS[2],
+            hovertemplate="%{x}: %{y:.1%}<extra>Acceptance Rate</extra>",
+        ),
+        row=1, col=1,
+    )
+    fig.add_trace(
+        go.Bar(
+            x=agents,
+            y=mean_confidences,
+            name="Mean Confidence",
+            marker_color=COLORS[0],
+            hovertemplate="%{x}: %{y:.2f}<extra>Mean Confidence</extra>",
+        ),
+        row=1, col=1,
+    )
+
+    # Calibration scatter
+    fig.add_trace(
+        go.Scatter(
+            x=[0, 1], y=[0, 1],
+            mode="lines",
+            line={"color": "rgba(255,255,255,0.3)", "dash": "dash"},
+            name="Perfect Calibration",
+            hoverinfo="skip",
+        ),
+        row=1, col=2,
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=mean_confidences,
+            y=acceptance_rates,
+            mode="markers+text",
+            marker={"size": 12, "color": COLORS[3]},
+            text=agents,
+            textposition="top center",
+            textfont={"size": 10},
+            name="Agents",
+            hovertemplate=(
+                "%{text}<br>Confidence: %{x:.2f}<br>Acceptance: %{y:.1%}"
+                "<extra></extra>"
+            ),
+        ),
+        row=1, col=2,
+    )
+
+    fig.update_xaxes(title_text="Agent", row=1, col=1)
+    fig.update_yaxes(title_text="Rate", tickformat=".0%", row=1, col=1)
+    fig.update_xaxes(title_text="Mean Confidence", range=[0, 1.05], row=1, col=2)
+    fig.update_yaxes(title_text="Acceptance Rate", range=[0, 1.05], tickformat=".0%", row=1, col=2)
+
+    fig.update_layout(
+        title="Agent Calibration",
+        barmode="group",
+        template="plotly_dark",
+        height=450,
+    )
+    return fig
+
+
 def generate_interactive_report(
     run_dir: Path,
     fields: list[str] | None = None,
@@ -369,6 +456,10 @@ def generate_interactive_report(
         figs.append(scores_fig)
 
     figs.append(plot_token_usage(trajectories))
+
+    cal_fig = plot_agent_calibration(trajectories)
+    if cal_fig:
+        figs.append(cal_fig)
 
     scenario_name = report_json.get("scenario_name", "unknown") if report_json else "unknown"
     question = report_json.get("question", "") if report_json else ""

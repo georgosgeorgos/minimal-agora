@@ -200,6 +200,8 @@ class Scenario(BaseModel):
     description: str = ""
     max_concurrent_agents: int = Field(default=8, ge=1)
     review_interval: int = Field(default=1, ge=1)
+    review_threshold: float | None = None
+    diversity_lenses: list[str] = Field(default_factory=list)
     resampling: ResamplingConfig | None = None
 
 

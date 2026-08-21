@@ -51,6 +51,7 @@ class Board:
         self.workspace = workspace
         self.board_dir = workspace / "board"
         self._step = 0
+        self._last_review_state: dict | None = None
 
     @property
     def state_path(self) -> Path:
@@ -154,6 +155,55 @@ class Board:
 
     def list_history(self) -> list[Path]:
         return sorted((self.workspace / "history").glob("step_*_state.json"))
+
+    def set_last_review_state(self, state: dict) -> None:
+        """Store a copy of the state at the last review step."""
+        from copy import deepcopy
+
+        self._last_review_state = deepcopy(state)
+
+    def get_state_delta_magnitude(self, current_state: dict) -> float | None:
+        """Compute magnitude of state change since last review.
+
+        Returns None if no previous review state has been recorded.
+        """
+        if self._last_review_state is None:
+            return None
+        return compute_state_delta_magnitude(self._last_review_state, current_state)
+
+
+def _flatten_state(state: dict, prefix: str = "") -> dict[str, float]:
+    """Recursively flatten nested dicts, keeping only numeric values."""
+    flat: dict[str, float] = {}
+    for k, v in state.items():
+        key = f"{prefix}.{k}" if prefix else k
+        if isinstance(v, dict):
+            flat.update(_flatten_state(v, key))
+        elif isinstance(v, (int, float)) and not isinstance(v, bool):
+            flat[key] = float(v)
+    return flat
+
+
+def compute_state_delta_magnitude(state_before: dict, state_after: dict) -> float:
+    """Compute mean relative change across shared numeric fields.
+
+    For each shared numeric field, computes abs(after - before) / max(abs(before), 1.0).
+    Returns the mean of these relative changes, or 0.0 if no shared numeric fields exist.
+    """
+    flat_before = _flatten_state(state_before)
+    flat_after = _flatten_state(state_after)
+
+    shared_keys = set(flat_before.keys()) & set(flat_after.keys())
+    if not shared_keys:
+        return 0.0
+
+    total = 0.0
+    for key in shared_keys:
+        before_val = flat_before[key]
+        after_val = flat_after[key]
+        total += abs(after_val - before_val) / max(abs(before_val), 1.0)
+
+    return total / len(shared_keys)
 
 
 def _expand_dotted_keys(d: dict) -> dict:

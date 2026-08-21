@@ -41,8 +41,11 @@ class ClaudeSubprocessProvider:
         prompt: str,
         workspace: Path,
         timeout: int = 300,
+        model: str | None = None,
     ) -> AgentInvocationResult:
         cmd = self.build_command(prompt, workspace)
+        if model:
+            cmd.extend(["--model", model])
 
         logger.debug("provider.invoke", provider="claude-subprocess", workspace=str(workspace))
 
@@ -80,7 +83,7 @@ class ClaudeSubprocessProvider:
         return AgentInvocationResult(
             output=output,
             tokens_used=estimated_input + estimated_output,
-            model="claude-via-cli",
+            model=model or "claude-via-cli",
             input_tokens=estimated_input,
             output_tokens=estimated_output,
         )

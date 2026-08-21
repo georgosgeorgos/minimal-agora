@@ -8,6 +8,7 @@ from pathlib import Path
 from minimal_agora.analysis import (
     aggregate_outcomes,
     compare_runs,
+    compute_agent_calibration,
     detect_convergence,
     format_report,
     load_trajectories,
@@ -99,6 +100,13 @@ def main() -> int:
         help="Generate comparison plots in the given directory",
     )
 
+    cal_parser = subparsers.add_parser("calibration", help="Show per-agent calibration metrics")
+    cal_parser.add_argument("run_dir", nargs="?", type=Path, default=None, help="Path to run output directory (default: latest in runs/)")
+    cal_parser.add_argument(
+        "--format", dest="output_format", choices=["text", "json"], default="text",
+        help="Output format",
+    )
+
     explore_parser = subparsers.add_parser("explore", help="Generate interactive Plotly report")
     explore_parser.add_argument("run_dir", nargs="?", type=Path, default=None, help="Path to run output directory (default: latest in runs/)")
     explore_parser.add_argument("--fields", nargs="+", default=None, help="State fields to visualize (default: auto-detect)")
@@ -131,6 +139,8 @@ def main() -> int:
         return cmd_agents(args)
     elif args.command == "compare":
         return cmd_compare(args)
+    elif args.command == "calibration":
+        return cmd_calibration(args)
     elif args.command == "explore":
         return cmd_explore(args)
     elif args.command == "explore-3d":
@@ -511,6 +521,55 @@ def cmd_compare(args) -> int:
         for p in paths:
             print(f"  Plot saved: {p}")
 
+    return 0
+
+
+def cmd_calibration(args) -> int:
+    err = _resolve_run_dir(args)
+    if err is not None:
+        return err
+    trajectories = load_trajectories(args.run_dir)
+    if not trajectories:
+        print(f"No trajectories found in {args.run_dir}")
+        return 1
+
+    calibration = compute_agent_calibration(trajectories)
+
+    if not calibration:
+        print("No agent proposals found in this run.")
+        return 0
+
+    if args.output_format == "json":
+        import json
+
+        print(json.dumps(calibration, indent=2))
+    else:
+        # Column headers
+        header = (
+            f"{'Agent':<25} {'Made':>5} {'Accepted':>8} {'Acc%':>6} "
+            f"{'Conf':>6} {'Cal':>6} {'Plaus':>6}"
+        )
+        print(f"=== Agent Calibration: {args.run_dir.name} ===\n")
+        print(header)
+        print("-" * len(header))
+        for name, metrics in sorted(calibration.items()):
+            plaus = (
+                f"{metrics['mean_plausibility']:.2f}"
+                if metrics["mean_plausibility"] is not None
+                else "  n/a"
+            )
+            print(
+                f"{name:<25} {metrics['proposals_made']:>5} "
+                f"{metrics['proposals_accepted']:>8} "
+                f"{metrics['acceptance_rate']:>5.0%} "
+                f"{metrics['mean_confidence']:>6.2f} "
+                f"{metrics['confidence_calibration']:>6.2f} "
+                f"{plaus:>6}"
+            )
+        print()
+        print("Cal = |confidence - acceptance_rate| (lower is better)")
+        if any(m["mean_plausibility"] is not None for m in calibration.values()):
+            print("Plaus = mean plausibility score from constraint evaluator critiques")
     return 0
 
 

@@ -25,4 +25,5 @@ class AgentProvider(Protocol):
         prompt: str,
         workspace: Path,
         timeout: int = 300,
+        model: str | None = None,
     ) -> AgentInvocationResult: ...
