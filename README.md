@@ -40,19 +40,84 @@ uv sync --group dev
 uv run pytest tests/ -v
 ```
 
-**Requirements:** Python 3.12+, [uv](https://docs.astral.sh/uv/), [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) (installed and authenticated)
+**Requirements:** Python 3.12+, [uv](https://docs.astral.sh/uv/)
+
+## Provider Setup
+
+minimal-agora supports three LLM backends. Pick one:
+
+### Option A: Anthropic API (recommended)
+
+```bash
+# Install the API extra
+uv sync --group dev
+
+# Set your API key
+cp .env.example .env
+# Edit .env: set ANTHROPIC_API_KEY=sk-ant-...
+
+# Run with the API provider
+uv run minimal-agora run scenarios/examples/pandemic.yaml -n 3 --steps 10 \
+  --provider anthropic
+```
+
+Works with any Anthropic-compatible endpoint (including LiteLLM proxies).
+To use a custom endpoint, set `ANTHROPIC_BASE_URL` in `.env` and pass
+`--model your-model-name`.
+
+### Option B: LiteLLM (multi-provider)
+
+```bash
+# Install the LiteLLM extra
+uv pip install 'minimal-agora[litellm]'
+
+# Run with any LiteLLM-supported model
+uv run minimal-agora run scenarios/examples/pandemic.yaml -n 3 --steps 10 \
+  --provider litellm --model openai/gpt-4o --api-key sk-...
+```
+
+Supports 100+ providers (OpenAI, Cohere, local endpoints, etc.) via
+[LiteLLM](https://docs.litellm.ai/docs/providers) model routing.
+
+### Option C: Claude CLI subprocess (default)
+
+```bash
+# Requires Claude Code CLI installed and authenticated
+uv run minimal-agora run scenarios/examples/pandemic.yaml -n 3 --steps 10
+```
+
+Spawns `claude -p` subprocesses per agent call. Higher overhead per call
+than the API providers but requires no API key setup — uses your Claude
+CLI authentication.
+
+### Environment variables
+
+All credentials go in `.env` (gitignored). Copy from the example:
+
+```bash
+cp .env.example .env
+```
+
+| Variable | Provider | Purpose |
+|----------|----------|---------|
+| `ANTHROPIC_API_KEY` | anthropic | API key |
+| `ANTHROPIC_BASE_URL` | anthropic | Custom endpoint URL |
+| `HTTPS_PROXY` | any | Route through a proxy |
+
+CLI flags `--api-key` and `--api-base` override env vars.
 
 ## Quick Start
 
 ```bash
 # Run a short simulation (3 trajectories, 10 steps)
-uv run minimal-agora run scenarios/examples/intelligence.yaml -n 3 --steps 10
+uv run minimal-agora run scenarios/examples/intelligence.yaml -n 3 --steps 10 \
+  --provider anthropic
 
 # View results
-uv run minimal-agora report runs/intelligence/
+uv run minimal-agora report
 
-# Launch the dashboard
-uv run minimal-agora dashboard
+# Generate interactive dashboard
+uv run minimal-agora dashboard --static --open
 ```
 
 See [docs/guide.md](docs/guide.md) for the full design guide with detailed architecture and configuration reference.
