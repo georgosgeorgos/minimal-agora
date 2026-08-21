@@ -211,8 +211,20 @@ minimal-agora report runs/my-scenario/ [--format text|json]
 # Generate plots from completed run
 minimal-agora visualize runs/my-scenario/ [--fields field1 field2] [--populations pop1] [--scores score1]
 
-# Launch live web dashboard
-minimal-agora dashboard runs/my-scenario/ [-p PORT] [--fields field1] [--populations pop1] [--scores score1]
+# Launch live web dashboard (or --static for HTML export)
+minimal-agora dashboard runs/my-scenario/ [-p PORT] [--fields field1] [--static]
+
+# Interactive Plotly report
+minimal-agora explore runs/my-scenario/ [--fields field1 field2] [--open]
+
+# 3D state-space explorer
+minimal-agora explore-3d runs/my-scenario/ [--open]
+
+# Agent calibration stats
+minimal-agora calibration runs/my-scenario/ [--format text|json]
+
+# Outcome coverage metrics
+minimal-agora coverage runs/my-scenario/ [--format text|json]
 
 # Validate a scenario file
 minimal-agora validate scenario.yaml
@@ -245,6 +257,61 @@ minimal-agora version
 
 Use `--steps 10` for quick test runs.
 
+## Visualization
+
+Three standalone HTML outputs per run — no server required, sharable as single files.
+
+### Dashboard (`dashboard --static`)
+
+Full simulation dashboard with Chart.js. Timelines for all numeric state fields,
+wildcard heatmap, agent activity bars, token usage breakdown, event log with
+filterable narrative/proposal/wildcard events. Dark/light toggle.
+
+```bash
+minimal-agora dashboard runs/nuclear-war --static       # generate HTML
+minimal-agora dashboard runs/nuclear-war --static --open # ...and open browser
+minimal-agora dashboard runs/nuclear-war                 # live server mode
+```
+
+### Interactive Report (`explore`)
+
+Plotly interactive charts: outcome distribution, 3D state-space trajectories,
+multi-panel field timelines with hover, resolution path visualization
+(auto-merge vs conflict vs review), constraint evaluator scores over time,
+token usage, agent calibration (acceptance rate vs confidence), and outcome
+coverage (PCA scatter of final states).
+
+```bash
+minimal-agora explore runs/nuclear-war --open
+minimal-agora explore runs/nuclear-war --fields usa.nuclear_arsenal ussr.nuclear_arsenal crisis.escalation_level
+```
+
+### 3D State-Space Explorer (`explore-3d`)
+
+Three.js orbit-controlled 3D view of trajectory paths through state space.
+Pick any 3 numeric fields for X/Y/Z axes via dropdowns. Time scrubber with
+play/pause animation. Wildcard events marked as red spheres. Trajectories
+colored by outcome.
+
+```bash
+minimal-agora explore-3d runs/nuclear-war --open
+```
+
+### Analysis CLI
+
+Text-based statistics without HTML:
+
+```bash
+# Agent calibration: acceptance rates, confidence, plausibility
+minimal-agora calibration runs/nuclear-war
+
+# Outcome space coverage: entropy, divergence, coverage score
+minimal-agora coverage runs/nuclear-war
+
+# Static matplotlib plots
+minimal-agora visualize runs/nuclear-war --types outcomes timelines agents
+```
+
 ## Features
 
 - **Three simulation modes** — `counterfactual` (N independent runs, statistical answers), `population` (interacting entities in a shared world), `open_ended` (single run optimizing fitness/complexity)
@@ -255,7 +322,12 @@ Use `--steps 10` for quick test runs.
 - **Particle filtering** — sequential importance resampling: duplicate high-weight trajectories, replace low-weight ones to focus compute on interesting branches
 - **Structured logging** — `structlog` with JSON/console rendering
 - **Live dashboard** — WebSocket-based web dashboard for monitoring running simulations
-- **Visualization** — matplotlib plots for state fields and population scores over time
+- **Visualization** — static dashboards (Chart.js), interactive reports (Plotly), 3D state-space explorer (Three.js), all as standalone HTML
+- **Agent calibration** — per-agent acceptance rates, confidence calibration, plausibility tracking
+- **Outcome coverage** — Shannon entropy, trajectory divergence, PCA scatter of final states
+- **Temperature scheduling** — linear interpolation from exploratory (high) to conservative (low) across steps
+- **Multi-model routing** — per-agent model selection (cheap models for actors, capable models for resolver)
+- **Adaptive review interval** — trigger review steps when state change magnitude exceeds threshold
 
 ## Documentation
 
