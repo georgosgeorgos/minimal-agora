@@ -18,22 +18,26 @@ PNG_MAGIC = b"\x89PNG"
 
 
 def _make_trajectories(
-    name: str, outcomes: list[tuple[str, int]],
+    name: str,
+    outcomes: list[tuple[str, int]],
 ) -> list[Trajectory]:
     trajs = []
     for i, (cls, final_step) in enumerate(outcomes):
         steps = [
-            Step(step_number=s, state_before={}, state_after={})
-            for s in range(final_step + 1)
+            Step(step_number=s, state_before={}, state_after={}) for s in range(final_step + 1)
         ]
-        trajs.append(Trajectory(
-            scenario_name=name,
-            trajectory_id=i,
-            steps=steps,
-            outcome=TrajectoryOutcome(
-                classification=cls, final_step=final_step, final_state={},
-            ),
-        ))
+        trajs.append(
+            Trajectory(
+                scenario_name=name,
+                trajectory_id=i,
+                steps=steps,
+                outcome=TrajectoryOutcome(
+                    classification=cls,
+                    final_step=final_step,
+                    final_state={},
+                ),
+            )
+        )
     return trajs
 
 
@@ -108,14 +112,26 @@ def test_plot_effect_sizes():
 
 
 def test_plot_step_distributions():
-    traj_a = _make_trajectories("run_a", [
-        ("success", 10), ("success", 12), ("failure", 8),
-        ("success", 15), ("timeout", 20),
-    ])
-    traj_b = _make_trajectories("run_b", [
-        ("success", 7), ("failure", 5), ("failure", 9),
-        ("success", 6), ("success", 8),
-    ])
+    traj_a = _make_trajectories(
+        "run_a",
+        [
+            ("success", 10),
+            ("success", 12),
+            ("failure", 8),
+            ("success", 15),
+            ("timeout", 20),
+        ],
+    )
+    traj_b = _make_trajectories(
+        "run_b",
+        [
+            ("success", 7),
+            ("failure", 5),
+            ("failure", 9),
+            ("success", 6),
+            ("success", 8),
+        ],
+    )
     with tempfile.TemporaryDirectory() as tmpdir:
         path = Path(tmpdir) / "step_distributions.png"
         result = plot_step_distributions(traj_a, traj_b, "run_a", "run_b", path)
@@ -127,12 +143,22 @@ def test_plot_step_distributions():
 
 def test_generate_comparison_plots():
     comparison = _make_comparison()
-    traj_a = _make_trajectories("baseline", [
-        ("success", 10), ("success", 14), ("failure", 8),
-    ])
-    traj_b = _make_trajectories("experiment", [
-        ("success", 7), ("failure", 5), ("success", 9),
-    ])
+    traj_a = _make_trajectories(
+        "baseline",
+        [
+            ("success", 10),
+            ("success", 14),
+            ("failure", 8),
+        ],
+    )
+    traj_b = _make_trajectories(
+        "experiment",
+        [
+            ("success", 7),
+            ("failure", 5),
+            ("success", 9),
+        ],
+    )
     with tempfile.TemporaryDirectory() as tmpdir:
         output_path = Path(tmpdir) / "plots"
         paths = generate_comparison_plots(comparison, traj_a, traj_b, output_path)

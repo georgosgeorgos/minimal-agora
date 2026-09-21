@@ -100,14 +100,17 @@ def test_should_reason_at_inflection_points(
     config = AdaptiveStepConfig(reasoning_interval=5, change_threshold=0.5)
     previous = _reasoned_step({"value": 0}, {"value": 1})
 
-    assert should_reason(
-        config,
-        step_num=step_num,
-        max_steps=max_steps,
-        current_state=current_state,
-        last_reasoned_step=previous,
-        wildcard_active=wildcard_active,
-    ) is expected
+    assert (
+        should_reason(
+            config,
+            step_num=step_num,
+            max_steps=max_steps,
+            current_state=current_state,
+            last_reasoned_step=previous,
+            wildcard_active=wildcard_active,
+        )
+        is expected
+    )
 
 
 def test_run_trajectory_skips_llm_on_routine_steps(tmp_path: Path):

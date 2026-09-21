@@ -102,8 +102,14 @@ class DashboardHandler(SimpleHTTPRequestHandler):
 def _list_runs(runs_root: Path, current_run_dir: Path) -> list[dict]:
     runs = []
     if not runs_root or not runs_root.is_dir():
-        return [{"dirname": current_run_dir.name, "scenario": current_run_dir.name,
-                 "n_trajectories": 0, "current": True}]
+        return [
+            {
+                "dirname": current_run_dir.name,
+                "scenario": current_run_dir.name,
+                "n_trajectories": 0,
+                "current": True,
+            }
+        ]
     for d in sorted(runs_root.iterdir()):
         if not d.is_dir():
             continue
@@ -118,21 +124,32 @@ def _list_runs(runs_root: Path, current_run_dir: Path) -> list[dict]:
                 except (json.JSONDecodeError, OSError):
                     pass
                 break
-        runs.append({
-            "dirname": d.name,
-            "scenario": scenario,
-            "n_trajectories": len(traj_dirs),
-            "current": d.resolve() == current_run_dir.resolve(),
-        })
+        runs.append(
+            {
+                "dirname": d.name,
+                "scenario": scenario,
+                "n_trajectories": len(traj_dirs),
+                "current": d.resolve() == current_run_dir.resolve(),
+            }
+        )
     return runs
 
 
 def _collect_data(
-    run_dir: Path, fields: list[str], populations: list[str], score_fields: list[str],
+    run_dir: Path,
+    fields: list[str],
+    populations: list[str],
+    score_fields: list[str],
 ) -> dict:
     trajectories = load_trajectories(run_dir)
     if not trajectories:
-        return {"n_trajectories": 0, "outcomes": {}, "steps": {}, "timelines": {}, "populations": {}}
+        return {
+            "n_trajectories": 0,
+            "outcomes": {},
+            "steps": {},
+            "timelines": {},
+            "populations": {},
+        }
 
     outcomes: dict[str, int] = {}
     steps_by_outcome: dict[str, list[int]] = {}
@@ -187,7 +204,14 @@ def _collect_data(
                 for step_num in sorted(raw_pop.get(field, {}).keys()):
                     vals = [v for v in raw_pop[field][step_num] if isinstance(v, (int, float))]
                     if vals:
-                        series.append({"step": step_num, "mean": _mean(vals), "min": min(vals), "max": max(vals)})
+                        series.append(
+                            {
+                                "step": step_num,
+                                "mean": _mean(vals),
+                                "min": min(vals),
+                                "max": max(vals),
+                            }
+                        )
                 pop_data[pop][sf] = series
 
     ess_data: list[dict[str, Any]] = []
@@ -201,12 +225,14 @@ def _collect_data(
     for entry in ess_data:
         vals = entry["values"]
         if vals:
-            ess_timeline.append({
-                "step": entry["step"],
-                "mean": _mean(vals),
-                "min": min(vals),
-                "max": max(vals),
-            })
+            ess_timeline.append(
+                {
+                    "step": entry["step"],
+                    "mean": _mean(vals),
+                    "min": min(vals),
+                    "max": max(vals),
+                }
+            )
 
     fitness_data = []
     if all_fitness:
@@ -215,7 +241,9 @@ def _collect_data(
             raw_vals = [h[i] for h in all_fitness if i < len(h)]
             fit_vals: list[int | float] = [v for v in raw_vals if v is not None]
             if fit_vals:
-                fitness_data.append({"step": i, "mean": _mean(fit_vals), "min": min(fit_vals), "max": max(fit_vals)})
+                fitness_data.append(
+                    {"step": i, "mean": _mean(fit_vals), "min": min(fit_vals), "max": max(fit_vals)}
+                )
 
     events = _collect_events(trajectories, run_dir)
 
@@ -261,7 +289,9 @@ def _collect_token_data(trajectories: list) -> tuple[dict, list[dict]]:
             step_totals[sn]["output_tokens"] += step.token_usage.total_output_tokens
 
     total = total_input + total_output
-    estimated_cost = (total_input / 1_000_000 * 3) + (total_output / 1_000_000 * 15) if total else 0.0
+    estimated_cost = (
+        (total_input / 1_000_000 * 3) + (total_output / 1_000_000 * 15) if total else 0.0
+    )
 
     summary = {
         "total_input_tokens": total_input,
@@ -274,12 +304,14 @@ def _collect_token_data(trajectories: list) -> tuple[dict, list[dict]]:
     timeline = []
     for sn in sorted(step_totals.keys()):
         st = step_totals[sn]
-        timeline.append({
-            "step": sn,
-            "input_tokens": st["input_tokens"],
-            "output_tokens": st["output_tokens"],
-            "total_tokens": st["input_tokens"] + st["output_tokens"],
-        })
+        timeline.append(
+            {
+                "step": sn,
+                "input_tokens": st["input_tokens"],
+                "output_tokens": st["output_tokens"],
+                "total_tokens": st["input_tokens"] + st["output_tokens"],
+            }
+        )
 
     return summary, timeline
 
@@ -291,35 +323,43 @@ def _collect_events(trajectories: list, run_dir: Path) -> list[dict]:
         tid = t.trajectory_id
         for step in t.steps:
             if step.resolution and step.resolution.narrative:
-                events.append({
-                    "trajectory": tid,
-                    "step": step.step_number,
-                    "type": "narrative",
-                    "text": step.resolution.narrative,
-                })
+                events.append(
+                    {
+                        "trajectory": tid,
+                        "step": step.step_number,
+                        "type": "narrative",
+                        "text": step.resolution.narrative,
+                    }
+                )
 
             if step.resolution and step.resolution.validation_warnings:
                 for warning in step.resolution.validation_warnings:
-                    events.append({
-                        "trajectory": tid,
-                        "step": step.step_number,
-                        "type": "validation",
-                        "text": warning,
-                    })
+                    events.append(
+                        {
+                            "trajectory": tid,
+                            "step": step.step_number,
+                            "type": "validation",
+                            "text": warning,
+                        }
+                    )
 
             delta_keys = set(step.resolution.state_delta.keys()) if step.resolution else set()
             for p in step.proposals:
-                accepted = bool(delta_keys & set(p.proposed_changes.keys())) if delta_keys else False
+                accepted = (
+                    bool(delta_keys & set(p.proposed_changes.keys())) if delta_keys else False
+                )
                 if p.reasoning:
-                    events.append({
-                        "trajectory": tid,
-                        "step": step.step_number,
-                        "type": "proposal",
-                        "agent": p.agent,
-                        "text": p.reasoning,
-                        "accepted": accepted,
-                        "proposed_fields": list(p.proposed_changes.keys()),
-                    })
+                    events.append(
+                        {
+                            "trajectory": tid,
+                            "step": step.step_number,
+                            "type": "proposal",
+                            "agent": p.agent,
+                            "text": p.reasoning,
+                            "accepted": accepted,
+                            "proposed_fields": list(p.proposed_changes.keys()),
+                        }
+                    )
 
         # Check for wildcards in board directory
         traj_dir = run_dir / f"trajectory_{tid:03d}"
@@ -329,23 +369,27 @@ def _collect_events(trajectories: list, run_dir: Path) -> list[dict]:
                     with open(wc_file) as f:
                         wc = json.load(f)
                     step_num = int(wc_file.stem.split("_")[-1])
-                    events.append({
-                        "trajectory": tid,
-                        "step": step_num,
-                        "type": "wildcard",
-                        "name": wc.get("name", "unknown"),
-                        "text": f"{wc.get('name', 'unknown')}: {wc.get('description', '')[:150]}",
-                    })
+                    events.append(
+                        {
+                            "trajectory": tid,
+                            "step": step_num,
+                            "type": "wildcard",
+                            "name": wc.get("name", "unknown"),
+                            "text": f"{wc.get('name', 'unknown')}: {wc.get('description', '')[:150]}",
+                        }
+                    )
                 except (ValueError, OSError, KeyError):
                     pass
 
         if t.outcome:
-            events.append({
-                "trajectory": tid,
-                "step": t.outcome.final_step,
-                "type": "outcome",
-                "text": f"Trajectory {tid} classified as: {t.outcome.classification}",
-            })
+            events.append(
+                {
+                    "trajectory": tid,
+                    "step": t.outcome.final_step,
+                    "type": "outcome",
+                    "text": f"Trajectory {tid} classified as: {t.outcome.classification}",
+                }
+            )
 
     events.sort(key=lambda e: (e["trajectory"], e["step"]))
     return events
@@ -1323,6 +1367,7 @@ def _auto_detect_fields(run_dir: Path) -> list[str]:
     if not trajectories or not trajectories[0].steps:
         return []
     from minimal_agora.visualize_interactive import _flatten_state
+
     sample = trajectories[0].steps[0].state_after
     return sorted(_flatten_state(sample).keys())[:10]
 
@@ -1346,8 +1391,7 @@ def generate_static_dashboard(
     html = html.replace(
         "connectSSE();\n\n// Also fetch once immediately\n"
         "fetch('/api/data').then(r => r.json()).then(render).catch(() => {});",
-        f"// Static mode — data inlined, no server needed\n"
-        f"render({data_json});",
+        f"// Static mode — data inlined, no server needed\nrender({data_json});",
     )
     html = html.replace(
         "fetch('/api/data?run=' + encodeURIComponent(dirname))\n"

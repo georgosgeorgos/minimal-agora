@@ -16,13 +16,22 @@ from minimal_agora.analysis import (
 from minimal_agora.models import Trajectory
 
 COLORS = [
-    "#2196F3", "#F44336", "#4CAF50", "#FF9800", "#9C27B0",
-    "#00BCD4", "#795548", "#607D8B", "#E91E63", "#3F51B5",
+    "#2196F3",
+    "#F44336",
+    "#4CAF50",
+    "#FF9800",
+    "#9C27B0",
+    "#00BCD4",
+    "#795548",
+    "#607D8B",
+    "#E91E63",
+    "#3F51B5",
 ]
 
 
 def plot_outcome_distribution(
-    trajectories: list[Trajectory], output_path: Path,
+    trajectories: list[Trajectory],
+    output_path: Path,
 ) -> Path:
     if not trajectories:
         return output_path
@@ -41,8 +50,12 @@ def plot_outcome_distribution(
 
     for bar, count in zip(bars, counts):
         ax.text(
-            bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.3,
-            f"{count}/{n}\n({count / n:.0%})", ha="center", va="bottom", fontsize=9,
+            bar.get_x() + bar.get_width() / 2,
+            bar.get_height() + 0.3,
+            f"{count}/{n}\n({count / n:.0%})",
+            ha="center",
+            va="bottom",
+            fontsize=9,
         )
 
     scenario = trajectories[0].scenario_name if trajectories else "unknown"
@@ -59,7 +72,9 @@ def plot_outcome_distribution(
 
 
 def plot_field_timelines(
-    trajectories: list[Trajectory], fields: list[str], output_path: Path,
+    trajectories: list[Trajectory],
+    fields: list[str],
+    output_path: Path,
 ) -> Path:
     if not trajectories or not fields:
         return output_path
@@ -79,9 +94,7 @@ def plot_field_timelines(
         steps = sorted(field_data.keys())
 
         numeric = all(
-            isinstance(v, (int, float))
-            for step_vals in field_data.values()
-            for v in step_vals
+            isinstance(v, (int, float)) for step_vals in field_data.values() for v in step_vals
         )
 
         if numeric:
@@ -95,8 +108,15 @@ def plot_field_timelines(
                         t_steps.append(step.step_number)
                 if t_vals:
                     color = COLORS[t_idx % len(COLORS)]
-                    ax.plot(t_steps, t_vals, marker="o", markersize=3,
-                            color=color, alpha=0.6, label=f"traj {t.trajectory_id}")
+                    ax.plot(
+                        t_steps,
+                        t_vals,
+                        marker="o",
+                        markersize=3,
+                        color=color,
+                        alpha=0.6,
+                        label=f"traj {t.trajectory_id}",
+                    )
 
             means: list[float | None] = []
             for step_num in steps:
@@ -120,8 +140,14 @@ def plot_field_timelines(
                         cat_vals.append(str(val))
                         cat_steps.append(step.step_number)
                 if cat_vals:
-                    ax.scatter(cat_steps, cat_vals, marker="o", s=30,
-                               color=COLORS[t_idx % len(COLORS)], alpha=0.6)
+                    ax.scatter(
+                        cat_steps,
+                        cat_vals,
+                        marker="o",
+                        s=30,
+                        color=COLORS[t_idx % len(COLORS)],
+                        alpha=0.6,
+                    )
 
         ax.set_title(field, fontsize=11, fontweight="bold")
         ax.set_xlabel("Step")
@@ -140,7 +166,8 @@ def plot_field_timelines(
 
 
 def plot_step_distribution(
-    trajectories: list[Trajectory], output_path: Path,
+    trajectories: list[Trajectory],
+    output_path: Path,
 ) -> Path:
     if not trajectories:
         return output_path
@@ -157,8 +184,12 @@ def plot_step_distribution(
         vals: Sequence[float | int] = steps_by_outcome[label]
         stats = compute_statistics(vals)
         ax.bar(
-            i, stats.get("mean", 0), color=COLORS[i % len(COLORS)],
-            edgecolor="white", linewidth=0.5, label=label,
+            i,
+            stats.get("mean", 0),
+            color=COLORS[i % len(COLORS)],
+            edgecolor="white",
+            linewidth=0.5,
+            label=label,
         )
         if stats.get("std", 0) > 0:
             ax.errorbar(i, stats["mean"], yerr=stats["std"], color="black", capsize=4, linewidth=1)
@@ -177,8 +208,10 @@ def plot_step_distribution(
 
 
 def plot_population_scores(
-    trajectories: list[Trajectory], populations: list[str],
-    score_field: str, output_path: Path,
+    trajectories: list[Trajectory],
+    populations: list[str],
+    score_field: str,
+    output_path: Path,
 ) -> Path:
     if not trajectories or not populations:
         return output_path
@@ -220,7 +253,9 @@ def plot_population_scores(
 
 
 def plot_trajectory_comparison(
-    trajectories: list[Trajectory], fields: list[str], output_path: Path,
+    trajectories: list[Trajectory],
+    fields: list[str],
+    output_path: Path,
 ) -> Path:
     if not trajectories or not fields:
         return output_path
@@ -241,8 +276,15 @@ def plot_trajectory_comparison(
                     t_steps.append(step.step_number)
             if t_vals:
                 color = COLORS[t_idx % len(COLORS)]
-                ax.plot(t_steps, t_vals, marker="o", markersize=4,
-                        color=color, linewidth=1.5, label=f"T{t.trajectory_id}")
+                ax.plot(
+                    t_steps,
+                    t_vals,
+                    marker="o",
+                    markersize=4,
+                    color=color,
+                    linewidth=1.5,
+                    label=f"T{t.trajectory_id}",
+                )
 
         ax.set_title(field, fontsize=11, fontweight="bold")
         ax.set_xlabel("Step")
@@ -259,7 +301,8 @@ def plot_trajectory_comparison(
 
 
 def plot_wildcard_impact(
-    trajectories: list[Trajectory], output_path: Path,
+    trajectories: list[Trajectory],
+    output_path: Path,
 ) -> Path:
     if not trajectories:
         return output_path
@@ -280,15 +323,22 @@ def plot_wildcard_impact(
     n_rows = len(t_ids)
     fig_height = max(4, n_rows * 0.5 + 3)
     fig, (ax_main, ax_freq) = plt.subplots(
-        2, 1, figsize=(10, fig_height), gridspec_kw={"height_ratios": [3, 1]},
+        2,
+        1,
+        figsize=(10, fig_height),
+        gridspec_kw={"height_ratios": [3, 1]},
     )
 
     for y_idx, tid in enumerate(t_ids):
         steps_with_events = events[tid]
         if steps_with_events:
             ax_main.scatter(
-                steps_with_events, [y_idx] * len(steps_with_events),
-                color=COLORS[4], s=60, zorder=5, marker="D",
+                steps_with_events,
+                [y_idx] * len(steps_with_events),
+                color=COLORS[4],
+                s=60,
+                zorder=5,
+                marker="D",
             )
         ax_main.axhline(y=y_idx, color="#E0E0E0", linewidth=0.5, zorder=0)
 
@@ -322,7 +372,8 @@ def plot_wildcard_impact(
 
 
 def plot_agent_activity(
-    trajectories: list[Trajectory], output_path: Path,
+    trajectories: list[Trajectory],
+    output_path: Path,
 ) -> Path:
     if not trajectories:
         return output_path
@@ -340,8 +391,10 @@ def plot_agent_activity(
             for p in step.proposals:
                 if p.agent not in agent_stats:
                     agent_stats[p.agent] = {
-                        "proposals": 0, "accepted": 0,
-                        "plausibility_sum": 0.0, "plausibility_count": 0,
+                        "proposals": 0,
+                        "accepted": 0,
+                        "plausibility_sum": 0.0,
+                        "plausibility_count": 0,
                     }
                 agent_stats[p.agent]["proposals"] += 1
                 if p.agent in accepted_agents:
@@ -365,12 +418,14 @@ def plot_agent_activity(
     n_proposals = [agent_stats[a]["proposals"] for a in agents]
     acceptance_rates = [
         agent_stats[a]["accepted"] / agent_stats[a]["proposals"]
-        if agent_stats[a]["proposals"] > 0 else 0
+        if agent_stats[a]["proposals"] > 0
+        else 0
         for a in agents
     ]
     avg_plausibility = [
         agent_stats[a]["plausibility_sum"] / agent_stats[a]["plausibility_count"]
-        if agent_stats[a]["plausibility_count"] > 0 else 0
+        if agent_stats[a]["plausibility_count"] > 0
+        else 0
         for a in agents
     ]
 
@@ -458,7 +513,9 @@ def generate_all_plots(
         print(f"  Generated: {path}")
 
     if fields and _should("comparison"):
-        path = plot_trajectory_comparison(trajectories, fields, plots_dir / "trajectory_comparison.png")
+        path = plot_trajectory_comparison(
+            trajectories, fields, plots_dir / "trajectory_comparison.png"
+        )
         generated.append(path)
         print(f"  Generated: {path}")
 

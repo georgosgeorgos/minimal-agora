@@ -16,10 +16,7 @@ from minimal_agora.models import (
 
 
 def _make_trajectory(tid: int, outcome: str, n_steps: int = 3) -> Trajectory:
-    steps = [
-        Step(step_number=i, state_before={}, state_after={"x": i})
-        for i in range(n_steps)
-    ]
+    steps = [Step(step_number=i, state_before={}, state_after={"x": i}) for i in range(n_steps)]
     return Trajectory(
         scenario_name="test",
         trajectory_id=tid,
@@ -55,8 +52,10 @@ def test_cohens_d_small_groups():
 
 def test_compare_outcome_proportions_significant():
     result = compare_outcome_proportions(
-        count_a=90, nobs_a=100,
-        count_b=10, nobs_b=100,
+        count_a=90,
+        nobs_a=100,
+        count_b=10,
+        nobs_b=100,
     )
     assert result["significant"] is True
     assert result["p_value"] < 0.05
@@ -65,18 +64,19 @@ def test_compare_outcome_proportions_significant():
 
 def test_compare_outcome_proportions_not_significant():
     result = compare_outcome_proportions(
-        count_a=50, nobs_a=100,
-        count_b=48, nobs_b=100,
+        count_a=50,
+        nobs_a=100,
+        count_b=48,
+        nobs_b=100,
     )
     assert result["significant"] is False
     assert result["p_value"] > 0.05
 
 
 def test_outcome_rate_with_ci():
-    trajectories = (
-        [_make_trajectory(i, "A") for i in range(7)]
-        + [_make_trajectory(i + 7, "B") for i in range(3)]
-    )
+    trajectories = [_make_trajectory(i, "A") for i in range(7)] + [
+        _make_trajectory(i + 7, "B") for i in range(3)
+    ]
     result = outcome_rate_with_ci(trajectories, "A")
     assert result["rate"] == 0.7
     assert result["ci_lower"] <= result["rate"]
@@ -136,10 +136,16 @@ def test_compare_cli_subcommand(tmp_path: Path):
     dir_a = tmp_path / "run_a"
     dir_b = tmp_path / "run_b"
 
-    for i, (d, outcome) in enumerate([
-        (dir_a, "win"), (dir_a, "win"), (dir_a, "lose"),
-        (dir_b, "lose"), (dir_b, "lose"), (dir_b, "win"),
-    ]):
+    for i, (d, outcome) in enumerate(
+        [
+            (dir_a, "win"),
+            (dir_a, "win"),
+            (dir_a, "lose"),
+            (dir_b, "lose"),
+            (dir_b, "lose"),
+            (dir_b, "win"),
+        ]
+    ):
         traj_dir = d / f"trajectory_{i:03d}"
         traj_dir.mkdir(parents=True, exist_ok=True)
         t = _make_trajectory(i, outcome)

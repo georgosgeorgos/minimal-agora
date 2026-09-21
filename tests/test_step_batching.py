@@ -182,10 +182,13 @@ def test_batch_prompt_and_parser_roundtrip():
     assert "Simulate Steps 2-4" in prompt
     assert json.dumps({"value": 2}, indent=2) in prompt
     assert parse_batch_output(AgentRole.ACTOR, payload.model_dump_json()) == payload
-    assert parse_batch_output(
-        AgentRole.ACTOR,
-        f"```json\n{payload.model_dump_json()}\n```",
-    ) == payload
+    assert (
+        parse_batch_output(
+            AgentRole.ACTOR,
+            f"```json\n{payload.model_dump_json()}\n```",
+        )
+        == payload
+    )
 
 
 def test_run_trajectory_batches_provider_calls_and_checkpoints(tmp_path: Path):

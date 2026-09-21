@@ -107,11 +107,10 @@ class TestAnthropicAPIProvider:
         mock_client = MagicMock()
         mock_client.messages.create = mock_create
 
-        with patch(
-            "minimal_agora.providers.api_provider._HAS_ANTHROPIC", True
-        ), patch(
-            "minimal_agora.providers.api_provider.anthropic"
-        ) as mock_anthropic:
+        with (
+            patch("minimal_agora.providers.api_provider._HAS_ANTHROPIC", True),
+            patch("minimal_agora.providers.api_provider.anthropic") as mock_anthropic,
+        ):
             mock_anthropic.AsyncAnthropic.return_value = mock_client
 
             provider = AnthropicAPIProvider()
@@ -145,16 +144,13 @@ class TestAnthropicAPIProvider:
         mock_client = MagicMock()
         mock_client.messages.create = mock_create
 
-        with patch(
-            "minimal_agora.providers.api_provider._HAS_ANTHROPIC", True
-        ), patch(
-            "minimal_agora.providers.api_provider.anthropic"
-        ) as mock_anthropic:
+        with (
+            patch("minimal_agora.providers.api_provider._HAS_ANTHROPIC", True),
+            patch("minimal_agora.providers.api_provider.anthropic") as mock_anthropic,
+        ):
             mock_anthropic.AsyncAnthropic.return_value = mock_client
 
-            provider = AnthropicAPIProvider(
-                api_key="sk-explicit", base_url="http://localhost:9090"
-            )
+            provider = AnthropicAPIProvider(api_key="sk-explicit", base_url="http://localhost:9090")
             with tempfile.TemporaryDirectory() as tmp:
                 asyncio.run(provider.invoke("p", Path(tmp)))
 
@@ -176,11 +172,10 @@ class TestAnthropicAPIProvider:
         mock_client = MagicMock()
         mock_client.messages.create = mock_create
 
-        with patch(
-            "minimal_agora.providers.api_provider._HAS_ANTHROPIC", True
-        ), patch(
-            "minimal_agora.providers.api_provider.anthropic"
-        ) as mock_anthropic:
+        with (
+            patch("minimal_agora.providers.api_provider._HAS_ANTHROPIC", True),
+            patch("minimal_agora.providers.api_provider.anthropic") as mock_anthropic,
+        ):
             mock_anthropic.AsyncAnthropic.return_value = mock_client
 
             provider = AnthropicAPIProvider()
@@ -316,10 +311,9 @@ class TestLiteLLMProvider:
         mock_response.model = "openai/gpt-4o"
         mock_response.choices = [mock_choice]
 
-        with patch(
-            "minimal_agora.providers.litellm_provider.litellm"
-        ) as mock_litellm, patch(
-            "minimal_agora.providers.litellm_provider._HAS_LITELLM", True
+        with (
+            patch("minimal_agora.providers.litellm_provider.litellm") as mock_litellm,
+            patch("minimal_agora.providers.litellm_provider._HAS_LITELLM", True),
         ):
             mock_litellm.acompletion = AsyncMock(return_value=mock_response)
 
@@ -352,10 +346,9 @@ class TestLiteLLMProvider:
         mock_response.model = "local-model"
         mock_response.choices = [mock_choice]
 
-        with patch(
-            "minimal_agora.providers.litellm_provider.litellm"
-        ) as mock_litellm, patch(
-            "minimal_agora.providers.litellm_provider._HAS_LITELLM", True
+        with (
+            patch("minimal_agora.providers.litellm_provider.litellm") as mock_litellm,
+            patch("minimal_agora.providers.litellm_provider._HAS_LITELLM", True),
         ):
             mock_litellm.acompletion = AsyncMock(return_value=mock_response)
 

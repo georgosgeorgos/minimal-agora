@@ -135,7 +135,9 @@ def test_evaluate_lte_fail():
 
 
 def test_evaluate_nested_field():
-    conds = [TriggerCondition(field="economy.debt_ratio", operator=ConditionOperator.GT, threshold=2.0)]
+    conds = [
+        TriggerCondition(field="economy.debt_ratio", operator=ConditionOperator.GT, threshold=2.0)
+    ]
     assert evaluate_trigger_conditions(conds, {"economy": {"debt_ratio": 3.0}}) is True
     assert evaluate_trigger_conditions(conds, {"economy": {"debt_ratio": 1.5}}) is False
 
@@ -287,7 +289,9 @@ def test_wildcard_default_probability_boost():
 
 
 def test_wildcard_conditional_mode_requires_conditions():
-    with pytest.raises(ValueError, match="CONDITIONAL mode requires at least one trigger_condition"):
+    with pytest.raises(
+        ValueError, match="CONDITIONAL mode requires at least one trigger_condition"
+    ):
         WildcardEvent(name="bad", probability=0.5, mode=WildcardMode.CONDITIONAL)
 
 

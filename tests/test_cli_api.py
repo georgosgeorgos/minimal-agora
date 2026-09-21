@@ -68,7 +68,15 @@ def test_validate_invalid_scenario():
 def test_init_scenario_creates_file():
     with tempfile.TemporaryDirectory() as tmpdir:
         result = subprocess.run(
-            [sys.executable, "-m", "minimal_agora.cli", "init-scenario", "my-test", "--mode", "counterfactual"],
+            [
+                sys.executable,
+                "-m",
+                "minimal_agora.cli",
+                "init-scenario",
+                "my-test",
+                "--mode",
+                "counterfactual",
+            ],
             capture_output=True,
             text=True,
             cwd=tmpdir,
@@ -89,7 +97,15 @@ def test_init_scenario_creates_file():
 def test_init_scenario_population_mode():
     with tempfile.TemporaryDirectory() as tmpdir:
         result = subprocess.run(
-            [sys.executable, "-m", "minimal_agora.cli", "init-scenario", "pop-test", "--mode", "population"],
+            [
+                sys.executable,
+                "-m",
+                "minimal_agora.cli",
+                "init-scenario",
+                "pop-test",
+                "--mode",
+                "population",
+            ],
             capture_output=True,
             text=True,
             cwd=tmpdir,

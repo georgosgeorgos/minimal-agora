@@ -149,7 +149,9 @@ def test_resume_metadata_populated():
 
         result = asyncio.run(
             __import__("minimal_agora.loop", fromlist=["run_trajectory"]).run_trajectory(
-                scenario, workspace, trajectory_id=0,
+                scenario,
+                workspace,
+                trajectory_id=0,
             )
         )
 

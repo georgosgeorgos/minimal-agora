@@ -83,7 +83,9 @@ class Board:
             json.dump(state, f, indent=2)
 
     def apply_resolution(self, resolution: Resolution, step: int) -> dict:
-        logger.info("board.apply_resolution", step=step, delta_keys=list(resolution.state_delta.keys()))
+        logger.info(
+            "board.apply_resolution", step=step, delta_keys=list(resolution.state_delta.keys())
+        )
         state = self.read_state()
         expanded = _expand_dotted_keys(resolution.state_delta)
         _deep_merge(state, expanded)
@@ -256,10 +258,14 @@ _CONDITION_OPS = {
 
 def compress_narrative(narrative: str, window: int = 20) -> str:
     _STEP_HEADER = re.compile(r"^## Step (\d+)$", re.MULTILINE)
-    matches = [(m, int(m.group(1))) for m in _STEP_HEADER.finditer(narrative) if int(m.group(1)) >= 1]
+    matches = [
+        (m, int(m.group(1))) for m in _STEP_HEADER.finditer(narrative) if int(m.group(1)) >= 1
+    ]
 
     if len(matches) <= window:
-        logger.debug("narrative has %d steps, within window %d — no compression", len(matches), window)
+        logger.debug(
+            "narrative has %d steps, within window %d — no compression", len(matches), window
+        )
         return narrative
 
     logger.info("compressing narrative: %d steps, keeping %d recent", len(matches), window)
@@ -330,7 +336,10 @@ def evaluate_trigger_conditions(conditions: list[TriggerCondition], state: dict)
 
         logger.debug(
             "trigger_condition field=%s op=%s threshold=%s value=%s → %s",
-            cond.field, cond.operator.value, cond.threshold, value,
+            cond.field,
+            cond.operator.value,
+            cond.threshold,
+            value,
             "passed" if passed else "failed",
         )
         if not passed:
@@ -341,7 +350,9 @@ def evaluate_trigger_conditions(conditions: list[TriggerCondition], state: dict)
 
 
 def evaluate_wildcard_mode(
-    event: WildcardEvent, per_step_prob: float, state: dict | None,
+    event: WildcardEvent,
+    per_step_prob: float,
+    state: dict | None,
 ) -> float | None:
     mode = event.mode
 
@@ -359,7 +370,11 @@ def evaluate_wildcard_mode(
         if not conditions_met:
             logger.debug("wildcard %s mode=conditional, conditions not met — skipped", event.name)
             return None
-        logger.debug("wildcard %s mode=conditional, conditions met, probability=%s", event.name, per_step_prob)
+        logger.debug(
+            "wildcard %s mode=conditional, conditions met, probability=%s",
+            event.name,
+            per_step_prob,
+        )
         return per_step_prob
 
     # HYBRID: always eligible, boosted when conditions met
@@ -367,9 +382,13 @@ def evaluate_wildcard_mode(
         boosted = min(per_step_prob * event.probability_boost, 1.0)
         logger.debug(
             "wildcard %s mode=hybrid, conditions met, boosted probability=%s (%.1fx)",
-            event.name, boosted, event.probability_boost,
+            event.name,
+            boosted,
+            event.probability_boost,
         )
         return boosted
 
-    logger.debug("wildcard %s mode=hybrid, conditions not met, probability=%s", event.name, per_step_prob)
+    logger.debug(
+        "wildcard %s mode=hybrid, conditions not met, probability=%s", event.name, per_step_prob
+    )
     return per_step_prob

@@ -1,4 +1,5 @@
 """Tests for token tracking models and aggregation logic."""
+
 from __future__ import annotations
 
 import tempfile
@@ -89,23 +90,31 @@ class TestAggregateTrajectoryTokens:
     def test_aggregates_across_steps(self):
         steps = [
             Step(
-                step_number=0, state_before={}, state_after={},
+                step_number=0,
+                state_before={},
+                state_after={},
                 token_usage=StepTokenUsage(
                     agent_calls=[
                         AgentCallTokens(role="actor", input_tokens=100, output_tokens=50),
-                        AgentCallTokens(role="constraint_evaluator", input_tokens=200, output_tokens=75),
+                        AgentCallTokens(
+                            role="constraint_evaluator", input_tokens=200, output_tokens=75
+                        ),
                     ],
-                    total_input_tokens=300, total_output_tokens=125,
+                    total_input_tokens=300,
+                    total_output_tokens=125,
                 ),
             ),
             Step(
-                step_number=1, state_before={}, state_after={},
+                step_number=1,
+                state_before={},
+                state_after={},
                 token_usage=StepTokenUsage(
                     agent_calls=[
                         AgentCallTokens(role="actor", input_tokens=150, output_tokens=60),
                         AgentCallTokens(role="resolver", input_tokens=400, output_tokens=200),
                     ],
-                    total_input_tokens=550, total_output_tokens=260,
+                    total_input_tokens=550,
+                    total_output_tokens=260,
                 ),
             ),
         ]
@@ -125,10 +134,13 @@ class TestAggregateTrajectoryTokens:
         steps = [
             Step(step_number=0, state_before={}, state_after={}),
             Step(
-                step_number=1, state_before={}, state_after={},
+                step_number=1,
+                state_before={},
+                state_after={},
                 token_usage=StepTokenUsage(
                     agent_calls=[AgentCallTokens(role="actor", input_tokens=100, output_tokens=50)],
-                    total_input_tokens=100, total_output_tokens=50,
+                    total_input_tokens=100,
+                    total_output_tokens=50,
                 ),
             ),
         ]
@@ -139,10 +151,17 @@ class TestAggregateTrajectoryTokens:
     def test_cost_estimate(self):
         steps = [
             Step(
-                step_number=0, state_before={}, state_after={},
+                step_number=0,
+                state_before={},
+                state_after={},
                 token_usage=StepTokenUsage(
-                    agent_calls=[AgentCallTokens(role="actor", input_tokens=1_000_000, output_tokens=1_000_000)],
-                    total_input_tokens=1_000_000, total_output_tokens=1_000_000,
+                    agent_calls=[
+                        AgentCallTokens(
+                            role="actor", input_tokens=1_000_000, output_tokens=1_000_000
+                        )
+                    ],
+                    total_input_tokens=1_000_000,
+                    total_output_tokens=1_000_000,
                 ),
             ),
         ]
@@ -160,7 +179,8 @@ class TestStepModelWithTokens:
     def test_step_with_tokens(self):
         usage = StepTokenUsage(
             agent_calls=[AgentCallTokens(role="actor", input_tokens=100, output_tokens=50)],
-            total_input_tokens=100, total_output_tokens=50,
+            total_input_tokens=100,
+            total_output_tokens=50,
         )
         s = Step(step_number=0, state_before={}, state_after={}, token_usage=usage)
         assert s.token_usage is not None
@@ -169,7 +189,8 @@ class TestStepModelWithTokens:
     def test_step_roundtrip_json(self):
         usage = StepTokenUsage(
             agent_calls=[AgentCallTokens(role="resolver", input_tokens=500, output_tokens=200)],
-            total_input_tokens=500, total_output_tokens=200,
+            total_input_tokens=500,
+            total_output_tokens=200,
         )
         s = Step(step_number=3, state_before={"x": 1}, state_after={"x": 2}, token_usage=usage)
         data = s.model_dump_json()
@@ -185,14 +206,20 @@ class TestTrajectoryWithTokens:
 
     def test_trajectory_with_tokens(self):
         t = Trajectory(
-            scenario_name="test", trajectory_id=0,
-            total_tokens={"total_input_tokens": 1000, "total_output_tokens": 500, "total_tokens": 1500},
+            scenario_name="test",
+            trajectory_id=0,
+            total_tokens={
+                "total_input_tokens": 1000,
+                "total_output_tokens": 500,
+                "total_tokens": 1500,
+            },
         )
         assert t.total_tokens["total_tokens"] == 1500
 
     def test_trajectory_roundtrip_json(self):
         t = Trajectory(
-            scenario_name="test", trajectory_id=0,
+            scenario_name="test",
+            trajectory_id=0,
             total_tokens={"total_tokens": 2000, "estimated_cost_usd": 0.05},
             outcome=TrajectoryOutcome(classification="done", final_step=5, final_state={}),
         )
@@ -205,8 +232,11 @@ class TestTrajectoryWithTokens:
 class TestAgentInvocationResultTokens:
     def test_result_with_tokens(self):
         r = AgentInvocationResult(
-            output="hello", tokens_used=150, model="test",
-            input_tokens=100, output_tokens=50,
+            output="hello",
+            tokens_used=150,
+            model="test",
+            input_tokens=100,
+            output_tokens=50,
         )
         assert r.input_tokens == 100
         assert r.output_tokens == 50
@@ -219,21 +249,31 @@ class TestAgentInvocationResultTokens:
 
 class TestDashboardTokenData:
     def _make_trajectory_with_tokens(
-        self, tid: int, outcome: str, steps_data: list[dict], token_data: list[StepTokenUsage | None],
+        self,
+        tid: int,
+        outcome: str,
+        steps_data: list[dict],
+        token_data: list[StepTokenUsage | None],
     ) -> Trajectory:
         steps = []
         for i, state in enumerate(steps_data):
             tu = token_data[i] if i < len(token_data) else None
-            steps.append(Step(
-                step_number=i,
-                state_before=steps_data[i - 1] if i > 0 else {},
-                state_after=state,
-                token_usage=tu,
-            ))
+            steps.append(
+                Step(
+                    step_number=i,
+                    state_before=steps_data[i - 1] if i > 0 else {},
+                    state_after=state,
+                    token_usage=tu,
+                )
+            )
         total = _aggregate_trajectory_tokens(steps)
         return Trajectory(
-            scenario_name="test", trajectory_id=tid, steps=steps,
-            outcome=TrajectoryOutcome(classification=outcome, final_step=len(steps) - 1, final_state=steps_data[-1]),
+            scenario_name="test",
+            trajectory_id=tid,
+            steps=steps,
+            outcome=TrajectoryOutcome(
+                classification=outcome, final_step=len(steps) - 1, final_state=steps_data[-1]
+            ),
             total_tokens=total,
         )
 
@@ -250,7 +290,8 @@ class TestDashboardTokenData:
                 AgentCallTokens(role="actor", input_tokens=100, output_tokens=50),
                 AgentCallTokens(role="constraint_evaluator", input_tokens=200, output_tokens=75),
             ],
-            total_input_tokens=300, total_output_tokens=125,
+            total_input_tokens=300,
+            total_output_tokens=125,
         )
         t1 = self._make_trajectory_with_tokens(0, "A", [{"x": 1}], [usage])
 
@@ -270,7 +311,9 @@ class TestDashboardTokenData:
     def test_collect_data_no_tokens(self):
         steps = [Step(step_number=0, state_before={}, state_after={"x": 1})]
         t1 = Trajectory(
-            scenario_name="test", trajectory_id=0, steps=steps,
+            scenario_name="test",
+            trajectory_id=0,
+            steps=steps,
             outcome=TrajectoryOutcome(classification="A", final_step=0, final_state={"x": 1}),
         )
 
@@ -285,11 +328,13 @@ class TestDashboardTokenData:
     def test_token_timeline_per_step(self):
         usage0 = StepTokenUsage(
             agent_calls=[AgentCallTokens(role="actor", input_tokens=100, output_tokens=50)],
-            total_input_tokens=100, total_output_tokens=50,
+            total_input_tokens=100,
+            total_output_tokens=50,
         )
         usage1 = StepTokenUsage(
             agent_calls=[AgentCallTokens(role="actor", input_tokens=200, output_tokens=100)],
-            total_input_tokens=200, total_output_tokens=100,
+            total_input_tokens=200,
+            total_output_tokens=100,
         )
         t1 = self._make_trajectory_with_tokens(0, "A", [{"x": 1}, {"x": 2}], [usage0, usage1])
 

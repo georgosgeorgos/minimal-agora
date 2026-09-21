@@ -21,11 +21,13 @@ from minimal_agora.models import (
 def _make_trajectory(tid: int, outcome: str, steps_data: list[dict]) -> Trajectory:
     steps = []
     for i, state in enumerate(steps_data):
-        steps.append(Step(
-            step_number=i,
-            state_before=steps_data[i - 1] if i > 0 else {},
-            state_after=state,
-        ))
+        steps.append(
+            Step(
+                step_number=i,
+                state_before=steps_data[i - 1] if i > 0 else {},
+                state_after=state,
+            )
+        )
     return Trajectory(
         scenario_name="test",
         trajectory_id=tid,
@@ -60,16 +62,24 @@ def test_compute_statistics_single():
 
 
 def test_extract_field_timelines():
-    t1 = _make_trajectory(0, "A", [
-        {"life": {"complexity": 10}},
-        {"life": {"complexity": 20}},
-        {"life": {"complexity": 30}},
-    ])
-    t2 = _make_trajectory(1, "B", [
-        {"life": {"complexity": 15}},
-        {"life": {"complexity": 25}},
-        {"life": {"complexity": 35}},
-    ])
+    t1 = _make_trajectory(
+        0,
+        "A",
+        [
+            {"life": {"complexity": 10}},
+            {"life": {"complexity": 20}},
+            {"life": {"complexity": 30}},
+        ],
+    )
+    t2 = _make_trajectory(
+        1,
+        "B",
+        [
+            {"life": {"complexity": 15}},
+            {"life": {"complexity": 25}},
+            {"life": {"complexity": 35}},
+        ],
+    )
 
     timelines = extract_field_timelines([t1, t2], ["life.complexity"])
     data = timelines["life.complexity"]
@@ -91,6 +101,7 @@ def test_save_artifacts():
         assert (artifacts_dir / "final_states.json").exists()
 
         import json
+
         with open(artifacts_dir / "summary.json") as f:
             summary = json.load(f)
         assert summary["n_trajectories"] == 2
@@ -129,58 +140,62 @@ def _make_calibration_trajectory(
 
 def test_compute_agent_calibration_basic():
     """Test calibration with two agents across two steps."""
-    t = _make_calibration_trajectory(0, "success", [
-        {
-            "step_number": 0,
-            "proposals": [
-                Proposal(
-                    agent="alice",
-                    role="actor",
-                    proposed_changes={"gdp": 100, "population": 50},
-                    confidence=0.8,
+    t = _make_calibration_trajectory(
+        0,
+        "success",
+        [
+            {
+                "step_number": 0,
+                "proposals": [
+                    Proposal(
+                        agent="alice",
+                        role="actor",
+                        proposed_changes={"gdp": 100, "population": 50},
+                        confidence=0.8,
+                    ),
+                    Proposal(
+                        agent="bob",
+                        role="actor",
+                        proposed_changes={"gdp": 200},
+                        confidence=0.6,
+                    ),
+                ],
+                "critiques": [
+                    Critique(
+                        agent="evaluator",
+                        target_proposals=["alice"],
+                        plausibility=0.9,
+                    ),
+                ],
+                "resolution": Resolution(
+                    state_delta={"gdp": 100, "population": 45},
                 ),
-                Proposal(
-                    agent="bob",
-                    role="actor",
-                    proposed_changes={"gdp": 200},
-                    confidence=0.6,
+                "state_after": {"gdp": 100, "population": 45},
+            },
+            {
+                "step_number": 1,
+                "proposals": [
+                    Proposal(
+                        agent="alice",
+                        role="actor",
+                        proposed_changes={"gdp": 150},
+                        confidence=0.7,
+                    ),
+                    Proposal(
+                        agent="bob",
+                        role="actor",
+                        proposed_changes={"gdp": 300},
+                        confidence=0.9,
+                    ),
+                ],
+                "critiques": [],
+                "resolution": Resolution(
+                    state_delta={"gdp": 300},
                 ),
-            ],
-            "critiques": [
-                Critique(
-                    agent="evaluator",
-                    target_proposals=["alice"],
-                    plausibility=0.9,
-                ),
-            ],
-            "resolution": Resolution(
-                state_delta={"gdp": 100, "population": 45},
-            ),
-            "state_after": {"gdp": 100, "population": 45},
-        },
-        {
-            "step_number": 1,
-            "proposals": [
-                Proposal(
-                    agent="alice",
-                    role="actor",
-                    proposed_changes={"gdp": 150},
-                    confidence=0.7,
-                ),
-                Proposal(
-                    agent="bob",
-                    role="actor",
-                    proposed_changes={"gdp": 300},
-                    confidence=0.9,
-                ),
-            ],
-            "critiques": [],
-            "resolution": Resolution(
-                state_delta={"gdp": 300},
-            ),
-            "state_after": {"gdp": 300},
-        },
-    ])
+                "state_after": {"gdp": 300},
+            },
+        ],
+    )
 
     cal = compute_agent_calibration([t])
 
@@ -202,50 +217,58 @@ def test_compute_agent_calibration_basic():
 
 def test_compute_agent_calibration_empty():
     """No proposals => empty result."""
-    t = _make_calibration_trajectory(0, "outcome", [
-        {
-            "step_number": 0,
-            "state_after": {"x": 1},
-        },
-    ])
+    t = _make_calibration_trajectory(
+        0,
+        "outcome",
+        [
+            {
+                "step_number": 0,
+                "state_after": {"x": 1},
+            },
+        ],
+    )
     cal = compute_agent_calibration([t])
     assert cal == {}
 
 
 def test_compute_agent_calibration_float_tolerance():
     """Float values within 10% should count as accepted."""
-    t = _make_calibration_trajectory(0, "outcome", [
-        {
-            "step_number": 0,
-            "proposals": [
-                Proposal(
-                    agent="agent_a",
-                    role="actor",
-                    proposed_changes={"temperature": 100.0},
-                    confidence=0.5,
+    t = _make_calibration_trajectory(
+        0,
+        "outcome",
+        [
+            {
+                "step_number": 0,
+                "proposals": [
+                    Proposal(
+                        agent="agent_a",
+                        role="actor",
+                        proposed_changes={"temperature": 100.0},
+                        confidence=0.5,
+                    ),
+                ],
+                "resolution": Resolution(
+                    state_delta={"temperature": 105.0},  # 5% off -> within 10%
                 ),
-            ],
-            "resolution": Resolution(
-                state_delta={"temperature": 105.0},  # 5% off -> within 10%
-            ),
-            "state_after": {"temperature": 105.0},
-        },
-        {
-            "step_number": 1,
-            "proposals": [
-                Proposal(
-                    agent="agent_a",
-                    role="actor",
-                    proposed_changes={"temperature": 100.0},
-                    confidence=0.5,
+                "state_after": {"temperature": 105.0},
+            },
+            {
+                "step_number": 1,
+                "proposals": [
+                    Proposal(
+                        agent="agent_a",
+                        role="actor",
+                        proposed_changes={"temperature": 100.0},
+                        confidence=0.5,
+                    ),
+                ],
+                "resolution": Resolution(
+                    state_delta={"temperature": 115.0},  # 15% off -> outside 10%
                 ),
-            ],
-            "resolution": Resolution(
-                state_delta={"temperature": 115.0},  # 15% off -> outside 10%
-            ),
-            "state_after": {"temperature": 115.0},
-        },
-    ])
+                "state_after": {"temperature": 115.0},
+            },
+        ],
+    )
     cal = compute_agent_calibration([t])
     assert cal["agent_a"]["proposals_made"] == 2
     assert cal["agent_a"]["proposals_accepted"] == 1
@@ -253,23 +276,27 @@ def test_compute_agent_calibration_float_tolerance():
 
 def test_compute_agent_calibration_nested_changes():
     """Nested proposed_changes should be flattened to dot-paths."""
-    t = _make_calibration_trajectory(0, "outcome", [
-        {
-            "step_number": 0,
-            "proposals": [
-                Proposal(
-                    agent="agent_nested",
-                    role="actor",
-                    proposed_changes={"economy": {"gdp": 500}},
-                    confidence=0.6,
+    t = _make_calibration_trajectory(
+        0,
+        "outcome",
+        [
+            {
+                "step_number": 0,
+                "proposals": [
+                    Proposal(
+                        agent="agent_nested",
+                        role="actor",
+                        proposed_changes={"economy": {"gdp": 500}},
+                        confidence=0.6,
+                    ),
+                ],
+                "resolution": Resolution(
+                    state_delta={"economy": {"gdp": 500}},
                 ),
-            ],
-            "resolution": Resolution(
-                state_delta={"economy": {"gdp": 500}},
-            ),
-            "state_after": {"economy": {"gdp": 500}},
-        },
-    ])
+                "state_after": {"economy": {"gdp": 500}},
+            },
+        ],
+    )
     cal = compute_agent_calibration([t])
     assert cal["agent_nested"]["proposals_accepted"] == 1
     assert "economy.gdp" in cal["agent_nested"]["fields_proposed"]
@@ -277,21 +304,25 @@ def test_compute_agent_calibration_nested_changes():
 
 def test_compute_agent_calibration_no_resolution():
     """Steps without a resolution should not count as accepted."""
-    t = _make_calibration_trajectory(0, "outcome", [
-        {
-            "step_number": 0,
-            "proposals": [
-                Proposal(
-                    agent="orphan",
-                    role="actor",
-                    proposed_changes={"x": 10},
-                    confidence=0.9,
-                ),
-            ],
-            "resolution": None,
-            "state_after": {"x": 10},
-        },
-    ])
+    t = _make_calibration_trajectory(
+        0,
+        "outcome",
+        [
+            {
+                "step_number": 0,
+                "proposals": [
+                    Proposal(
+                        agent="orphan",
+                        role="actor",
+                        proposed_changes={"x": 10},
+                        confidence=0.9,
+                    ),
+                ],
+                "resolution": None,
+                "state_after": {"x": 10},
+            },
+        ],
+    )
     cal = compute_agent_calibration([t])
     assert cal["orphan"]["proposals_made"] == 1
     assert cal["orphan"]["proposals_accepted"] == 0

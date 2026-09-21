@@ -77,7 +77,9 @@ def test_batch_compression_groups_ten():
     summary_start = result.index("## Summary of Earlier Steps")
     first_recent = result.index("## Step 16")
     summary_text = result[summary_start:first_recent]
-    paragraphs = [p.strip() for p in summary_text.split("\n\n") if p.strip() and "## Summary" not in p]
+    paragraphs = [
+        p.strip() for p in summary_text.split("\n\n") if p.strip() and "## Summary" not in p
+    ]
     assert len(paragraphs) == 2
 
 

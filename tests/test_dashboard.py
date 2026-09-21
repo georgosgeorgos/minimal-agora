@@ -23,13 +23,15 @@ def _make_trajectory(
     for i, state in enumerate(steps_data):
         ps = proposals[i] if proposals and i < len(proposals) else []
         res = resolutions[i] if resolutions and i < len(resolutions) else None
-        steps.append(Step(
-            step_number=i,
-            state_before=steps_data[i - 1] if i > 0 else {},
-            state_after=state,
-            proposals=ps,
-            resolution=res,
-        ))
+        steps.append(
+            Step(
+                step_number=i,
+                state_before=steps_data[i - 1] if i > 0 else {},
+                state_after=state,
+                proposals=ps,
+                resolution=res,
+            )
+        )
     return Trajectory(
         scenario_name="test",
         trajectory_id=tid,
@@ -75,10 +77,14 @@ class TestTrajectoryTimelines:
         assert tt["x"]["1"] == [{"step": 0, "value": 15}, {"step": 1, "value": 25}]
 
     def test_nested_field(self):
-        t1 = _make_trajectory(0, "A", [
-            {"life": {"complexity": 5}},
-            {"life": {"complexity": 15}},
-        ])
+        t1 = _make_trajectory(
+            0,
+            "A",
+            [
+                {"life": {"complexity": 5}},
+                {"life": {"complexity": 15}},
+            ],
+        )
 
         with tempfile.TemporaryDirectory() as tmpdir:
             run_dir = Path(tmpdir)
@@ -142,16 +148,22 @@ class TestWildcardEvents:
 
 class TestProposalAcceptance:
     def test_accepted_when_keys_overlap(self):
-        proposals = [[Proposal(
-            agent="agent-a",
-            role="actor",
-            proposed_changes={"gdp": 100},
-            reasoning="should grow",
-        )]]
-        resolutions = [Resolution(
-            state_delta={"gdp": 100},
-            narrative="gdp grew",
-        )]
+        proposals = [
+            [
+                Proposal(
+                    agent="agent-a",
+                    role="actor",
+                    proposed_changes={"gdp": 100},
+                    reasoning="should grow",
+                )
+            ]
+        ]
+        resolutions = [
+            Resolution(
+                state_delta={"gdp": 100},
+                narrative="gdp grew",
+            )
+        ]
         t1 = _make_trajectory(0, "A", [{"gdp": 100}], proposals, resolutions)
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -164,16 +176,22 @@ class TestProposalAcceptance:
         assert prop_events[0]["accepted"] is True
 
     def test_not_accepted_when_keys_differ(self):
-        proposals = [[Proposal(
-            agent="agent-a",
-            role="actor",
-            proposed_changes={"gdp": 100},
-            reasoning="should grow",
-        )]]
-        resolutions = [Resolution(
-            state_delta={"population": 50},
-            narrative="population grew",
-        )]
+        proposals = [
+            [
+                Proposal(
+                    agent="agent-a",
+                    role="actor",
+                    proposed_changes={"gdp": 100},
+                    reasoning="should grow",
+                )
+            ]
+        ]
+        resolutions = [
+            Resolution(
+                state_delta={"population": 50},
+                narrative="population grew",
+            )
+        ]
         t1 = _make_trajectory(0, "A", [{"population": 50}], proposals, resolutions)
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -186,12 +204,16 @@ class TestProposalAcceptance:
         assert prop_events[0]["accepted"] is False
 
     def test_not_accepted_without_resolution(self):
-        proposals = [[Proposal(
-            agent="agent-b",
-            role="actor",
-            proposed_changes={"x": 1},
-            reasoning="increase x",
-        )]]
+        proposals = [
+            [
+                Proposal(
+                    agent="agent-b",
+                    role="actor",
+                    proposed_changes={"x": 1},
+                    reasoning="increase x",
+                )
+            ]
+        ]
         t1 = _make_trajectory(0, "A", [{"x": 1}], proposals, [None])
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -204,12 +226,19 @@ class TestProposalAcceptance:
         assert prop_events[0]["accepted"] is False
 
     def test_multiple_agents_counted(self):
-        proposals = [[
-            Proposal(agent="alice", role="actor",
-                     proposed_changes={"gdp": 50}, reasoning="grow gdp"),
-            Proposal(agent="bob", role="constraint_evaluator",
-                     proposed_changes={"risk": 10}, reasoning="add risk"),
-        ]]
+        proposals = [
+            [
+                Proposal(
+                    agent="alice", role="actor", proposed_changes={"gdp": 50}, reasoning="grow gdp"
+                ),
+                Proposal(
+                    agent="bob",
+                    role="constraint_evaluator",
+                    proposed_changes={"risk": 10},
+                    reasoning="add risk",
+                ),
+            ]
+        ]
         resolutions = [Resolution(state_delta={"gdp": 50}, narrative="done")]
         t1 = _make_trajectory(0, "A", [{"gdp": 50}], proposals, resolutions)
 

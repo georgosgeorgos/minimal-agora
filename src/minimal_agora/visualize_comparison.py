@@ -13,7 +13,8 @@ from minimal_agora.models import CrossRunComparison, Trajectory
 
 
 def plot_outcome_comparison(
-    comparison: CrossRunComparison, output_path: Path,
+    comparison: CrossRunComparison,
+    output_path: Path,
 ) -> Path:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     categories = [c["category"] for c in comparison.outcome_comparisons]
@@ -35,28 +36,43 @@ def plot_outcome_comparison(
 
     fig, ax = plt.subplots(figsize=(max(8, len(categories) * 2), 5))
     ax.bar(
-        x - width / 2, rates_a, width, label=comparison.run_a_name,
-        color="#2196F3", edgecolor="white", linewidth=0.5,
-        yerr=ci_a, capsize=4,
+        x - width / 2,
+        rates_a,
+        width,
+        label=comparison.run_a_name,
+        color="#2196F3",
+        edgecolor="white",
+        linewidth=0.5,
+        yerr=ci_a,
+        capsize=4,
     )
     ax.bar(
-        x + width / 2, rates_b, width, label=comparison.run_b_name,
-        color="#F44336", edgecolor="white", linewidth=0.5,
-        yerr=ci_b, capsize=4,
+        x + width / 2,
+        rates_b,
+        width,
+        label=comparison.run_b_name,
+        color="#F44336",
+        edgecolor="white",
+        linewidth=0.5,
+        yerr=ci_b,
+        capsize=4,
     )
 
     for i, comp in enumerate(comparison.outcome_comparisons):
         if comp["significant"]:
             max_rate = max(rates_a[i], rates_b[i])
             max_ci = max(ci_a[i], ci_b[i])
-            ax.text(x[i], max_rate + max_ci + 0.02, "*", ha="center", fontsize=16, fontweight="bold")
+            ax.text(
+                x[i], max_rate + max_ci + 0.02, "*", ha="center", fontsize=16, fontweight="bold"
+            )
 
     ax.set_xticks(x)
     ax.set_xticklabels(categories)
     ax.set_ylabel("Rate")
     ax.set_title(
         f"{comparison.run_a_name} vs {comparison.run_b_name}",
-        fontsize=12, fontweight="bold",
+        fontsize=12,
+        fontweight="bold",
     )
     ax.legend()
     ax.spines["top"].set_visible(False)
@@ -70,7 +86,8 @@ def plot_outcome_comparison(
 
 
 def plot_effect_sizes(
-    comparison: CrossRunComparison, output_path: Path,
+    comparison: CrossRunComparison,
+    output_path: Path,
 ) -> Path:
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -121,6 +138,7 @@ def plot_effect_sizes(
     ax.spines["right"].set_visible(False)
 
     from matplotlib.patches import Patch
+
     legend_items = []
     for interp in ["negligible", "small", "medium", "large", "very_large"]:
         if interp in interpretations:
@@ -187,8 +205,10 @@ def generate_comparison_plots(
         plot_outcome_comparison(comparison, output_path / "outcome_comparison.png"),
         plot_effect_sizes(comparison, output_path / "effect_sizes.png"),
         plot_step_distributions(
-            trajectories_a, trajectories_b,
-            comparison.run_a_name, comparison.run_b_name,
+            trajectories_a,
+            trajectories_b,
+            comparison.run_a_name,
+            comparison.run_b_name,
             output_path / "step_distributions.png",
         ),
     ]

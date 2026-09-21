@@ -37,7 +37,9 @@ def _sample_summaries():
 
 def test_resampling_critic_prompt_contains_state():
     prompt = build_resampling_critic_prompt(
-        _sample_state(), "Life evolved.", _sample_summaries(),
+        _sample_state(),
+        "Life evolved.",
+        _sample_summaries(),
     )
     assert "multicellular" in prompt
     assert "photosynthesis" in prompt
@@ -46,7 +48,9 @@ def test_resampling_critic_prompt_contains_state():
 
 def test_resampling_critic_prompt_contains_narrative():
     prompt = build_resampling_critic_prompt(
-        _sample_state(), "Life evolved significantly.", _sample_summaries(),
+        _sample_state(),
+        "Life evolved significantly.",
+        _sample_summaries(),
     )
     assert "Life evolved significantly." in prompt
 
@@ -62,7 +66,9 @@ def test_resampling_critic_prompt_contains_trajectory_summaries():
 
 def test_resampling_critic_prompt_requests_json_output():
     prompt = build_resampling_critic_prompt(
-        _sample_state(), "Narrative.", _sample_summaries(),
+        _sample_state(),
+        "Narrative.",
+        _sample_summaries(),
     )
     assert '"scores"' in prompt
     assert '"trajectory_id"' in prompt
@@ -72,7 +78,9 @@ def test_resampling_critic_prompt_requests_json_output():
 
 def test_resampling_critic_prompt_mentions_evaluation_criteria():
     prompt = build_resampling_critic_prompt(
-        _sample_state(), "Narrative.", _sample_summaries(),
+        _sample_state(),
+        "Narrative.",
+        _sample_summaries(),
     )
     assert "Plausibility" in prompt
     assert "Diversity" in prompt
@@ -122,7 +130,9 @@ def test_build_prompt_raises_for_resampling_critic():
 
 def test_resampling_critic_prompt_is_string():
     result = build_resampling_critic_prompt(
-        _sample_state(), "Narrative.", _sample_summaries(),
+        _sample_state(),
+        "Narrative.",
+        _sample_summaries(),
     )
     assert isinstance(result, str)
     assert len(result) > 100

@@ -52,11 +52,13 @@ class TestInferSchema:
 class TestValidateStateDelta:
     @pytest.fixture()
     def schema(self):
-        return infer_schema({
-            "planet": {"climate": "warm", "biodiversity": 0.5},
-            "life": {"complexity": 1.0, "intelligence": False},
-            "population": 100,
-        })
+        return infer_schema(
+            {
+                "planet": {"climate": "warm", "biodiversity": 0.5},
+                "life": {"complexity": 1.0, "intelligence": False},
+                "population": 100,
+            }
+        )
 
     def test_valid_delta(self, schema):
         delta = {"planet": {"climate": "cold", "biodiversity": 0.8}}
@@ -172,7 +174,9 @@ class TestLoopIntegration:
             from minimal_agora.providers.protocol import AgentInvocationResult
 
             mock_invoke.return_value = AgentInvocationResult(
-                output="output", input_tokens=10, output_tokens=5,
+                output="output",
+                input_tokens=10,
+                output_tokens=5,
             )
             mock_parse_prop.return_value = Proposal(
                 agent="actor1",

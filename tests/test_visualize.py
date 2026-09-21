@@ -27,14 +27,22 @@ def _make_evolution_trajectory(tid: int, outcome: str, n_steps: int = 5) -> Traj
     for i in range(n_steps):
         complexity += (i + 1) * 3 + tid
         oxygen += 1.5 + tid * 0.5
-        steps.append(Step(
-            step_number=i,
-            state_before={},
-            state_after={
-                "life": {"complexity": complexity, "intelligence": i == n_steps - 1 and outcome == "intelligent"},
-                "environment": {"oxygen_level": oxygen, "biodiversity": "low" if i < 3 else "moderate"},
-            },
-        ))
+        steps.append(
+            Step(
+                step_number=i,
+                state_before={},
+                state_after={
+                    "life": {
+                        "complexity": complexity,
+                        "intelligence": i == n_steps - 1 and outcome == "intelligent",
+                    },
+                    "environment": {
+                        "oxygen_level": oxygen,
+                        "biodiversity": "low" if i < 3 else "moderate",
+                    },
+                },
+            )
+        )
     return Trajectory(
         scenario_name="test-evolution",
         trajectory_id=tid,
@@ -56,17 +64,31 @@ def _make_population_trajectory(tid: int, outcome: str, n_steps: int = 8) -> Tra
         rome_mil += 5 - tid
         greece_mil += 3 + tid
         persia_mil -= 2
-        steps.append(Step(
-            step_number=i,
-            state_before={},
-            state_after={
-                "populations": {
-                    "rome": {"military_strength": rome_mil, "economy": 50 + i * 2, "culture": 40 + i},
-                    "greece": {"military_strength": greece_mil, "economy": 55 + i, "culture": 80 - i},
-                    "persia": {"military_strength": persia_mil, "economy": 65 - i, "culture": 55},
+        steps.append(
+            Step(
+                step_number=i,
+                state_before={},
+                state_after={
+                    "populations": {
+                        "rome": {
+                            "military_strength": rome_mil,
+                            "economy": 50 + i * 2,
+                            "culture": 40 + i,
+                        },
+                        "greece": {
+                            "military_strength": greece_mil,
+                            "economy": 55 + i,
+                            "culture": 80 - i,
+                        },
+                        "persia": {
+                            "military_strength": persia_mil,
+                            "economy": 65 - i,
+                            "culture": 55,
+                        },
+                    },
                 },
-            },
-        ))
+            )
+        )
     return Trajectory(
         scenario_name="test-mediterranean",
         trajectory_id=tid,
@@ -103,7 +125,9 @@ def test_plot_field_timelines():
     with tempfile.TemporaryDirectory() as tmpdir:
         path = Path(tmpdir) / "timelines.png"
         result = plot_field_timelines(
-            trajectories, ["life.complexity", "environment.oxygen_level"], path,
+            trajectories,
+            ["life.complexity", "environment.oxygen_level"],
+            path,
         )
         assert result.exists()
         assert result.stat().st_size > 1000
@@ -117,7 +141,9 @@ def test_plot_field_timelines_categorical():
     with tempfile.TemporaryDirectory() as tmpdir:
         path = Path(tmpdir) / "categorical.png"
         result = plot_field_timelines(
-            trajectories, ["environment.biodiversity"], path,
+            trajectories,
+            ["environment.biodiversity"],
+            path,
         )
         assert result.exists()
 
@@ -145,7 +171,10 @@ def test_plot_population_scores():
     with tempfile.TemporaryDirectory() as tmpdir:
         path = Path(tmpdir) / "military.png"
         result = plot_population_scores(
-            trajectories, ["rome", "greece", "persia"], "military_strength", path,
+            trajectories,
+            ["rome", "greece", "persia"],
+            "military_strength",
+            path,
         )
         assert result.exists()
         assert result.stat().st_size > 1000
@@ -160,11 +189,13 @@ def _make_wildcard_trajectory(tid: int, outcome: str, n_steps: int = 6) -> Traje
             state_before["metric"] += 100
         val = state_before["metric"] + (i + 1) * 2
         state_after = {"metric": val}
-        steps.append(Step(
-            step_number=i,
-            state_before=state_before,
-            state_after=state_after,
-        ))
+        steps.append(
+            Step(
+                step_number=i,
+                state_before=state_before,
+                state_after=state_after,
+            )
+        )
     return Trajectory(
         scenario_name="test-wildcards",
         trajectory_id=tid,
@@ -189,14 +220,16 @@ def _make_agent_trajectory(tid: int, outcome: str, n_steps: int = 5) -> Trajecto
             Critique(agent="carol", target_proposals=["bob"], plausibility=0.4 + tid * 0.1),
         ]
         resolution = Resolution(state_delta={"x": i + 1}, narrative="step resolved")
-        steps.append(Step(
-            step_number=i,
-            proposals=proposals,
-            critiques=critiques,
-            resolution=resolution,
-            state_before={"x": i, "y": i},
-            state_after={"x": i + 1, "y": i},
-        ))
+        steps.append(
+            Step(
+                step_number=i,
+                proposals=proposals,
+                critiques=critiques,
+                resolution=resolution,
+                state_before={"x": i, "y": i},
+                state_after={"x": i + 1, "y": i},
+            )
+        )
     return Trajectory(
         scenario_name="test-agents",
         trajectory_id=tid,
@@ -218,7 +251,9 @@ def test_plot_trajectory_comparison():
     with tempfile.TemporaryDirectory() as tmpdir:
         path = Path(tmpdir) / "comparison.png"
         result = plot_trajectory_comparison(
-            trajectories, ["life.complexity", "environment.oxygen_level"], path,
+            trajectories,
+            ["life.complexity", "environment.oxygen_level"],
+            path,
         )
         assert result.exists()
         assert result.stat().st_size > 1000
@@ -288,6 +323,7 @@ def test_generate_all_plots_with_synthetic_data():
                 f.write(t.model_dump_json(indent=2))
 
         from minimal_agora.visualize import generate_all_plots
+
         paths = generate_all_plots(
             output_dir,
             fields=["life.complexity", "environment.oxygen_level"],
@@ -311,6 +347,7 @@ def test_generate_all_plots_with_type_filter():
                 f.write(t.model_dump_json(indent=2))
 
         from minimal_agora.visualize import generate_all_plots
+
         paths = generate_all_plots(
             output_dir,
             plot_types=["outcomes", "wildcards"],

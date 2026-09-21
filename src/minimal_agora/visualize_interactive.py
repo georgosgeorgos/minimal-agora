@@ -31,16 +31,22 @@ except ImportError:
 
 
 COLORS = [
-    "#00FF88", "#FF6B35", "#00D4FF", "#FF3CAC", "#FFD700",
-    "#7BFF00", "#FF4466", "#00FFCC", "#C77DFF", "#FF9F1C",
+    "#00FF88",
+    "#FF6B35",
+    "#00D4FF",
+    "#FF3CAC",
+    "#FFD700",
+    "#7BFF00",
+    "#FF4466",
+    "#00FFCC",
+    "#C77DFF",
+    "#FF9F1C",
 ]
 
 
 def _require_plotly() -> None:
     if not _HAS_PLOTLY:
-        raise RuntimeError(
-            "plotly not installed — install with: pip install 'minimal-agora[viz]'"
-        )
+        raise RuntimeError("plotly not installed — install with: pip install 'minimal-agora[viz]'")
 
 
 def _flatten_state(state: dict, prefix: str = "") -> dict[str, float]:
@@ -72,8 +78,7 @@ def plot_outcome_distribution(trajectories: list[Trajectory]) -> go.Figure:
     from collections import Counter
 
     counts = Counter(
-        t.outcome.classification if t.outcome else "unclassified"
-        for t in trajectories
+        t.outcome.classification if t.outcome else "unclassified" for t in trajectories
     )
     names = sorted(counts.keys())
     values = [counts[n] for n in names]
@@ -81,13 +86,16 @@ def plot_outcome_distribution(trajectories: list[Trajectory]) -> go.Figure:
     rates = [v / total if total else 0 for v in values]
 
     fig = go.Figure()
-    fig.add_trace(go.Bar(
-        x=names, y=rates,
-        text=[f"{v}/{total}" for v in values],
-        textposition="auto",
-        marker_color=[COLORS[i % len(COLORS)] for i in range(len(names))],
-        hovertemplate="%{x}: %{text} (%{y:.1%})<extra></extra>",
-    ))
+    fig.add_trace(
+        go.Bar(
+            x=names,
+            y=rates,
+            text=[f"{v}/{total}" for v in values],
+            textposition="auto",
+            marker_color=[COLORS[i % len(COLORS)] for i in range(len(names))],
+            hovertemplate="%{x}: %{text} (%{y:.1%})<extra></extra>",
+        )
+    )
     fig.update_layout(
         title="Outcome Distribution",
         xaxis_title="Outcome",
@@ -124,15 +132,19 @@ def plot_state_trajectories_3d(
                 hovers.append(f"Step {step.step_number}<br>{outcome}")
 
         color = color_map.get(outcome, COLORS[i % len(COLORS)])
-        fig.add_trace(go.Scatter3d(
-            x=xs, y=ys, z=zs,
-            mode="lines+markers",
-            marker={"size": 2, "color": color},
-            line={"color": color, "width": 2},
-            name=f"T{i} ({outcome})",
-            hovertext=hovers,
-            hoverinfo="text",
-        ))
+        fig.add_trace(
+            go.Scatter3d(
+                x=xs,
+                y=ys,
+                z=zs,
+                mode="lines+markers",
+                marker={"size": 2, "color": color},
+                line={"color": color, "width": 2},
+                name=f"T{i} ({outcome})",
+                hovertext=hovers,
+                hoverinfo="text",
+            )
+        )
 
     fig.update_layout(
         title="State-Space Trajectories",
@@ -154,7 +166,8 @@ def plot_field_timelines(
     _require_plotly()
     n_fields = len(fields)
     fig = make_subplots(
-        rows=n_fields, cols=1,
+        rows=n_fields,
+        cols=1,
         shared_xaxes=True,
         subplot_titles=fields,
         vertical_spacing=0.05,
@@ -175,7 +188,8 @@ def plot_field_timelines(
 
             fig.add_trace(
                 go.Scatter(
-                    x=steps_x, y=vals_y,
+                    x=steps_x,
+                    y=vals_y,
                     mode="lines",
                     line={"color": color, "width": 1},
                     name=f"T{i}" if row == 1 else None,
@@ -183,7 +197,8 @@ def plot_field_timelines(
                     showlegend=(row == 1),
                     hovertemplate=f"T{i} step %{{x}}: %{{y:.3f}}<extra>{field}</extra>",
                 ),
-                row=row, col=1,
+                row=row,
+                col=1,
             )
 
     fig.update_layout(
@@ -201,7 +216,8 @@ def plot_constraint_scores(trajectories: list[Trajectory]) -> go.Figure | None:
     has_data = False
 
     fig = make_subplots(
-        rows=1, cols=1,
+        rows=1,
+        cols=1,
     )
 
     for i, t in enumerate(trajectories):
@@ -219,14 +235,17 @@ def plot_constraint_scores(trajectories: list[Trajectory]) -> go.Figure | None:
 
         for j, cat in enumerate(categories):
             if cat_steps[cat]:
-                fig.add_trace(go.Scatter(
-                    x=cat_steps[cat], y=cat_vals[cat],
-                    mode="lines+markers",
-                    marker={"size": 4},
-                    name=f"{cat} (T{i})" if len(trajectories) > 1 else cat,
-                    line={"color": COLORS[j % len(COLORS)]},
-                    hovertemplate=f"{cat}: %{{y:.2f}} (step %{{x}})<extra>T{i}</extra>",
-                ))
+                fig.add_trace(
+                    go.Scatter(
+                        x=cat_steps[cat],
+                        y=cat_vals[cat],
+                        mode="lines+markers",
+                        marker={"size": 4},
+                        name=f"{cat} (T{i})" if len(trajectories) > 1 else cat,
+                        line={"color": COLORS[j % len(COLORS)]},
+                        hovertemplate=f"{cat}: %{{y:.2f}} (step %{{x}})<extra>T{i}</extra>",
+                    )
+                )
 
     if not has_data:
         return None
@@ -254,20 +273,26 @@ def plot_token_usage(trajectories: list[Trajectory]) -> go.Figure:
                 input_y.append(step.token_usage.total_input_tokens or 0)
                 output_y.append(step.token_usage.total_output_tokens or 0)
 
-        fig.add_trace(go.Bar(
-            x=steps_x, y=input_y,
-            name=f"Input (T{i})",
-            marker_color=COLORS[0],
-            opacity=0.7,
-            hovertemplate="Step %{x}: %{y:,} input tokens<extra></extra>",
-        ))
-        fig.add_trace(go.Bar(
-            x=steps_x, y=output_y,
-            name=f"Output (T{i})",
-            marker_color=COLORS[1],
-            opacity=0.7,
-            hovertemplate="Step %{x}: %{y:,} output tokens<extra></extra>",
-        ))
+        fig.add_trace(
+            go.Bar(
+                x=steps_x,
+                y=input_y,
+                name=f"Input (T{i})",
+                marker_color=COLORS[0],
+                opacity=0.7,
+                hovertemplate="Step %{x}: %{y:,} input tokens<extra></extra>",
+            )
+        )
+        fig.add_trace(
+            go.Bar(
+                x=steps_x,
+                y=output_y,
+                name=f"Output (T{i})",
+                marker_color=COLORS[1],
+                opacity=0.7,
+                hovertemplate="Step %{x}: %{y:,} output tokens<extra></extra>",
+            )
+        )
 
     fig.update_layout(
         title="Token Usage Per Step",
@@ -295,36 +320,42 @@ def plot_proposal_conflicts(trajectories: list[Trajectory]) -> go.Figure:
             else:
                 auto_steps.append(s)
 
-        fig.add_trace(go.Scatter(
-            x=auto_steps,
-            y=[i] * len(auto_steps),
-            mode="markers",
-            marker={"size": 6, "color": "#00FF88", "symbol": "circle"},
-            name="Auto-merge" if i == 0 else None,
-            legendgroup="auto",
-            showlegend=(i == 0),
-            hovertemplate="Step %{x}: auto-merge<extra></extra>",
-        ))
-        fig.add_trace(go.Scatter(
-            x=conflict_steps,
-            y=[i] * len(conflict_steps),
-            mode="markers",
-            marker={"size": 8, "color": "#FFD700", "symbol": "diamond"},
-            name="Conflict → resolver" if i == 0 else None,
-            legendgroup="conflict",
-            showlegend=(i == 0),
-            hovertemplate="Step %{x}: conflict resolution<extra></extra>",
-        ))
-        fig.add_trace(go.Scatter(
-            x=review_steps,
-            y=[i] * len(review_steps),
-            mode="markers",
-            marker={"size": 8, "color": "#FF3CAC", "symbol": "star"},
-            name="Full review" if i == 0 else None,
-            legendgroup="review",
-            showlegend=(i == 0),
-            hovertemplate="Step %{x}: full review<extra></extra>",
-        ))
+        fig.add_trace(
+            go.Scatter(
+                x=auto_steps,
+                y=[i] * len(auto_steps),
+                mode="markers",
+                marker={"size": 6, "color": "#00FF88", "symbol": "circle"},
+                name="Auto-merge" if i == 0 else None,
+                legendgroup="auto",
+                showlegend=(i == 0),
+                hovertemplate="Step %{x}: auto-merge<extra></extra>",
+            )
+        )
+        fig.add_trace(
+            go.Scatter(
+                x=conflict_steps,
+                y=[i] * len(conflict_steps),
+                mode="markers",
+                marker={"size": 8, "color": "#FFD700", "symbol": "diamond"},
+                name="Conflict → resolver" if i == 0 else None,
+                legendgroup="conflict",
+                showlegend=(i == 0),
+                hovertemplate="Step %{x}: conflict resolution<extra></extra>",
+            )
+        )
+        fig.add_trace(
+            go.Scatter(
+                x=review_steps,
+                y=[i] * len(review_steps),
+                mode="markers",
+                marker={"size": 8, "color": "#FF3CAC", "symbol": "star"},
+                name="Full review" if i == 0 else None,
+                legendgroup="review",
+                showlegend=(i == 0),
+                hovertemplate="Step %{x}: full review<extra></extra>",
+            )
+        )
 
     fig.update_layout(
         title="Resolution Path Per Step",
@@ -353,7 +384,8 @@ def plot_agent_calibration(trajectories: list[Trajectory]) -> go.Figure | None:
     mean_confidences = [calibration[a]["mean_confidence"] for a in agents]
 
     fig = make_subplots(
-        rows=1, cols=2,
+        rows=1,
+        cols=2,
         subplot_titles=["Acceptance Rate vs Confidence", "Calibration Plot"],
         horizontal_spacing=0.12,
     )
@@ -367,7 +399,8 @@ def plot_agent_calibration(trajectories: list[Trajectory]) -> go.Figure | None:
             marker_color=COLORS[2],
             hovertemplate="%{x}: %{y:.1%}<extra>Acceptance Rate</extra>",
         ),
-        row=1, col=1,
+        row=1,
+        col=1,
     )
     fig.add_trace(
         go.Bar(
@@ -377,19 +410,22 @@ def plot_agent_calibration(trajectories: list[Trajectory]) -> go.Figure | None:
             marker_color=COLORS[0],
             hovertemplate="%{x}: %{y:.2f}<extra>Mean Confidence</extra>",
         ),
-        row=1, col=1,
+        row=1,
+        col=1,
     )
 
     # Calibration scatter
     fig.add_trace(
         go.Scatter(
-            x=[0, 1], y=[0, 1],
+            x=[0, 1],
+            y=[0, 1],
             mode="lines",
             line={"color": "rgba(255,255,255,0.3)", "dash": "dash"},
             name="Perfect Calibration",
             hoverinfo="skip",
         ),
-        row=1, col=2,
+        row=1,
+        col=2,
     )
     fig.add_trace(
         go.Scatter(
@@ -402,11 +438,11 @@ def plot_agent_calibration(trajectories: list[Trajectory]) -> go.Figure | None:
             textfont={"size": 10},
             name="Agents",
             hovertemplate=(
-                "%{text}<br>Confidence: %{x:.2f}<br>Acceptance: %{y:.1%}"
-                "<extra></extra>"
+                "%{text}<br>Confidence: %{x:.2f}<br>Acceptance: %{y:.1%}<extra></extra>"
             ),
         ),
-        row=1, col=2,
+        row=1,
+        col=2,
     )
 
     fig.update_xaxes(title_text="Agent", row=1, col=1)
@@ -438,7 +474,8 @@ def plot_outcome_coverage(trajectories: list[Trajectory]) -> go.Figure | None:
         return None
 
     fig = make_subplots(
-        rows=1, cols=2,
+        rows=1,
+        cols=2,
         subplot_titles=["Coverage Dimensions", "Final States (PCA)"],
         horizontal_spacing=0.12,
     )
@@ -459,7 +496,8 @@ def plot_outcome_coverage(trajectories: list[Trajectory]) -> go.Figure | None:
             hovertemplate="%{x}: %{y:.3f}<extra></extra>",
             showlegend=False,
         ),
-        row=1, col=1,
+        row=1,
+        col=1,
     )
 
     # Add a horizontal line for the combined coverage score
@@ -469,7 +507,8 @@ def plot_outcome_coverage(trajectories: list[Trajectory]) -> go.Figure | None:
         line_color="rgba(255,255,255,0.5)",
         annotation_text=f"Coverage Score: {metrics['coverage_score']:.3f}",
         annotation_position="top right",
-        row=1, col=1,
+        row=1,
+        col=1,
     )
 
     # --- PCA scatter of final states ---
@@ -487,10 +526,7 @@ def plot_outcome_coverage(trajectories: list[Trajectory]) -> go.Figure | None:
 
     if len(all_keys) >= 2 and len(flat_states) >= 2:
         # Build feature matrix
-        matrix = np.array([
-            [fs.get(k, 0.0) for k in all_keys]
-            for fs in flat_states
-        ])
+        matrix = np.array([[fs.get(k, 0.0) for k in all_keys] for fs in flat_states])
 
         # Center the data
         mean = matrix.mean(axis=0)
@@ -518,12 +554,10 @@ def plot_outcome_coverage(trajectories: list[Trajectory]) -> go.Figure | None:
                         textposition="top center",
                         textfont={"size": 9},
                         name=outcome,
-                        hovertemplate=(
-                            "T%{text}<br>PC1: %{x:.3f}<br>PC2: %{y:.3f}"
-                            "<extra></extra>"
-                        ),
+                        hovertemplate=("T%{text}<br>PC1: %{x:.3f}<br>PC2: %{y:.3f}<extra></extra>"),
                     ),
-                    row=1, col=2,
+                    row=1,
+                    col=2,
                 )
         except np.linalg.LinAlgError:
             pass  # SVD did not converge; skip PCA plot
@@ -564,9 +598,14 @@ def generate_interactive_report(
     figs.append(plot_outcome_distribution(trajectories))
 
     if len(fields) >= 3:
-        figs.append(plot_state_trajectories_3d(
-            trajectories, fields[0], fields[1], fields[2],
-        ))
+        figs.append(
+            plot_state_trajectories_3d(
+                trajectories,
+                fields[0],
+                fields[1],
+                fields[2],
+            )
+        )
 
     if fields:
         figs.append(plot_field_timelines(trajectories, fields))

@@ -85,8 +85,10 @@ def test_resampling_config_ess_one_always():
 
 def test_scenario_with_ess_threshold():
     scenario = Scenario(
-        name="test", mode=SimMode.COUNTERFACTUAL,
-        initial_state={"x": 0}, step_budget=5,
+        name="test",
+        mode=SimMode.COUNTERFACTUAL,
+        initial_state={"x": 0},
+        step_budget=5,
         resampling=ResamplingConfig(ess_threshold=0.3),
     )
     assert scenario.resampling is not None

@@ -66,7 +66,10 @@ def _compute_temperature(scenario: Scenario, step_num: int, max_steps: int) -> f
     if scenario.temperature_start == scenario.temperature_end:
         return scenario.temperature_start
     progress = step_num / max(max_steps - 1, 1)
-    return scenario.temperature_start + (scenario.temperature_end - scenario.temperature_start) * progress
+    return (
+        scenario.temperature_start
+        + (scenario.temperature_end - scenario.temperature_start) * progress
+    )
 
 
 async def _safe_invoke(coro) -> None:
@@ -77,15 +80,24 @@ async def _safe_invoke(coro) -> None:
 
 
 async def _invoke_with_retry(
-    agent, workspace: Path, step_num: int, prompt: str, timeout: int, max_retries: int = 1,
+    agent,
+    workspace: Path,
+    step_num: int,
+    prompt: str,
+    timeout: int,
+    max_retries: int = 1,
     temperature: float | None = None,
 ) -> AgentInvocationResult | None:
     for attempt in range(1 + max_retries):
         try:
-            return await invoke_agent(agent, workspace, step_num, prompt, timeout, temperature=temperature)
+            return await invoke_agent(
+                agent, workspace, step_num, prompt, timeout, temperature=temperature
+            )
         except (OSError, RuntimeError, TimeoutError) as e:
             if attempt < max_retries:
-                logger.warning("Agent %s failed (attempt %d), retrying: %s", agent.name, attempt + 1, e)
+                logger.warning(
+                    "Agent %s failed (attempt %d), retrying: %s", agent.name, attempt + 1, e
+                )
             else:
                 logger.error("Agent %s failed after %d attempts: %s", agent.name, attempt + 1, e)
     return None
@@ -105,7 +117,9 @@ async def _invoke_with_semaphore(
         logger.debug("agent.throttled", agent=agent.name, waiting=True)
     async with semaphore:
         logger.debug("agent.semaphore_acquired", agent=agent.name, max_concurrent=max_concurrent)
-        await _invoke_with_retry(agent, workspace, step_num, prompt, timeout, temperature=temperature)
+        await _invoke_with_retry(
+            agent, workspace, step_num, prompt, timeout, temperature=temperature
+        )
 
 
 def _detect_resume_point(workspace: Path) -> int:
@@ -135,6 +149,7 @@ def _restore_checkpoint(workspace: Path, resume_from: int, board: Board) -> list
     state_file = workspace / "history" / f"step_{resume_from:03d}_state.json"
     if state_file.exists():
         import json
+
         with open(state_file) as f:
             board.write_state(json.load(f))
     return steps
@@ -194,8 +209,14 @@ async def run_trajectory(
             slog.info("trajectory.terminated", reason="condition_met")
             return True
 
-        if scenario.mode == SimMode.OPEN_ENDED and scenario.fitness and _check_plateau(
-            fitness_history, plateau_window, plateau_threshold,
+        if (
+            scenario.mode == SimMode.OPEN_ENDED
+            and scenario.fitness
+            and _check_plateau(
+                fitness_history,
+                plateau_window,
+                plateau_threshold,
+            )
         ):
             slog.info("trajectory.terminated", reason="fitness_plateau")
             return True
@@ -236,8 +257,11 @@ async def run_trajectory(
         if scenario.wildcards_enabled:
             current_state = board.read_state()
             wildcard = _roll_wildcard(
-                scenario.wildcards, max_steps, current_state,
-                step_num=step_num, warmup=scenario.wildcard_warmup,
+                scenario.wildcards,
+                max_steps,
+                current_state,
+                step_num=step_num,
+                warmup=scenario.wildcard_warmup,
             )
         else:
             wildcard = None
@@ -252,7 +276,16 @@ async def run_trajectory(
             slog.info("step.start")
             board.clear_wildcard(step_num)
 
-        step = await _run_step(scenario, board, step_num, agent_timeout, trajectory_id, agent_semaphore, max_steps, state_schema)
+        step = await _run_step(
+            scenario,
+            board,
+            step_num,
+            agent_timeout,
+            trajectory_id,
+            agent_semaphore,
+            max_steps,
+            state_schema,
+        )
         if record_step(step, slog):
             break
         step_num += 1
@@ -335,8 +368,28 @@ async def _run_step(
             return _run_routine_step(board, step_num, state_before, last_reasoned_step)
 
     if scenario.entities:
-        return await _run_entity_step(scenario, board, step_num, timeout, state_before, trajectory_id, agent_semaphore, state_schema, max_steps)
-    return await _run_flat_step(scenario, board, step_num, timeout, state_before, trajectory_id, agent_semaphore, max_steps, state_schema)
+        return await _run_entity_step(
+            scenario,
+            board,
+            step_num,
+            timeout,
+            state_before,
+            trajectory_id,
+            agent_semaphore,
+            state_schema,
+            max_steps,
+        )
+    return await _run_flat_step(
+        scenario,
+        board,
+        step_num,
+        timeout,
+        state_before,
+        trajectory_id,
+        agent_semaphore,
+        max_steps,
+        state_schema,
+    )
 
 
 def _load_last_reasoned_step(board: Board, step_num: int) -> Step | None:
@@ -445,6 +498,7 @@ def _read_narrative(board: Board) -> str:
 
 def _read_wildcard_dict(board: Board, step_num: int) -> dict | None:
     import json as _json
+
     path = board.workspace / "board" / f"wildcard_step_{step_num:03d}.json"
     if not path.exists():
         return None
@@ -467,25 +521,40 @@ async def _invoke_and_collect(
             if agent_semaphore.locked():
                 logger.debug("agent.throttled", agent=agent.name, waiting=True)
             async with agent_semaphore:
-                logger.debug("agent.semaphore_acquired", agent=agent.name, max_concurrent=max_concurrent)
-                return await _invoke_with_retry_return(agent, workspace, step_num, prompt, timeout, temperature=temperature)
+                logger.debug(
+                    "agent.semaphore_acquired", agent=agent.name, max_concurrent=max_concurrent
+                )
+                return await _invoke_with_retry_return(
+                    agent, workspace, step_num, prompt, timeout, temperature=temperature
+                )
         else:
-            return await _invoke_with_retry_return(agent, workspace, step_num, prompt, timeout, temperature=temperature)
+            return await _invoke_with_retry_return(
+                agent, workspace, step_num, prompt, timeout, temperature=temperature
+            )
     except Exception as e:  # noqa: BLE001
         logger.warning("agent.task_failed", agent=agent.name, error=str(e))
         return None
 
 
 async def _invoke_with_retry_return(
-    agent, workspace: Path, step_num: int, prompt: str, timeout: int, max_retries: int = 1,
+    agent,
+    workspace: Path,
+    step_num: int,
+    prompt: str,
+    timeout: int,
+    max_retries: int = 1,
     temperature: float | None = None,
 ) -> AgentInvocationResult | None:
     for attempt in range(1 + max_retries):
         try:
-            return await invoke_agent(agent, workspace, step_num, prompt, timeout, temperature=temperature)
+            return await invoke_agent(
+                agent, workspace, step_num, prompt, timeout, temperature=temperature
+            )
         except (OSError, RuntimeError, TimeoutError) as e:
             if attempt < max_retries:
-                logger.warning("Agent %s failed (attempt %d), retrying: %s", agent.name, attempt + 1, e)
+                logger.warning(
+                    "Agent %s failed (attempt %d), retrying: %s", agent.name, attempt + 1, e
+                )
             else:
                 logger.error("Agent %s failed after %d attempts: %s", agent.name, attempt + 1, e)
     return None
@@ -512,8 +581,7 @@ async def _plan_flat_batch(
     """Run each configured role once and return an unapplied multi-step plan."""
     actors = [agent for agent in scenario.agents if agent.role == AgentRole.ACTOR]
     evaluators = [
-        agent for agent in scenario.agents
-        if agent.role == AgentRole.CONSTRAINT_EVALUATOR
+        agent for agent in scenario.agents if agent.role == AgentRole.CONSTRAINT_EVALUATOR
     ]
     resolvers = [agent for agent in scenario.agents if agent.role == AgentRole.RESOLVER]
     state = board.read_state()
@@ -680,11 +748,13 @@ def _distribute_batch_token_usage(
         output_parts = _split_integer(result.output_tokens or 0, step_count)
         for index in range(step_count):
             if input_parts[index] or output_parts[index]:
-                per_step_calls[index].append(AgentCallTokens(
-                    role=role,
-                    input_tokens=input_parts[index],
-                    output_tokens=output_parts[index],
-                ))
+                per_step_calls[index].append(
+                    AgentCallTokens(
+                        role=role,
+                        input_tokens=input_parts[index],
+                        output_tokens=output_parts[index],
+                    )
+                )
     return [_build_step_token_usage(calls_for_step) for calls_for_step in per_step_calls]
 
 
@@ -767,16 +837,26 @@ async def _run_flat_step(
     if scenario.diversity_lenses:
         actor_extra["diversity_lenses"] = scenario.diversity_lenses
 
-    logger.debug("flat_step.propose_start", step=step_num, n_actors=len(actors), temperature=step_temperature)
+    logger.debug(
+        "flat_step.propose_start", step=step_num, n_actors=len(actors), temperature=step_temperature
+    )
     t0 = time.monotonic()
 
     token_calls: list[AgentCallTokens] = []
     actor_results: dict[str, AgentInvocationResult | None] = {}
 
     async def _run_actor(a):
-        prompt = build_prompt(a, step_num, rules, trajectory_id=trajectory_id, **embed_kwargs, **actor_extra)
+        prompt = build_prompt(
+            a, step_num, rules, trajectory_id=trajectory_id, **embed_kwargs, **actor_extra
+        )
         result = await _invoke_and_collect(
-            a, board.workspace, step_num, prompt, timeout, agent_semaphore, max_concurrent,
+            a,
+            board.workspace,
+            step_num,
+            prompt,
+            timeout,
+            agent_semaphore,
+            max_concurrent,
             temperature=step_temperature,
         )
         actor_results[a.name] = result
@@ -788,7 +868,9 @@ async def _run_flat_step(
     except ExceptionGroup as eg:
         for exc in eg.exceptions:
             logger.error("flat_step.propose.unhandled_failure", step=step_num, error=str(exc))
-    logger.debug("flat_step.propose_done", step=step_num, duration_s=round(time.monotonic() - t0, 3))
+    logger.debug(
+        "flat_step.propose_done", step=step_num, duration_s=round(time.monotonic() - t0, 3)
+    )
 
     proposals = []
     for a in actors:
@@ -796,7 +878,11 @@ async def _run_flat_step(
         _collect_tokens_from_result(result, a.role.value, token_calls)
         output = result.output if result else None
         p = parse_proposal_result(
-            scenario.board_access, output, board.workspace, a.name, step_num,
+            scenario.board_access,
+            output,
+            board.workspace,
+            a.name,
+            step_num,
         )
         if p:
             proposals.append(p)
@@ -837,7 +923,9 @@ async def _run_flat_step(
                 proposals=proposals_dicts,
             )
 
-            logger.debug("flat_step.evaluate_start", step=step_num, n_evaluators=len(constraint_evaluators))
+            logger.debug(
+                "flat_step.evaluate_start", step=step_num, n_evaluators=len(constraint_evaluators)
+            )
             t1 = time.monotonic()
 
             ce_results: dict[str, AgentInvocationResult | None] = {}
@@ -845,7 +933,13 @@ async def _run_flat_step(
             async def _run_constraint_evaluator(c):
                 prompt = build_prompt(c, step_num, rules, **ce_kwargs)
                 result = await _invoke_and_collect(
-                    c, board.workspace, step_num, prompt, timeout, agent_semaphore, max_concurrent,
+                    c,
+                    board.workspace,
+                    step_num,
+                    prompt,
+                    timeout,
+                    agent_semaphore,
+                    max_concurrent,
                     temperature=step_temperature,
                 )
                 ce_results[c.name] = result
@@ -857,10 +951,13 @@ async def _run_flat_step(
             except ExceptionGroup as eg:
                 for exc in eg.exceptions:
                     logger.error(
-                        "flat_step.evaluate.unhandled_failure", step=step_num, error=str(exc),
+                        "flat_step.evaluate.unhandled_failure",
+                        step=step_num,
+                        error=str(exc),
                     )
             logger.debug(
-                "flat_step.evaluate_done", step=step_num,
+                "flat_step.evaluate_done",
+                step=step_num,
                 duration_s=round(time.monotonic() - t1, 3),
             )
 
@@ -869,7 +966,11 @@ async def _run_flat_step(
                 _collect_tokens_from_result(result, c.role.value, token_calls)
                 output = result.output if result else None
                 cr = parse_critique_result(
-                    scenario.board_access, output, board.workspace, c.name, step_num,
+                    scenario.board_access,
+                    output,
+                    board.workspace,
+                    c.name,
+                    step_num,
                 )
                 if cr:
                     critiques.append(cr)
@@ -890,16 +991,24 @@ async def _run_flat_step(
             )
             prompt = build_prompt(resolver, step_num, rules, **resolver_kwargs)
             resolver_result = await _invoke_with_retry_return(
-                resolver, board.workspace, step_num, prompt, timeout,
+                resolver,
+                board.workspace,
+                step_num,
+                prompt,
+                timeout,
                 temperature=step_temperature,
             )
             _collect_tokens_from_result(resolver_result, resolver.role.value, token_calls)
             resolver_output = resolver_result.output if resolver_result else None
             resolution = parse_resolution_result(
-                scenario.board_access, resolver_output, board.workspace, step_num,
+                scenario.board_access,
+                resolver_output,
+                board.workspace,
+                step_num,
             )
             logger.debug(
-                "flat_step.resolve_done", step=step_num,
+                "flat_step.resolve_done",
+                step=step_num,
                 duration_s=round(time.monotonic() - t2, 3),
             )
 
@@ -919,7 +1028,8 @@ async def _run_flat_step(
     elif conflicts:
         # PATH B: Conflicts detected — resolver only (no constraint evaluator)
         logger.info(
-            "step.conflict_resolution", step=step_num,
+            "step.conflict_resolution",
+            step=step_num,
             n_conflicts=len(conflicts),
             fields=[c.field for c in conflicts],
         )
@@ -938,16 +1048,24 @@ async def _run_flat_step(
             )
             prompt = build_prompt(resolver, step_num, rules, **resolver_kwargs)
             resolver_result = await _invoke_with_retry_return(
-                resolver, board.workspace, step_num, prompt, timeout,
+                resolver,
+                board.workspace,
+                step_num,
+                prompt,
+                timeout,
                 temperature=step_temperature,
             )
             _collect_tokens_from_result(resolver_result, resolver.role.value, token_calls)
             resolver_output = resolver_result.output if resolver_result else None
             resolution = parse_resolution_result(
-                scenario.board_access, resolver_output, board.workspace, step_num,
+                scenario.board_access,
+                resolver_output,
+                board.workspace,
+                step_num,
             )
             logger.debug(
-                "flat_step.resolve_done", step=step_num,
+                "flat_step.resolve_done",
+                step=step_num,
                 duration_s=round(time.monotonic() - t2, 3),
             )
 
@@ -1054,9 +1172,17 @@ async def _run_entity_step(
         force_results: dict[str, AgentInvocationResult | None] = {}
 
         async def _run_force(a):
-            prompt = build_prompt(a, step_num, rules, trajectory_id=trajectory_id, **embed_kwargs, **actor_extra)
+            prompt = build_prompt(
+                a, step_num, rules, trajectory_id=trajectory_id, **embed_kwargs, **actor_extra
+            )
             result = await _invoke_and_collect(
-                a, board.workspace, step_num, prompt, timeout, agent_semaphore, max_concurrent,
+                a,
+                board.workspace,
+                step_num,
+                prompt,
+                timeout,
+                agent_semaphore,
+                max_concurrent,
                 temperature=step_temperature,
             )
             force_results[a.name] = result
@@ -1068,10 +1194,13 @@ async def _run_entity_step(
         except ExceptionGroup as eg:
             for exc in eg.exceptions:
                 logger.error(
-                    "entity_step.forces.unhandled_failure", step=step_num, error=str(exc),
+                    "entity_step.forces.unhandled_failure",
+                    step=step_num,
+                    error=str(exc),
                 )
         logger.debug(
-            "entity_step.forces_done", step=step_num,
+            "entity_step.forces_done",
+            step=step_num,
             duration_s=round(time.monotonic() - t0, 3),
         )
         for a in force_agents:
@@ -1079,7 +1208,11 @@ async def _run_entity_step(
             _collect_tokens_from_result(result, a.role.value, token_calls)
             output = result.output if result else None
             p = parse_proposal_result(
-                scenario.board_access, output, board.workspace, a.name, step_num,
+                scenario.board_access,
+                output,
+                board.workspace,
+                a.name,
+                step_num,
             )
             if p:
                 proposals.append(p)
@@ -1108,11 +1241,22 @@ async def _run_entity_step(
 
         async def _run_pop(a):
             prompt = build_prompt(
-                a, step_num, rules, entity_interaction.get(a.name, ""),
-                trajectory_id=trajectory_id, **embed_kwargs, **actor_extra,
+                a,
+                step_num,
+                rules,
+                entity_interaction.get(a.name, ""),
+                trajectory_id=trajectory_id,
+                **embed_kwargs,
+                **actor_extra,
             )
             result = await _invoke_and_collect(
-                a, board.workspace, step_num, prompt, timeout, agent_semaphore, max_concurrent,
+                a,
+                board.workspace,
+                step_num,
+                prompt,
+                timeout,
+                agent_semaphore,
+                max_concurrent,
                 temperature=step_temperature,
             )
             pop_results[a.name] = result
@@ -1124,10 +1268,13 @@ async def _run_entity_step(
         except ExceptionGroup as eg:
             for exc in eg.exceptions:
                 logger.error(
-                    "entity_step.populations.unhandled_failure", step=step_num, error=str(exc),
+                    "entity_step.populations.unhandled_failure",
+                    step=step_num,
+                    error=str(exc),
                 )
         logger.debug(
-            "entity_step.populations_done", step=step_num,
+            "entity_step.populations_done",
+            step=step_num,
             duration_s=round(time.monotonic() - t1, 3),
         )
         for a in pop_agents:
@@ -1135,7 +1282,11 @@ async def _run_entity_step(
             _collect_tokens_from_result(result, a.role.value, token_calls)
             output = result.output if result else None
             p = parse_proposal_result(
-                scenario.board_access, output, board.workspace, a.name, step_num,
+                scenario.board_access,
+                output,
+                board.workspace,
+                a.name,
+                step_num,
             )
             if p:
                 proposals.append(p)
@@ -1183,7 +1334,13 @@ async def _run_entity_step(
             async def _run_constraint_evaluator(c):
                 prompt = build_prompt(c, step_num, rules, **ce_kwargs)
                 result = await _invoke_and_collect(
-                    c, board.workspace, step_num, prompt, timeout, agent_semaphore, max_concurrent,
+                    c,
+                    board.workspace,
+                    step_num,
+                    prompt,
+                    timeout,
+                    agent_semaphore,
+                    max_concurrent,
                     temperature=step_temperature,
                 )
                 ce_results[c.name] = result
@@ -1195,10 +1352,13 @@ async def _run_entity_step(
             except ExceptionGroup as eg:
                 for exc in eg.exceptions:
                     logger.error(
-                        "entity_step.evaluate.unhandled_failure", step=step_num, error=str(exc),
+                        "entity_step.evaluate.unhandled_failure",
+                        step=step_num,
+                        error=str(exc),
                     )
             logger.debug(
-                "entity_step.evaluate_done", step=step_num,
+                "entity_step.evaluate_done",
+                step=step_num,
                 duration_s=round(time.monotonic() - t2, 3),
             )
             for c in ce_agents:
@@ -1206,13 +1366,19 @@ async def _run_entity_step(
                 _collect_tokens_from_result(result, c.role.value, token_calls)
                 output = result.output if result else None
                 cr = parse_critique_result(
-                    scenario.board_access, output, board.workspace, c.name, step_num,
+                    scenario.board_access,
+                    output,
+                    board.workspace,
+                    c.name,
+                    step_num,
                 )
                 if cr:
                     critiques.append(cr)
                     board.save_critique(cr, step_num)
 
-        resolver_agents = [a for e in resolver_entities for a in e.agents if a.role == AgentRole.RESOLVER]
+        resolver_agents = [
+            a for e in resolver_entities for a in e.agents if a.role == AgentRole.RESOLVER
+        ]
         if resolver_agents:
             logger.debug("entity_step.resolve_start", step=step_num)
             t3 = time.monotonic()
@@ -1228,16 +1394,24 @@ async def _run_entity_step(
             )
             prompt = build_prompt(resolver, step_num, rules, **resolver_kwargs)
             resolver_result = await _invoke_with_retry_return(
-                resolver, board.workspace, step_num, prompt, timeout,
+                resolver,
+                board.workspace,
+                step_num,
+                prompt,
+                timeout,
                 temperature=step_temperature,
             )
             _collect_tokens_from_result(resolver_result, resolver.role.value, token_calls)
             resolver_output = resolver_result.output if resolver_result else None
             resolution = parse_resolution_result(
-                scenario.board_access, resolver_output, board.workspace, step_num,
+                scenario.board_access,
+                resolver_output,
+                board.workspace,
+                step_num,
             )
             logger.debug(
-                "entity_step.resolve_done", step=step_num,
+                "entity_step.resolve_done",
+                step=step_num,
                 duration_s=round(time.monotonic() - t3, 3),
             )
 
@@ -1257,12 +1431,15 @@ async def _run_entity_step(
     elif conflicts:
         # PATH B: Conflicts detected — resolver only
         logger.info(
-            "step.conflict_resolution", step=step_num,
+            "step.conflict_resolution",
+            step=step_num,
             n_conflicts=len(conflicts),
             fields=[c.field for c in conflicts],
         )
 
-        resolver_agents = [a for e in resolver_entities for a in e.agents if a.role == AgentRole.RESOLVER]
+        resolver_agents = [
+            a for e in resolver_entities for a in e.agents if a.role == AgentRole.RESOLVER
+        ]
         if resolver_agents:
             logger.debug("entity_step.resolve_start", step=step_num)
             t3 = time.monotonic()
@@ -1277,16 +1454,24 @@ async def _run_entity_step(
             )
             prompt = build_prompt(resolver, step_num, rules, **resolver_kwargs)
             resolver_result = await _invoke_with_retry_return(
-                resolver, board.workspace, step_num, prompt, timeout,
+                resolver,
+                board.workspace,
+                step_num,
+                prompt,
+                timeout,
                 temperature=step_temperature,
             )
             _collect_tokens_from_result(resolver_result, resolver.role.value, token_calls)
             resolver_output = resolver_result.output if resolver_result else None
             resolution = parse_resolution_result(
-                scenario.board_access, resolver_output, board.workspace, step_num,
+                scenario.board_access,
+                resolver_output,
+                board.workspace,
+                step_num,
             )
             logger.debug(
-                "entity_step.resolve_done", step=step_num,
+                "entity_step.resolve_done",
+                step=step_num,
                 duration_s=round(time.monotonic() - t3, 3),
             )
 
@@ -1306,8 +1491,10 @@ async def _run_entity_step(
         # PATH A: No conflicts, not a review step — auto-merge
         next_review_step = ((step_num // scenario.review_interval) + 1) * scenario.review_interval
         logger.debug(
-            "step.auto_merge", step=step_num,
-            n_proposals=len(proposals), next_review_step=next_review_step,
+            "step.auto_merge",
+            step=step_num,
+            n_proposals=len(proposals),
+            next_review_step=next_review_step,
         )
 
         merged_state = deepcopy(state_before)
@@ -1361,16 +1548,26 @@ def _check_termination(state: dict, conditions: list[dict]) -> bool:
         if "equals" in cond and value == cond["equals"]:
             logger.debug("termination.condition_met", field=field, op="equals", value=value)
             return True
-        if "greater_than" in cond and isinstance(value, (int, float)) and value > cond["greater_than"]:
+        if (
+            "greater_than" in cond
+            and isinstance(value, (int, float))
+            and value > cond["greater_than"]
+        ):
             logger.debug(
-                "termination.condition_met", field=field, op="greater_than",
-                value=value, threshold=cond["greater_than"],
+                "termination.condition_met",
+                field=field,
+                op="greater_than",
+                value=value,
+                threshold=cond["greater_than"],
             )
             return True
         if "less_than" in cond and isinstance(value, (int, float)) and value < cond["less_than"]:
             logger.debug(
-                "termination.condition_met", field=field, op="less_than",
-                value=value, threshold=cond["less_than"],
+                "termination.condition_met",
+                field=field,
+                op="less_than",
+                value=value,
+                threshold=cond["less_than"],
             )
             return True
         logger.debug("termination.condition_not_met", field=field, value=value)
@@ -1393,10 +1590,18 @@ def _classify_outcome(state: dict, scenario: Scenario) -> str:
         if oc.condition.equals is not None and value == oc.condition.equals:
             logger.info("classify.result", classification=oc.name)
             return oc.name
-        if oc.condition.greater_than is not None and isinstance(value, (int, float)) and value > oc.condition.greater_than:
+        if (
+            oc.condition.greater_than is not None
+            and isinstance(value, (int, float))
+            and value > oc.condition.greater_than
+        ):
             logger.info("classify.result", classification=oc.name)
             return oc.name
-        if oc.condition.less_than is not None and isinstance(value, (int, float)) and value < oc.condition.less_than:
+        if (
+            oc.condition.less_than is not None
+            and isinstance(value, (int, float))
+            and value < oc.condition.less_than
+        ):
             logger.info("classify.result", classification=oc.name)
             return oc.name
 
@@ -1447,7 +1652,9 @@ def _evaluate_fitness(state: dict, fitness: FitnessConfig) -> float | None:
 
 
 def _check_plateau(
-    history: list[float | None], window: int, threshold: float,
+    history: list[float | None],
+    window: int,
+    threshold: float,
 ) -> bool:
     valid = [v for v in history if v is not None]
     if len(valid) < window:

@@ -70,17 +70,24 @@ def setup_workspace(scenario: Scenario, workspace: Path, trajectory_id: int = 0)
                 if entity.state_prefix:
                     f.write(f"State prefix: `{entity.state_prefix}`\n\n")
                 for agent in entity.agents:
-                    f.write(f"- **{agent.name}** ({agent.role.value}): {agent.perspective.strip()[:120]}...\n")
+                    f.write(
+                        f"- **{agent.name}** ({agent.role.value}): {agent.perspective.strip()[:120]}...\n"
+                    )
                 f.write("\n")
         if scenario.rules:
             f.write("## Rules\n\n")
-            f.writelines(f"- **{rule.name}**: {rule.description.strip()}\n" for rule in scenario.rules)
+            f.writelines(
+                f"- **{rule.name}**: {rule.description.strip()}\n" for rule in scenario.rules
+            )
             f.write("\n")
         if scenario.termination:
             f.write("## Termination Conditions\n\n")
             max_steps = scenario.termination.get("max_steps", scenario.step_budget)
             f.write(f"- Max steps: {max_steps}\n")
-            f.writelines(f"- {cond['field']} {_format_condition(cond)}\n" for cond in scenario.termination.get("conditions", []))
+            f.writelines(
+                f"- {cond['field']} {_format_condition(cond)}\n"
+                for cond in scenario.termination.get("conditions", [])
+            )
         f.write("\n")
 
     with open(board / "narrative.md", "w") as f:

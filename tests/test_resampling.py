@@ -22,16 +22,20 @@ def test_resampling_config_default():
 
 def test_scenario_resampling_none_by_default():
     scenario = Scenario(
-        name="test", mode=SimMode.COUNTERFACTUAL,
-        initial_state={"x": 0}, step_budget=5,
+        name="test",
+        mode=SimMode.COUNTERFACTUAL,
+        initial_state={"x": 0},
+        step_budget=5,
     )
     assert scenario.resampling is None
 
 
 def test_scenario_with_resampling():
     scenario = Scenario(
-        name="test", mode=SimMode.COUNTERFACTUAL,
-        initial_state={"x": 0}, step_budget=5,
+        name="test",
+        mode=SimMode.COUNTERFACTUAL,
+        initial_state={"x": 0},
+        step_budget=5,
         resampling=ResamplingConfig(interval=3, criteria=["Is it good?"]),
     )
     assert scenario.resampling is not None

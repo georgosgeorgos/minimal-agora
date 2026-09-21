@@ -16,6 +16,7 @@ from minimal_agora.models import (
 
 # ---- Unit tests for _flatten_state ----
 
+
 def test_flatten_state_simple():
     state = {"a": 1, "b": 2.0}
     flat = _flatten_state(state)
@@ -39,6 +40,7 @@ def test_flatten_state_empty():
 
 
 # ---- Unit tests for compute_state_delta_magnitude ----
+
 
 def test_delta_magnitude_identical_states():
     state = {"a": 10, "b": {"c": 20}}
@@ -91,6 +93,7 @@ def test_delta_magnitude_extra_fields_ignored():
 
 # ---- Board integration tests ----
 
+
 def test_board_last_review_state_initially_none():
     with tempfile.TemporaryDirectory() as tmpdir:
         board = Board(Path(tmpdir))
@@ -119,24 +122,30 @@ def test_board_set_review_state_is_deep_copy():
 
 # ---- Scenario model tests ----
 
+
 def test_review_threshold_default_none():
     scenario = Scenario(
-        name="test", mode=SimMode.COUNTERFACTUAL,
-        initial_state={"x": 0}, step_budget=5,
+        name="test",
+        mode=SimMode.COUNTERFACTUAL,
+        initial_state={"x": 0},
+        step_budget=5,
     )
     assert scenario.review_threshold is None
 
 
 def test_review_threshold_configurable():
     scenario = Scenario(
-        name="test", mode=SimMode.COUNTERFACTUAL,
-        initial_state={"x": 0}, step_budget=5,
+        name="test",
+        mode=SimMode.COUNTERFACTUAL,
+        initial_state={"x": 0},
+        step_budget=5,
         review_threshold=0.3,
     )
     assert scenario.review_threshold == 0.3
 
 
 # ---- Integration test: adaptive review triggers mid-interval ----
+
 
 def test_adaptive_review_triggers_on_large_state_change():
     """With review_interval=5 and review_threshold=0.1, a large state change
@@ -146,7 +155,8 @@ def test_adaptive_review_triggers_on_large_state_change():
     from minimal_agora.scenario import setup_workspace
 
     scenario = Scenario(
-        name="test", mode=SimMode.COUNTERFACTUAL,
+        name="test",
+        mode=SimMode.COUNTERFACTUAL,
         initial_state={"value": 10.0, "other": 5.0},
         step_budget=10,
         review_interval=5,
@@ -172,7 +182,8 @@ def test_adaptive_review_triggers_on_large_state_change():
             else:
                 changes = {"value": step_num + 10}
             proposal = Proposal(
-                agent=agent.name, role=AgentRole.ACTOR,
+                agent=agent.name,
+                role=AgentRole.ACTOR,
                 proposed_changes=changes,
                 reasoning="test",
             )
@@ -181,7 +192,9 @@ def test_adaptive_review_triggers_on_large_state_change():
             with open(path, "w") as f:
                 f.write(proposal.model_dump_json(indent=2))
 
-        async def mock_invoke(agent, workspace, step_num, prompt, timeout, max_retries=1, temperature=None):
+        async def mock_invoke(
+            agent, workspace, step_num, prompt, timeout, max_retries=1, temperature=None
+        ):
             call_log.append((agent.name, agent.role.value, step_num))
             if agent.role == AgentRole.ACTOR:
                 _write_mock_proposal(agent, workspace, step_num)
@@ -194,10 +207,18 @@ def test_adaptive_review_triggers_on_large_state_change():
 
             # Step 0: review step (0 % 5 == 0), establishes last_review_state
             state_before_0 = deepcopy(board.read_state())
-            step0 = asyncio.run(_run_flat_step(
-                scenario, board, 0, 60, state_before_0,
-                trajectory_id=0, agent_semaphore=semaphore, max_steps=max_steps,
-            ))
+            step0 = asyncio.run(
+                _run_flat_step(
+                    scenario,
+                    board,
+                    0,
+                    60,
+                    state_before_0,
+                    trajectory_id=0,
+                    agent_semaphore=semaphore,
+                    max_steps=max_steps,
+                )
+            )
             assert step0.resolution is not None, "Step 0 should be a review step"
 
             # Step 1: normally NOT a review step (1 % 5 != 0, not last step)
@@ -208,10 +229,18 @@ def test_adaptive_review_triggers_on_large_state_change():
             # and step 1's state_before == state_after of step 0, the magnitude is 0.
             # The auto-merge at step 1 will change state to 50.
             state_before_1 = deepcopy(board.read_state())
-            step1 = asyncio.run(_run_flat_step(
-                scenario, board, 1, 60, state_before_1,
-                trajectory_id=0, agent_semaphore=semaphore, max_steps=max_steps,
-            ))
+            step1 = asyncio.run(
+                _run_flat_step(
+                    scenario,
+                    board,
+                    1,
+                    60,
+                    state_before_1,
+                    trajectory_id=0,
+                    agent_semaphore=semaphore,
+                    max_steps=max_steps,
+                )
+            )
             # Step 1 auto-merges (no review) -- state now has value=50
             assert step1.resolution is None, "Step 1 should be auto-merged"
 
@@ -220,10 +249,18 @@ def test_adaptive_review_triggers_on_large_state_change():
             # delta for other: abs(5-5)/max(5,1) = 0.0
             # mean = 2.0, which is > 0.1, so adaptive review triggers
             state_before_2 = deepcopy(board.read_state())
-            step2 = asyncio.run(_run_flat_step(
-                scenario, board, 2, 60, state_before_2,
-                trajectory_id=0, agent_semaphore=semaphore, max_steps=max_steps,
-            ))
+            step2 = asyncio.run(
+                _run_flat_step(
+                    scenario,
+                    board,
+                    2,
+                    60,
+                    state_before_2,
+                    trajectory_id=0,
+                    agent_semaphore=semaphore,
+                    max_steps=max_steps,
+                )
+            )
             assert step2.resolution is not None, "Step 2 should trigger adaptive review"
 
         finally:
@@ -237,7 +274,8 @@ def test_adaptive_review_does_not_trigger_below_threshold():
     from minimal_agora.scenario import setup_workspace
 
     scenario = Scenario(
-        name="test", mode=SimMode.COUNTERFACTUAL,
+        name="test",
+        mode=SimMode.COUNTERFACTUAL,
         initial_state={"value": 10.0},
         step_budget=10,
         review_interval=5,
@@ -257,7 +295,8 @@ def test_adaptive_review_does_not_trigger_below_threshold():
 
         def _write_mock_proposal(agent, workspace, step_num):
             proposal = Proposal(
-                agent=agent.name, role=AgentRole.ACTOR,
+                agent=agent.name,
+                role=AgentRole.ACTOR,
                 proposed_changes={"value": 10.5},  # tiny change
                 reasoning="test",
             )
@@ -266,7 +305,9 @@ def test_adaptive_review_does_not_trigger_below_threshold():
             with open(path, "w") as f:
                 f.write(proposal.model_dump_json(indent=2))
 
-        async def mock_invoke(agent, workspace, step_num, prompt, timeout, max_retries=1, temperature=None):
+        async def mock_invoke(
+            agent, workspace, step_num, prompt, timeout, max_retries=1, temperature=None
+        ):
             if agent.role == AgentRole.ACTOR:
                 _write_mock_proposal(agent, workspace, step_num)
 
@@ -278,26 +319,50 @@ def test_adaptive_review_does_not_trigger_below_threshold():
 
             # Step 0: review step
             state_before_0 = deepcopy(board.read_state())
-            step0 = asyncio.run(_run_flat_step(
-                scenario, board, 0, 60, state_before_0,
-                trajectory_id=0, agent_semaphore=semaphore, max_steps=max_steps,
-            ))
+            step0 = asyncio.run(
+                _run_flat_step(
+                    scenario,
+                    board,
+                    0,
+                    60,
+                    state_before_0,
+                    trajectory_id=0,
+                    agent_semaphore=semaphore,
+                    max_steps=max_steps,
+                )
+            )
             assert step0.resolution is not None
 
             # Step 1: auto-merge, small change applied
             state_before_1 = deepcopy(board.read_state())
-            step1 = asyncio.run(_run_flat_step(
-                scenario, board, 1, 60, state_before_1,
-                trajectory_id=0, agent_semaphore=semaphore, max_steps=max_steps,
-            ))
+            step1 = asyncio.run(
+                _run_flat_step(
+                    scenario,
+                    board,
+                    1,
+                    60,
+                    state_before_1,
+                    trajectory_id=0,
+                    agent_semaphore=semaphore,
+                    max_steps=max_steps,
+                )
+            )
             assert step1.resolution is None, "Step 1 should NOT trigger adaptive review"
 
             # Step 2: delta is still small, should not trigger
             state_before_2 = deepcopy(board.read_state())
-            step2 = asyncio.run(_run_flat_step(
-                scenario, board, 2, 60, state_before_2,
-                trajectory_id=0, agent_semaphore=semaphore, max_steps=max_steps,
-            ))
+            step2 = asyncio.run(
+                _run_flat_step(
+                    scenario,
+                    board,
+                    2,
+                    60,
+                    state_before_2,
+                    trajectory_id=0,
+                    agent_semaphore=semaphore,
+                    max_steps=max_steps,
+                )
+            )
             assert step2.resolution is None, "Step 2 should NOT trigger adaptive review"
 
         finally:
@@ -310,7 +375,8 @@ def test_adaptive_review_disabled_when_threshold_none():
     from minimal_agora.scenario import setup_workspace
 
     scenario = Scenario(
-        name="test", mode=SimMode.COUNTERFACTUAL,
+        name="test",
+        mode=SimMode.COUNTERFACTUAL,
         initial_state={"value": 10.0},
         step_budget=10,
         review_interval=5,
@@ -330,7 +396,8 @@ def test_adaptive_review_disabled_when_threshold_none():
 
         def _write_mock_proposal(agent, workspace, step_num):
             proposal = Proposal(
-                agent=agent.name, role=AgentRole.ACTOR,
+                agent=agent.name,
+                role=AgentRole.ACTOR,
                 proposed_changes={"value": 9999.0},  # huge change
                 reasoning="test",
             )
@@ -339,7 +406,9 @@ def test_adaptive_review_disabled_when_threshold_none():
             with open(path, "w") as f:
                 f.write(proposal.model_dump_json(indent=2))
 
-        async def mock_invoke(agent, workspace, step_num, prompt, timeout, max_retries=1, temperature=None):
+        async def mock_invoke(
+            agent, workspace, step_num, prompt, timeout, max_retries=1, temperature=None
+        ):
             if agent.role == AgentRole.ACTOR:
                 _write_mock_proposal(agent, workspace, step_num)
 
@@ -350,19 +419,37 @@ def test_adaptive_review_disabled_when_threshold_none():
             max_steps = 10
 
             state_before_0 = deepcopy(board.read_state())
-            step0 = asyncio.run(_run_flat_step(
-                scenario, board, 0, 60, state_before_0,
-                trajectory_id=0, agent_semaphore=semaphore, max_steps=max_steps,
-            ))
+            step0 = asyncio.run(
+                _run_flat_step(
+                    scenario,
+                    board,
+                    0,
+                    60,
+                    state_before_0,
+                    trajectory_id=0,
+                    agent_semaphore=semaphore,
+                    max_steps=max_steps,
+                )
+            )
             assert step0.resolution is not None
 
             # Step 1 should NOT review even with huge state change, because threshold is None
             state_before_1 = deepcopy(board.read_state())
-            step1 = asyncio.run(_run_flat_step(
-                scenario, board, 1, 60, state_before_1,
-                trajectory_id=0, agent_semaphore=semaphore, max_steps=max_steps,
-            ))
-            assert step1.resolution is None, "Adaptive review should be disabled when threshold is None"
+            step1 = asyncio.run(
+                _run_flat_step(
+                    scenario,
+                    board,
+                    1,
+                    60,
+                    state_before_1,
+                    trajectory_id=0,
+                    agent_semaphore=semaphore,
+                    max_steps=max_steps,
+                )
+            )
+            assert step1.resolution is None, (
+                "Adaptive review should be disabled when threshold is None"
+            )
 
         finally:
             loop_module._invoke_with_retry_return = original

@@ -44,11 +44,13 @@ def _extract_wildcards(run_dir: Path, trajectories: list[Trajectory]) -> list[di
             try:
                 with open(wc_file) as f:
                     wc_data = json.load(f)
-                wildcards.append({
-                    "trajectory": traj.trajectory_id,
-                    "step": step_num,
-                    "name": wc_data.get("name", "unknown"),
-                })
+                wildcards.append(
+                    {
+                        "trajectory": traj.trajectory_id,
+                        "step": step_num,
+                        "name": wc_data.get("name", "unknown"),
+                    }
+                )
             except (json.JSONDecodeError, OSError):
                 continue
     return wildcards
@@ -81,16 +83,20 @@ def extract_state_vectors(run_dir: Path) -> dict[str, Any]:
         for step in traj.steps:
             flat = _flatten_state(step.state_after)
             all_fields.update(flat.keys())
-            steps_data.append({
-                "step": step.step_number,
-                "values": flat,
-            })
+            steps_data.append(
+                {
+                    "step": step.step_number,
+                    "values": flat,
+                }
+            )
 
-        traj_data.append({
-            "id": traj.trajectory_id,
-            "outcome": outcome,
-            "steps": steps_data,
-        })
+        traj_data.append(
+            {
+                "id": traj.trajectory_id,
+                "outcome": outcome,
+                "steps": steps_data,
+            }
+        )
 
     wildcards = _extract_wildcards(run_dir, trajectories)
 

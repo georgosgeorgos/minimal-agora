@@ -115,11 +115,22 @@ class TestProviderTemperatureOverride:
     def test_invoke_agent_forwards_temperature(self) -> None:
         from minimal_agora.agents import invoke_agent
 
-        provider = MockProvider(responses={"actor": '{"agent":"a","role":"actor","proposed_changes":{},"reasoning":"t","confidence":0.5}'})
+        provider = MockProvider(
+            responses={
+                "actor": '{"agent":"a","role":"actor","proposed_changes":{},"reasoning":"t","confidence":0.5}'
+            }
+        )
         agent = AgentConfig(role=AgentRole.ACTOR, name="a", perspective="test")
         with tempfile.TemporaryDirectory() as tmp:
             asyncio.run(
-                invoke_agent(agent, Path(tmp), step=0, prompt="actor test", provider=provider, temperature=0.65)
+                invoke_agent(
+                    agent,
+                    Path(tmp),
+                    step=0,
+                    prompt="actor test",
+                    provider=provider,
+                    temperature=0.65,
+                )
             )
         assert provider.last_temperature == 0.65
 
@@ -129,7 +140,5 @@ class TestProviderTemperatureOverride:
         provider = MockProvider()
         agent = AgentConfig(role=AgentRole.ACTOR, name="a", perspective="test")
         with tempfile.TemporaryDirectory() as tmp:
-            asyncio.run(
-                invoke_agent(agent, Path(tmp), step=0, prompt="test", provider=provider)
-            )
+            asyncio.run(invoke_agent(agent, Path(tmp), step=0, prompt="test", provider=provider))
         assert provider.last_temperature is None

@@ -56,7 +56,9 @@ async def invoke_agent(
         provider_type=type(active).__name__,
     )
 
-    result = await active.invoke(prompt, workspace, timeout, model=agent.model, temperature=temperature)
+    result = await active.invoke(
+        prompt, workspace, timeout, model=agent.model, temperature=temperature
+    )
 
     logger.debug(
         "provider.invoke.done",
@@ -73,13 +75,18 @@ async def invoke_agent(
 
 def _format_rules(rules: list[SimRule], agent_name: str, agent_role: str) -> str:
     applicable = [
-        r for r in rules
+        r
+        for r in rules
         if not r.applies_to or agent_name in r.applies_to or agent_role in r.applies_to
     ]
     if not applicable:
         return ""
-    lines = ["## Governing Rules", "These rules define the dynamics of this simulation. All proposals,",
-             "critiques, and resolutions MUST respect these rules.", ""]
+    lines = [
+        "## Governing Rules",
+        "These rules define the dynamics of this simulation. All proposals,",
+        "critiques, and resolutions MUST respect these rules.",
+        "",
+    ]
     for r in applicable:
         lines.append(f"**{r.name}**: {r.description}")
         lines.append("")
@@ -109,7 +116,10 @@ def build_interaction_context(
     if entity.interaction.mode == InteractionMode.NEVER:
         return ""
 
-    if entity.interaction.mode == InteractionMode.SCHEDULED and step % entity.interaction.every_n_steps != 0:
+    if (
+        entity.interaction.mode == InteractionMode.SCHEDULED
+        and step % entity.interaction.every_n_steps != 0
+    ):
         return ""
 
     visible = entity.can_interact_with
@@ -117,8 +127,7 @@ def build_interaction_context(
         return ""
 
     neighbors = [
-        e for e in all_entities
-        if e.name in visible and e.type == TrajectoryType.POPULATION
+        e for e in all_entities if e.name in visible and e.type == TrajectoryType.POPULATION
     ]
     if not neighbors:
         return ""
@@ -181,9 +190,7 @@ def detect_conflicts(proposals: list[Proposal]) -> list[Conflict]:
     field_sources: dict[str, list[ConflictSource]] = defaultdict(list)
     for p in proposals:
         for field, value in _flatten_keys(p.proposed_changes).items():
-            field_sources[field].append(
-                ConflictSource(agent_name=p.agent, proposed_value=value)
-            )
+            field_sources[field].append(ConflictSource(agent_name=p.agent, proposed_value=value))
     return [
         Conflict(field=field, sources=sources)
         for field, sources in field_sources.items()
@@ -239,7 +246,11 @@ def build_actor_prompt(
     )
     rules_block = _format_rules(rules or [], agent.name, agent.role.value)
     interaction_block = f"\n{interaction_context}\n" if interaction_context else ""
-    diversity_block = f"\n{_diversity_prefix(trajectory_id, diversity_lenses or None)}\n" if trajectory_id is not None else ""
+    diversity_block = (
+        f"\n{_diversity_prefix(trajectory_id, diversity_lenses or None)}\n"
+        if trajectory_id is not None
+        else ""
+    )
     wildcard_block = _format_wildcard(wildcard)
 
     if state is not None:
@@ -415,8 +426,7 @@ def build_resolver_prompt(
         else:
             evaluation_block = ""
             instruction_preamble = (
-                "Synthesize the proposals into a single coherent outcome for this\n"
-                "time step.\n\n"
+                "Synthesize the proposals into a single coherent outcome for this\ntime step.\n\n"
             )
 
         return (
@@ -499,19 +509,19 @@ def build_resampling_critic_prompt(
             "- **Diversity**: Does it explore a meaningfully different region of the outcome space?\n"
             "- **Promise**: Is it trending toward an interesting or informative outcome?\n\n"
             "Return your assessment as JSON on stdout with this structure:\n"
-            '```json\n'
-            '{\n'
+            "```json\n"
+            "{\n"
             '  "scores": [\n'
-            '    {\n'
+            "    {\n"
             '      "trajectory_id": 0,\n'
             '      "score": 0.85,\n'
             '      "reasoning": "Why this trajectory is or isn\'t promising"\n'
-            '    }\n'
-            '  ],\n'
+            "    }\n"
+            "  ],\n"
             '  "recommendation": "Which trajectories to duplicate and which to prune",\n'
             '  "overall_assessment": "Brief assessment of trajectory diversity and quality"\n'
-            '}\n'
-            '```\n\n'
+            "}\n"
+            "```\n\n"
             "Score each trajectory from 0.0 (prune) to 1.0 (duplicate). Higher scores mean\n"
             "the trajectory should receive more copies in the resampled population.\n"
         )
@@ -665,13 +675,16 @@ def parse_resolution_from_text(text: str) -> Resolution | None:
         return None
 
 
-def parse_resampling_score(workspace: Path, step: int, trajectory_id: int) -> ResamplingScore | None:
+def parse_resampling_score(
+    workspace: Path, step: int, trajectory_id: int
+) -> ResamplingScore | None:
     path = workspace / "critiques" / f"resample_step_{step:03d}.json"
     if not path.exists():
         logger.warning("Resampling score file missing: %s", path)
         return None
     try:
         import json
+
         with open(path) as f:
             data = json.load(f)
         return ResamplingScore(

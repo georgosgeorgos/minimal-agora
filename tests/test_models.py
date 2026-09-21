@@ -164,7 +164,9 @@ def test_rules_in_prompt():
     rules = [
         SimRule(name="maximize_complexity", description="Evolve toward complexity"),
         SimRule(name="actor_only", description="Only for actors", applies_to=["actor"]),
-        SimRule(name="critic_only", description="Only for critics", applies_to=["constraint_evaluator"]),
+        SimRule(
+            name="critic_only", description="Only for critics", applies_to=["constraint_evaluator"]
+        ),
     ]
     prompt = build_actor_prompt(agent, step=0, rules=rules)
     assert "maximize_complexity" in prompt
@@ -176,12 +178,14 @@ def test_fallback_resolution_deep_merges():
     from minimal_agora.loop import _fallback_resolution
 
     p1 = Proposal(
-        agent="agent_a", role=AgentRole.ACTOR,
+        agent="agent_a",
+        role=AgentRole.ACTOR,
         proposed_changes={"life": {"complexity": "multicellular", "photosynthesis": True}},
         reasoning="evolution",
     )
     p2 = Proposal(
-        agent="agent_b", role=AgentRole.ACTOR,
+        agent="agent_b",
+        role=AgentRole.ACTOR,
         proposed_changes={"life": {"nervous_system": True}, "environment": {"oxygen": "high"}},
         reasoning="geology",
     )
@@ -268,21 +272,24 @@ def test_proposal_roundtrip():
 
 def _make_entities():
     rome = EntityConfig(
-        name="rome", type=TrajectoryType.POPULATION,
+        name="rome",
+        type=TrajectoryType.POPULATION,
         state_prefix="populations.rome",
         agents=[AgentConfig(role=AgentRole.ACTOR, name="roman_senate", perspective="Rome")],
         can_interact_with=["greece"],
         interaction=InteractionConfig(mode=InteractionMode.ALWAYS),
     )
     greece = EntityConfig(
-        name="greece", type=TrajectoryType.POPULATION,
+        name="greece",
+        type=TrajectoryType.POPULATION,
         state_prefix="populations.greece",
         agents=[AgentConfig(role=AgentRole.ACTOR, name="greek_council", perspective="Greece")],
         can_interact_with=["rome"],
         interaction=InteractionConfig(mode=InteractionMode.ALWAYS),
     )
     persia = EntityConfig(
-        name="persia", type=TrajectoryType.POPULATION,
+        name="persia",
+        type=TrajectoryType.POPULATION,
         state_prefix="populations.persia",
         agents=[AgentConfig(role=AgentRole.ACTOR, name="persian_court", perspective="Persia")],
         can_interact_with=[],
@@ -467,7 +474,8 @@ def test_skip_completed_trajectory():
             json.dump({"x": 1}, f)
 
         t = Trajectory(
-            scenario_name="test", trajectory_id=0,
+            scenario_name="test",
+            trajectory_id=0,
             steps=[Step(step_number=0, state_before={}, state_after={"x": 1})],
             outcome=TrajectoryOutcome(classification="done", final_step=0, final_state={"x": 1}),
         )
@@ -479,8 +487,10 @@ def test_skip_completed_trajectory():
         from minimal_agora.loop import run_trajectory
 
         scenario = Scenario(
-            name="test", mode=SimMode.COUNTERFACTUAL,
-            initial_state={"x": 0}, step_budget=5,
+            name="test",
+            mode=SimMode.COUNTERFACTUAL,
+            initial_state={"x": 0},
+            step_budget=5,
             termination={"max_steps": 5},
         )
         result = asyncio.run(run_trajectory(scenario, workspace, 0))
@@ -521,7 +531,9 @@ def test_semaphore_limits_peak_concurrency():
     peak = 0
     current = 0
 
-    async def mock_invoke_with_retry(agent, workspace, step_num, prompt, timeout, max_retries=1, temperature=None):
+    async def mock_invoke_with_retry(
+        agent, workspace, step_num, prompt, timeout, max_retries=1, temperature=None
+    ):
         nonlocal peak, current
         current += 1
         peak = max(peak, current)
@@ -529,6 +541,7 @@ def test_semaphore_limits_peak_concurrency():
         current -= 1
 
     import minimal_agora.loop as loop_module
+
     original = loop_module._invoke_with_retry
     loop_module._invoke_with_retry = mock_invoke_with_retry
 
@@ -543,7 +556,13 @@ def test_semaphore_limits_peak_concurrency():
             agents = [FakeAgent() for _ in range(6)]
             tasks = [
                 _invoke_with_semaphore(
-                    semaphore, a, Path("/tmp"), 0, "prompt", 60, max_concurrent,
+                    semaphore,
+                    a,
+                    Path("/tmp"),
+                    0,
+                    "prompt",
+                    60,
+                    max_concurrent,
                 )
                 for a in agents
             ]
@@ -558,16 +577,20 @@ def test_semaphore_limits_peak_concurrency():
 
 def test_max_concurrent_agents_default():
     scenario = Scenario(
-        name="test", mode=SimMode.COUNTERFACTUAL,
-        initial_state={"x": 0}, step_budget=5,
+        name="test",
+        mode=SimMode.COUNTERFACTUAL,
+        initial_state={"x": 0},
+        step_budget=5,
     )
     assert scenario.max_concurrent_agents == 8
 
 
 def test_max_concurrent_agents_configurable():
     scenario = Scenario(
-        name="test", mode=SimMode.COUNTERFACTUAL,
-        initial_state={"x": 0}, step_budget=5,
+        name="test",
+        mode=SimMode.COUNTERFACTUAL,
+        initial_state={"x": 0},
+        step_budget=5,
         max_concurrent_agents=4,
     )
     assert scenario.max_concurrent_agents == 4
@@ -578,8 +601,10 @@ def test_max_concurrent_agents_rejects_zero():
 
     with pytest.raises(ValidationError):
         Scenario(
-            name="test", mode=SimMode.COUNTERFACTUAL,
-            initial_state={"x": 0}, step_budget=5,
+            name="test",
+            mode=SimMode.COUNTERFACTUAL,
+            initial_state={"x": 0},
+            step_budget=5,
             max_concurrent_agents=0,
         )
 
@@ -589,7 +614,8 @@ def test_convergence_detection():
 
     converged = [
         Trajectory(
-            scenario_name="test", trajectory_id=i,
+            scenario_name="test",
+            trajectory_id=i,
             outcome=TrajectoryOutcome(classification="same", final_step=10, final_state={}),
         )
         for i in range(10)
@@ -600,9 +626,12 @@ def test_convergence_detection():
 
     diverse = [
         Trajectory(
-            scenario_name="test", trajectory_id=i,
+            scenario_name="test",
+            trajectory_id=i,
             outcome=TrajectoryOutcome(
-                classification=["A", "B", "C", "D"][i % 4], final_step=10, final_state={},
+                classification=["A", "B", "C", "D"][i % 4],
+                final_step=10,
+                final_state={},
             ),
         )
         for i in range(12)
@@ -612,8 +641,10 @@ def test_convergence_detection():
 
 def test_review_interval_default():
     scenario = Scenario(
-        name="test", mode=SimMode.COUNTERFACTUAL,
-        initial_state={"x": 0}, step_budget=5,
+        name="test",
+        mode=SimMode.COUNTERFACTUAL,
+        initial_state={"x": 0},
+        step_budget=5,
     )
     assert scenario.review_interval == 1
 
@@ -623,8 +654,10 @@ def test_review_interval_rejects_zero():
 
     with pytest.raises(ValidationError):
         Scenario(
-            name="test", mode=SimMode.COUNTERFACTUAL,
-            initial_state={"x": 0}, step_budget=5,
+            name="test",
+            mode=SimMode.COUNTERFACTUAL,
+            initial_state={"x": 0},
+            step_budget=5,
             review_interval=0,
         )
 
@@ -636,7 +669,8 @@ def test_review_interval_skip():
     from minimal_agora.loop import _run_flat_step
 
     scenario = Scenario(
-        name="test", mode=SimMode.COUNTERFACTUAL,
+        name="test",
+        mode=SimMode.COUNTERFACTUAL,
         initial_state={"value": 0},
         step_budget=4,
         review_interval=3,
@@ -657,7 +691,8 @@ def test_review_interval_skip():
 
         def _write_mock_proposal(agent, workspace, step_num):
             proposal = Proposal(
-                agent=agent.name, role=AgentRole.ACTOR,
+                agent=agent.name,
+                role=AgentRole.ACTOR,
                 proposed_changes={"value": step_num + 1},
                 reasoning="test",
             )
@@ -667,7 +702,13 @@ def test_review_interval_skip():
                 f.write(proposal.model_dump_json(indent=2))
 
         async def mock_invoke(
-            agent, workspace, step_num, prompt, timeout, max_retries=1, temperature=None,
+            agent,
+            workspace,
+            step_num,
+            prompt,
+            timeout,
+            max_retries=1,
+            temperature=None,
         ):
             if agent.role == AgentRole.ACTOR:
                 _write_mock_proposal(agent, workspace, step_num)
@@ -680,10 +721,18 @@ def test_review_interval_skip():
             steps = []
             for step_num in range(max_steps):
                 state_before = board.read_state()
-                step = asyncio.run(_run_flat_step(
-                    scenario, board, step_num, 60, state_before,
-                    trajectory_id=0, agent_semaphore=semaphore, max_steps=max_steps,
-                ))
+                step = asyncio.run(
+                    _run_flat_step(
+                        scenario,
+                        board,
+                        step_num,
+                        60,
+                        state_before,
+                        trajectory_id=0,
+                        agent_semaphore=semaphore,
+                        max_steps=max_steps,
+                    )
+                )
                 steps.append(step)
 
             # Step 0: review step (0 % 3 == 0), has resolution

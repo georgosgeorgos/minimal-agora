@@ -118,7 +118,9 @@ async def run_particle_filter(
         for i in range(n):
             if scenario.wildcards_enabled:
                 current_state = boards[i].read_state()
-                wildcard = _roll_wildcard(scenario.wildcards, max_steps, current_state, step_num, scenario.wildcard_warmup)
+                wildcard = _roll_wildcard(
+                    scenario.wildcards, max_steps, current_state, step_num, scenario.wildcard_warmup
+                )
                 if wildcard:
                     boards[i].write_wildcard(wildcard, step_num)
                     if wildcard.state_impact:
@@ -134,14 +136,21 @@ async def run_particle_filter(
             try:
                 async with semaphore:
                     step = await _run_step(
-                        scenario, _boards[idx], _step_num, agent_timeout,
+                        scenario,
+                        _boards[idx],
+                        _step_num,
+                        agent_timeout,
                         trajectory_id=idx,
-                        agent_semaphore=agent_sem, max_steps=max_steps,
+                        agent_semaphore=agent_sem,
+                        max_steps=max_steps,
                     )
                     all_steps[idx].append(step)
             except Exception as e:  # noqa: BLE001
                 logger.warning(
-                    "particle.step_failed", trajectory_id=idx, step=_step_num, error=str(e),
+                    "particle.step_failed",
+                    trajectory_id=idx,
+                    step=_step_num,
+                    error=str(e),
                 )
 
         try:
@@ -154,7 +163,11 @@ async def run_particle_filter(
 
         if step_num > 0 and not is_last and n > resample_cfg.min_particles:
             weights = await score_particles(
-                scenario, workspaces, step_num, agent_timeout, agent_sem,
+                scenario,
+                workspaces,
+                step_num,
+                agent_timeout,
+                agent_sem,
             )
             ess = effective_sample_size(weights)
             ess_history.append(ess)
@@ -172,7 +185,11 @@ async def run_particle_filter(
             if triggered:
                 logger.info("filter.resample", step=step_num, ess=round(ess, 4))
                 workspaces = await resample_particles(
-                    scenario, workspaces, step_num, agent_timeout, agent_sem,
+                    scenario,
+                    workspaces,
+                    step_num,
+                    agent_timeout,
+                    agent_sem,
                 )
                 boards = [Board(ws) for ws in workspaces]
         else:

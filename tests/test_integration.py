@@ -1,4 +1,5 @@
 """Integration tests exercising run_trajectory() and run_batch() with MockProvider."""
+
 from __future__ import annotations
 
 import asyncio
@@ -40,8 +41,12 @@ class FileWritingMockProvider:
         self.call_count: int = 0
 
     async def invoke(
-        self, prompt: str, workspace: Path, timeout: int = 300,
-        model: str | None = None, temperature: float | None = None,
+        self,
+        prompt: str,
+        workspace: Path,
+        timeout: int = 300,
+        model: str | None = None,
+        temperature: float | None = None,
     ) -> AgentInvocationResult:
         self.call_count += 1
 
@@ -88,8 +93,11 @@ class FileWritingMockProvider:
         input_tokens = len(prompt) // 4
         output_tokens = len(output) // 4
         return AgentInvocationResult(
-            output=output, tokens_used=input_tokens + output_tokens, model="mock-model",
-            input_tokens=input_tokens, output_tokens=output_tokens,
+            output=output,
+            tokens_used=input_tokens + output_tokens,
+            model="mock-model",
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
         )
 
 
@@ -111,7 +119,9 @@ def _counterfactual_scenario() -> Scenario:
         initial_state={"time": {"step": 0}, "value": 1},
         agents=[
             AgentConfig(role=AgentRole.ACTOR, name="actor_1", perspective="Test actor"),
-            AgentConfig(role=AgentRole.CONSTRAINT_EVALUATOR, name="critic_1", perspective="Test critic"),
+            AgentConfig(
+                role=AgentRole.CONSTRAINT_EVALUATOR, name="critic_1", perspective="Test critic"
+            ),
             AgentConfig(role=AgentRole.RESOLVER, name="judge_1", perspective="Test judge"),
         ],
         termination={"max_steps": 2},
@@ -140,7 +150,8 @@ def _population_scenario() -> Scenario:
                 type=TrajectoryType.FORCE,
                 agents=[
                     AgentConfig(
-                        role=AgentRole.ACTOR, name="env_force",
+                        role=AgentRole.ACTOR,
+                        name="env_force",
                         perspective="Environmental forces",
                     ),
                 ],
@@ -152,7 +163,8 @@ def _population_scenario() -> Scenario:
                 initial_state={"count": 100},
                 agents=[
                     AgentConfig(
-                        role=AgentRole.ACTOR, name="pop_a_actor",
+                        role=AgentRole.ACTOR,
+                        name="pop_a_actor",
                         perspective="Population A evolution",
                     ),
                 ],
@@ -165,7 +177,8 @@ def _population_scenario() -> Scenario:
                 initial_state={"count": 50},
                 agents=[
                     AgentConfig(
-                        role=AgentRole.ACTOR, name="pop_b_actor",
+                        role=AgentRole.ACTOR,
+                        name="pop_b_actor",
                         perspective="Population B evolution",
                     ),
                 ],
@@ -176,7 +189,8 @@ def _population_scenario() -> Scenario:
                 type=TrajectoryType.CONSTRAINT_EVALUATOR,
                 agents=[
                     AgentConfig(
-                        role=AgentRole.CONSTRAINT_EVALUATOR, name="balance_critic",
+                        role=AgentRole.CONSTRAINT_EVALUATOR,
+                        name="balance_critic",
                         perspective="Check ecological balance",
                     ),
                 ],
@@ -186,7 +200,8 @@ def _population_scenario() -> Scenario:
                 type=TrajectoryType.RESOLVER,
                 agents=[
                     AgentConfig(
-                        role=AgentRole.RESOLVER, name="world_judge",
+                        role=AgentRole.RESOLVER,
+                        name="world_judge",
                         perspective="Resolve all proposed changes",
                     ),
                 ],
@@ -197,7 +212,8 @@ def _population_scenario() -> Scenario:
 
 
 def test_counterfactual_trajectory(
-    mock_provider: FileWritingMockProvider, tmp_path: Path,
+    mock_provider: FileWritingMockProvider,
+    tmp_path: Path,
 ) -> None:
     """End-to-end counterfactual trajectory completes with correct state updates."""
     scenario = _counterfactual_scenario()
@@ -225,7 +241,8 @@ def test_counterfactual_trajectory(
 
 
 def test_population_trajectory(
-    mock_provider: FileWritingMockProvider, tmp_path: Path,
+    mock_provider: FileWritingMockProvider,
+    tmp_path: Path,
 ) -> None:
     """End-to-end population trajectory with entity interactions."""
     scenario = _population_scenario()
@@ -248,7 +265,8 @@ def test_population_trajectory(
 
 
 def test_batch_run_with_aggregation(
-    mock_provider: FileWritingMockProvider, tmp_path: Path,
+    mock_provider: FileWritingMockProvider,
+    tmp_path: Path,
 ) -> None:
     """Batch run of 2 trajectories produces aggregate results."""
     scenario = _counterfactual_scenario().model_copy(update={"n_trajectories": 2})
@@ -268,7 +286,8 @@ def test_batch_run_with_aggregation(
 
 
 def test_token_tracking_counterfactual(
-    mock_provider: FileWritingMockProvider, tmp_path: Path,
+    mock_provider: FileWritingMockProvider,
+    tmp_path: Path,
 ) -> None:
     """Token usage is tracked per step and aggregated per trajectory."""
     scenario = _counterfactual_scenario()
@@ -296,7 +315,8 @@ def test_token_tracking_counterfactual(
 
 
 def test_token_tracking_population(
-    mock_provider: FileWritingMockProvider, tmp_path: Path,
+    mock_provider: FileWritingMockProvider,
+    tmp_path: Path,
 ) -> None:
     """Token usage is tracked in population mode with entity steps."""
     scenario = _population_scenario()

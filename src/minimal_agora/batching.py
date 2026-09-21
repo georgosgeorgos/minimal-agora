@@ -45,16 +45,20 @@ def build_batch_prompt(
     )
 
     if agent.role == AgentRole.ACTOR:
-        example = json.dumps({
-            "steps": [{
-                "step_number": start,
-                "agent": agent.name,
-                "role": "actor",
-                "proposed_changes": {"path.to.field": "new_value"},
-                "reasoning": "brief reason",
-                "confidence": 0.7,
-            }],
-        })
+        example = json.dumps(
+            {
+                "steps": [
+                    {
+                        "step_number": start,
+                        "agent": agent.name,
+                        "role": "actor",
+                        "proposed_changes": {"path.to.field": "new_value"},
+                        "reasoning": "brief reason",
+                        "confidence": 0.7,
+                    }
+                ],
+            }
+        )
         return (
             f"You are **{agent.name}**, a batch actor agent in a world simulation.\n\n"
             f"## Your Perspective\n{agent.perspective}\n\n"
@@ -69,17 +73,21 @@ def build_batch_prompt(
 
     proposals_json = json.dumps(proposals or [], indent=2)
     if agent.role == AgentRole.CONSTRAINT_EVALUATOR:
-        example = json.dumps({
-            "steps": [{
-                "step_number": start,
-                "agent": agent.name,
-                "target_proposals": ["actor"],
-                "assessment": "brief assessment",
-                "plausibility": 0.8,
-                "scores": {"physical": 0.9},
-                "issues": [],
-            }],
-        })
+        example = json.dumps(
+            {
+                "steps": [
+                    {
+                        "step_number": start,
+                        "agent": agent.name,
+                        "target_proposals": ["actor"],
+                        "assessment": "brief assessment",
+                        "plausibility": 0.8,
+                        "scores": {"physical": 0.9},
+                        "issues": [],
+                    }
+                ],
+            }
+        )
         return (
             f"You are **{agent.name}**, a batch constraint evaluator agent in a world simulation.\n\n"
             f"## Your Perspective\n{agent.perspective}\n\n"
@@ -94,14 +102,18 @@ def build_batch_prompt(
 
     if agent.role == AgentRole.RESOLVER:
         critiques_json = json.dumps(critiques or [], indent=2)
-        example = json.dumps({
-            "steps": [{
-                "step_number": start,
-                "state_delta": {"path.to.field": "new_value"},
-                "narrative": "what happened",
-                "reasoning": "brief rationale",
-            }],
-        })
+        example = json.dumps(
+            {
+                "steps": [
+                    {
+                        "step_number": start,
+                        "state_delta": {"path.to.field": "new_value"},
+                        "narrative": "what happened",
+                        "reasoning": "brief rationale",
+                    }
+                ],
+            }
+        )
         return (
             f"You are **{agent.name}**, the batch resolver agent in a world simulation.\n\n"
             f"## Your Perspective\n{agent.perspective}\n\n"
@@ -139,7 +151,8 @@ def parse_batch_output(role: AgentRole, text: str) -> BatchOutput | None:
 
 def _format_rules(rules: list[SimRule], agent: AgentConfig) -> str:
     applicable = [
-        rule for rule in rules
+        rule
+        for rule in rules
         if not rule.applies_to
         or agent.name in rule.applies_to
         or agent.role.value in rule.applies_to

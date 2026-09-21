@@ -34,9 +34,7 @@ def aggregate_outcomes(trajectories: list[Trajectory], question: str = "") -> Ag
 
     n = len(trajectories)
     rates = {k: v / n for k, v in counts.items()} if n > 0 else {}
-    mean_steps = {
-        k: sum(v) / len(v) for k, v in steps_per_outcome.items() if v
-    }
+    mean_steps = {k: sum(v) / len(v) for k, v in steps_per_outcome.items() if v}
 
     outcome_rates_ci: dict[str, tuple[float, float]] | None = None
     monte_carlo_se: dict[str, float] | None = None
@@ -67,7 +65,8 @@ def aggregate_outcomes(trajectories: list[Trajectory], question: str = "") -> Ag
 
 
 def extract_field_timelines(
-    trajectories: list[Trajectory], fields: list[str],
+    trajectories: list[Trajectory],
+    fields: list[str],
 ) -> dict[str, dict[int, list]]:
     timelines: dict[str, dict[int, list]] = {f: defaultdict(list) for f in fields}
     for t in trajectories:
@@ -181,12 +180,15 @@ def load_trajectories(output_dir: Path) -> list[Trajectory]:
 
 
 def detect_convergence(
-    trajectories: list[Trajectory], threshold: float = 0.8,
+    trajectories: list[Trajectory],
+    threshold: float = 0.8,
 ) -> list[str]:
     if len(trajectories) < 3:
         return []
 
-    logger.debug("analysis.detect_convergence", n_trajectories=len(trajectories), threshold=threshold)
+    logger.debug(
+        "analysis.detect_convergence", n_trajectories=len(trajectories), threshold=threshold
+    )
     warnings = []
     counts: dict[str, int] = defaultdict(int)
     n = len(trajectories)
@@ -231,10 +233,9 @@ def outcome_rate_with_ci(
     confidence: float = 0.95,
     n_bootstrap: int = 9999,
 ) -> dict[str, float]:
-    hits = np.array([
-        1.0 if (t.outcome and t.outcome.classification == category) else 0.0
-        for t in trajectories
-    ])
+    hits = np.array(
+        [1.0 if (t.outcome and t.outcome.classification == category) else 0.0 for t in trajectories]
+    )
     point_estimate = float(hits.mean())
 
     if len(hits) < 2:
@@ -337,34 +338,34 @@ def compare_runs(
         else:
             ztest = {"z_stat": 0.0, "p_value": 1.0, "significant": False}
 
-        outcome_comparisons.append({
-            "category": cat,
-            "rate_a": rate_a,
-            "rate_b": rate_b,
-            "z_stat": ztest["z_stat"],
-            "p_value": ztest["p_value"],
-            "significant": ztest["significant"],
-        })
+        outcome_comparisons.append(
+            {
+                "category": cat,
+                "rate_a": rate_a,
+                "rate_b": rate_b,
+                "z_stat": ztest["z_stat"],
+                "p_value": ztest["p_value"],
+                "significant": ztest["significant"],
+            }
+        )
 
-    steps_a = [
-        float(t.outcome.final_step) for t in trajectories_a if t.outcome
-    ]
-    steps_b = [
-        float(t.outcome.final_step) for t in trajectories_b if t.outcome
-    ]
+    steps_a = [float(t.outcome.final_step) for t in trajectories_a if t.outcome]
+    steps_b = [float(t.outcome.final_step) for t in trajectories_b if t.outcome]
 
     effect_sizes: dict[str, Any] = {}
     metric_comparisons: list[dict[str, Any]] = []
     if steps_a and steps_b:
         d_result = cohens_d(steps_a, steps_b)
         effect_sizes["final_step"] = d_result
-        metric_comparisons.append({
-            "metric": "final_step",
-            "mean_a": float(np.mean(steps_a)),
-            "mean_b": float(np.mean(steps_b)),
-            "cohens_d": d_result["d"],
-            "interpretation": d_result["interpretation"],
-        })
+        metric_comparisons.append(
+            {
+                "metric": "final_step",
+                "mean_a": float(np.mean(steps_a)),
+                "mean_b": float(np.mean(steps_b)),
+                "cohens_d": d_result["d"],
+                "interpretation": d_result["interpretation"],
+            }
+        )
 
     sig_diffs = [c for c in outcome_comparisons if c["significant"]]
     if sig_diffs:
@@ -465,9 +466,7 @@ def compute_outcome_coverage(trajectories: list[Trajectory]) -> dict[str, Any]:
             normalized_ranges.append(val_range / mean_abs)
 
     state_space_coverage = (
-        sum(normalized_ranges) / len(normalized_ranges)
-        if normalized_ranges
-        else 0.0
+        sum(normalized_ranges) / len(normalized_ranges) if normalized_ranges else 0.0
     )
 
     # --- trajectory divergence ---
@@ -481,9 +480,7 @@ def compute_outcome_coverage(trajectories: list[Trajectory]) -> dict[str, Any]:
             diffs = [abs(flat_states[i][k] - flat_states[j][k]) for k in shared_keys]
             pair_distances.append(sum(diffs) / len(diffs))
 
-    trajectory_divergence = (
-        sum(pair_distances) / len(pair_distances) if pair_distances else 0.0
-    )
+    trajectory_divergence = sum(pair_distances) / len(pair_distances) if pair_distances else 0.0
 
     # --- combined coverage score ---
     # Weight entropy and state_space_coverage equally, clamp to [0, 1]
@@ -568,9 +565,7 @@ def compute_agent_calibration(trajectories: list[Trajectory]) -> dict[str, dict]
         mean_confidence = sum(confidences) / len(confidences) if confidences else 0.0
 
         plausibilities = data["plausibilities"]
-        mean_plausibility = (
-            sum(plausibilities) / len(plausibilities) if plausibilities else None
-        )
+        mean_plausibility = sum(plausibilities) / len(plausibilities) if plausibilities else None
 
         result[name] = {
             "proposals_made": made,
