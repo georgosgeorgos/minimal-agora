@@ -666,12 +666,14 @@ def test_review_interval_skip():
             with open(path, "w") as f:
                 f.write(proposal.model_dump_json(indent=2))
 
-        async def mock_invoke(agent, workspace, step_num, prompt, timeout, max_retries=1):
+        async def mock_invoke(
+            agent, workspace, step_num, prompt, timeout, max_retries=1, temperature=None,
+        ):
             if agent.role == AgentRole.ACTOR:
                 _write_mock_proposal(agent, workspace, step_num)
 
-        original = loop_module._invoke_with_retry
-        loop_module._invoke_with_retry = mock_invoke
+        original = loop_module._invoke_with_retry_return
+        loop_module._invoke_with_retry_return = mock_invoke
 
         try:
             max_steps = 4
@@ -699,7 +701,7 @@ def test_review_interval_skip():
             # Step 3: last step, always reviewed, has resolution
             assert steps[3].resolution is not None
         finally:
-            loop_module._invoke_with_retry = original
+            loop_module._invoke_with_retry_return = original
 
 
 def test_expand_dotted_keys():
