@@ -12,6 +12,8 @@ logger = structlog.stdlib.get_logger(__name__)
 class MockProvider:
     """Provider that returns pre-configured responses for testing."""
 
+    supports_workspace_io = False
+
     def __init__(self, responses: dict[str, str] | None = None) -> None:
         self.responses: dict[str, str] = responses or {}
         self.call_count: int = 0

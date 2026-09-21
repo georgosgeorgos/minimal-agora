@@ -5,11 +5,11 @@
 - Repository root: `/Users/ggiannon/Documents/gcg/minimal-harness/minimal-agora`
 - Standard startup path: `./init.sh` (runs `uv sync`, `ruff check`, `pytest`)
 - Standard verification path: `uv run pytest tests/ -v && uv run ruff check src/ tests/`
-- Features through feat-011 passing; feat-004 validated (8 scenarios ran end-to-end with API provider)
+- All roadmap features through feat-012 passing; feat-004 validated with both API and Claude CLI providers
 - Current blocker: None
-- Test count: 408 tests, all green
+- Test count: 415 tests, all green
 - Lint: clean (ruff, 0 errors)
-- Simulation validated: all 8 scenarios completed 50-step runs via RITS GLM-5.2
+- Simulation validated: all 8 scenarios completed 50-step runs via RITS GLM-5.2; a fresh one-step intelligence run completed via authenticated Claude CLI on 2026-09-21
 
 ## Session Log
 
@@ -105,6 +105,25 @@
 - Verification run: `uv run pytest tests/ -q` — 408 passed; `uv run ruff check src/ tests/` — 0 errors
 - Next priority: feat-012 (state-in-prompt vs. file-based board)
 
+### Session 007
+
+- Date: 2026-09-21
+- Goal: Implement configurable embedded versus file-based board access (feat-012)
+- Completed:
+  - Added `board_access: embedded|files`, preserving embedded prompts as the default
+  - Centralized prompt-context selection and output parsing behind one board-access seam
+  - Made provider workspace capability explicit and rejected incompatible providers early
+  - Applied the same policy to flat and population loops
+  - Kept stdout parsing with artifact fallback for embedded mode; made workspace artifacts authoritative in file mode
+  - Rejected the unsupported file-mode plus step-batching combination during scenario validation
+  - Raised the Claude subprocess turn cap to support workspace reads/writes and reject under-provisioned file-mode providers early
+  - Documented configuration, provider compatibility, and behavior
+  - Opened implementation issues #65 (feat-011) and #66 (feat-012)
+  - Completed a fresh provider-backed intelligence simulation through authenticated Claude CLI: four proposals, one critique, one resolution, eight state-delta fields, and final step checkpoint 1
+- Verification run: `uv run pytest tests/test_board_access.py -q` — 7 passed; `uv run pytest tests/ -q` — 415 passed; `uv run ruff check src/ tests/` — 0 errors
+- External provider note: the configured RITS GLM-5.2 endpoint returned HTTP 503 during a separate 3-step attempt; the engine completed its failure path, then the Claude CLI validation succeeded
+- Next priority: no unfinished roadmap features
+
 ## Roadmap (priority order)
 
 | ID | Area | Title | Status |
@@ -119,7 +138,7 @@
 | feat-001 | reliability | Agent output retry/validation | passing |
 | feat-002 | population | Entity interaction logic | passing |
 | feat-003 | visualization | Trajectory visualization | passing |
-| feat-004 | core | End-to-end test with Claude CLI | not_started |
+| feat-004 | core | End-to-end test with Claude CLI | passing |
 | feat-005 | core | Fitness tracking (open_ended mode) | passing |
 | feat-006 | reliability | Mode collapse mitigation | passing |
 | feat-007 | reliability | Checkpoint and resume | passing |
@@ -127,4 +146,4 @@
 | feat-009 | core | Multi-provider LLM backend | passing |
 | feat-010 | performance | Adaptive step resolution (skip LLM for routine steps) | passing |
 | feat-011 | performance | Step batching (multi-step per LLM call) | passing |
-| feat-012 | architecture | State-in-prompt vs. file-based board | not_started |
+| feat-012 | architecture | State-in-prompt vs. file-based board | passing |

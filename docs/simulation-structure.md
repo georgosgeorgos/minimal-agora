@@ -250,11 +250,13 @@ The same prompt is sent through a pluggable provider:
 
 | Provider | How it works | Latency |
 |----------|-------------|---------|
-| `ClaudeSubprocessProvider` | `claude -p <prompt> --max-turns 1` | ~5-15s per call |
+| `ClaudeSubprocessProvider` | `claude -p <prompt> --max-turns 5` | ~5-15s per call |
 | `AnthropicAPIProvider` | Direct API via `anthropic.AsyncAnthropic` | ~3-10s per call |
 | `MockProvider` | Returns deterministic JSON. For testing. | <1ms |
 
-With `--max-turns 1` and inline state, each agent call is a **single inference** — no tool use, no multi-turn conversation.
+Inline-state prompts normally finish in a **single inference** with no tool use.
+The five-turn cap also supports file-board prompts, which need workspace reads
+and a write before the final response.
 
 ### Concurrency Control
 

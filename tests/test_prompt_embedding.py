@@ -286,9 +286,9 @@ class TestParseResolutionFromText:
 
 
 class TestMaxTurnsDefault:
-    def test_default_is_1(self) -> None:
+    def test_default_supports_workspace_tool_use(self) -> None:
         provider = ClaudeSubprocessProvider()
-        assert provider.max_turns == 1
+        assert provider.max_turns == 5
 
     def test_custom_max_turns(self) -> None:
         provider = ClaudeSubprocessProvider(max_turns=10)

@@ -12,6 +12,11 @@ class SimMode(str, Enum):
     POPULATION = "population"
 
 
+class BoardAccessMode(str, Enum):
+    EMBEDDED = "embedded"
+    FILES = "files"
+
+
 class AgentRole(str, Enum):
     ACTOR = "actor"
     CONSTRAINT_EVALUATOR = "constraint_evaluator"
@@ -215,6 +220,7 @@ class Scenario(BaseModel):
     wildcard_warmup: float = Field(default=0.05, ge=0.0, le=1.0)
     narrative_window: int | None = 20
     description: str = ""
+    board_access: BoardAccessMode = BoardAccessMode.EMBEDDED
     max_concurrent_agents: int = Field(default=8, ge=1)
     review_interval: int = Field(default=1, ge=1)
     review_threshold: float | None = None
@@ -237,6 +243,8 @@ class Scenario(BaseModel):
             raise ValueError("step_batching and adaptive_steps cannot be enabled together")
         if self.resampling is not None:
             raise ValueError("step_batching does not yet support resampling")
+        if self.board_access == BoardAccessMode.FILES:
+            raise ValueError("step_batching requires embedded board access")
         return self
 
 

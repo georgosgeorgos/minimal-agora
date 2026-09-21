@@ -399,6 +399,7 @@ initial_state:                         # Starting world state (arbitrary nested 
 n_trajectories: 1                      # Number of independent runs (default: 1)
 step_budget: 50                        # Max steps per trajectory (default: 50)
 description: ""                        # Human-readable description
+board_access: embedded                 # embedded | files
 
 # Agents (flat mode — counterfactual/open_ended)
 agents:
@@ -1135,26 +1136,37 @@ SSE as new trajectories complete. Press Ctrl+C to stop.
 
 ### How Agents are Invoked
 
-Agents are invoked as `claude -p` subprocesses. The `invoke_agent` function in
-`agents.py` constructs a command and runs it asynchronously:
+The provider interface accepts a prompt and workspace and returns text plus
+optional token metadata. Three adapters are included:
 
-```python
-cmd = [
-    "claude",
-    "-p", prompt,
-    "--output-format", "text",
-    "--max-turns", "5",
-]
-```
+| Provider | Invocation | Workspace I/O |
+|----------|------------|---------------|
+| `AnthropicAPIProvider` | Anthropic Messages API or compatible endpoint | No |
+| `LiteLLMProvider` | LiteLLM multi-provider interface | No |
+| `ClaudeSubprocessProvider` | `claude -p --max-turns 5` | Yes |
 
-The subprocess runs with `cwd` set to the trajectory's workspace directory.
-This means agents can read files relative to the workspace — `board/state.json`,
-`proposals/step_003_*.json`, etc. Agents write their output files to the same
-workspace.
+`MockProvider` is the deterministic in-memory adapter used by tests.
 
-The `--max-turns 5` flag limits agent tool-use turns, preventing runaway loops.
-The `--output-format text` flag ensures plain text output rather than JSON
-wrapping.
+### Board Access Modes
+
+`board_access: embedded` is the default. The engine embeds state, narrative,
+wildcards, proposals, and critiques directly in prompts, parses JSON from the
+provider response, and persists the artifacts itself. This is a single model
+round trip and works with every provider.
+
+`board_access: files` selects the workspace-file path. Prompts instruct agents
+to read `board/state.json`, `board/narrative.md`, and earlier artifacts, then
+write JSON under `proposals/`, `critiques/`, or `resolutions/`. The engine
+ignores response JSON and reads those files. This mode requires a provider that
+declares workspace I/O support; currently that is `ClaudeSubprocessProvider`.
+An incompatible provider fails before the trajectory starts.
+The subprocess provider also requires at least three configured turns for file
+mode; its default of five leaves enough room for reads, a write, and a final
+response. Embedded prompts normally finish in one inference despite that cap.
+
+Both flat and population loops use the same board-access policy. File mode can
+be combined with adaptive steps, but not multi-step batching, whose
+step-indexed response contract is deliberately stdout-based.
 
 ### Timeout and Retry
 
@@ -1171,45 +1183,23 @@ gracefully by the loop.
 
 The `build_prompt` function dispatches to role-specific prompt builders:
 
-| Role | Builder | Output file |
-|------|---------|-------------|
+| Role | Builder | Persisted artifact |
+|------|---------|--------------------|
 | `actor` | `build_actor_prompt` | `proposals/step_NNN_<name>.json` |
 | `constraint_evaluator` | `build_constraint_evaluator_prompt` | `critiques/step_NNN_<name>.json` |
 | `resolver` | `build_resolver_prompt` | `resolutions/step_NNN_resolution.json` |
-| `resampling_critic` | `build_resampling_critic_prompt` | stdout (JSON) |
-
-Each prompt instructs the agent to:
-1. Read the current state from `board/state.json`
-2. Read the narrative from `board/narrative.md`
-3. Read the scenario description from `board/scenario.md`
-4. Check for an active wildcard at `board/wildcard_step_NNN.json`
-5. Write output as JSON to the appropriate directory
+| `resampling_critic` | `build_resampling_critic_prompt` | stdout JSON |
 
 Prompts include the agent's `perspective` text, applicable rules, interaction
 context (for population entities), and a diversity lens (for actors in
 multi-trajectory runs).
 
-### MockProvider (Testing)
-
-For testing, the loop and agents module use direct `claude` subprocess calls.
-Testing is done by mocking the `invoke_agent` function or by providing
-pre-written proposal/critique/resolution files in the workspace. There is no
-formal `MockProvider` class — tests mock at the subprocess level.
-
 ### Adding a New Provider
 
-To add a new LLM provider (e.g., Ollama, vLLM, OpenAI):
-
-1. The current architecture invokes agents as `claude -p` subprocesses directly
-   in `agents.py:invoke_agent`. To add a new provider, modify `invoke_agent` to
-   dispatch based on the agent's `model` field or a configuration setting.
-
-2. The agent's `model` field on `AgentConfig` is optional and currently unused
-   by the subprocess invocation. It's available for provider routing.
-
-3. The key contract: the provider must accept a text prompt, run it with access
-   to the workspace directory (so it can read/write board files), and return
-   text output. The prompt instructs the agent on what files to read and write.
+Implement `AgentProvider.invoke()` and return `AgentInvocationResult`. Set
+`supports_workspace_io = True` only if the adapter actually lets the model read
+and write the supplied workspace. API-only adapters should leave it false and
+use embedded board access.
 
 ---
 

@@ -5,6 +5,7 @@ from minimal_agora.loop import run_trajectory
 from minimal_agora.models import (
     AdaptiveStepConfig,
     AgentConfig,
+    BoardAccessMode,
     EntityConfig,
     Scenario,
     StepBatchingConfig,
@@ -27,6 +28,7 @@ __all__ = [
     "AgentInvocationResult",
     "AgentProvider",
     "AnthropicAPIProvider",
+    "BoardAccessMode",
     "ClaudeSubprocessProvider",
     "EntityConfig",
     "LiteLLMProvider",

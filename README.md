@@ -227,6 +227,7 @@ mode: counterfactual
 n_trajectories: 10
 step_budget: 200
 review_interval: 5              # constraint evaluation every N steps
+board_access: embedded           # embedded (all providers) | files (Claude CLI)
 adaptive_steps:                 # optional performance policy
   reasoning_interval: 10        # always reason every 10th step
   change_threshold: 0.25        # reason early after 25% mean numeric drift

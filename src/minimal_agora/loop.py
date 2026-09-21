@@ -18,13 +18,8 @@ from minimal_agora.agents import (
     build_interaction_context,
     build_prompt,
     detect_conflicts,
+    get_default_provider,
     invoke_agent,
-    parse_critique,
-    parse_critique_from_text,
-    parse_proposal,
-    parse_proposal_from_text,
-    parse_resolution,
-    parse_resolution_from_text,
 )
 from minimal_agora.batching import build_batch_prompt, parse_batch_output
 from minimal_agora.board import (
@@ -34,6 +29,13 @@ from minimal_agora.board import (
     _expand_dotted_keys,
     compress_narrative,
     evaluate_wildcard_mode,
+)
+from minimal_agora.board_access import (
+    ensure_provider_supports_board_access,
+    parse_critique_result,
+    parse_proposal_result,
+    parse_resolution_result,
+    prompt_context,
 )
 from minimal_agora.models import (
     AgentCallTokens,
@@ -147,6 +149,7 @@ async def run_trajectory(
     """Run a single simulation trajectory, returning the completed Trajectory with outcome."""
     board = Board(workspace)
     agent_semaphore = asyncio.Semaphore(scenario.max_concurrent_agents)
+    ensure_provider_supports_board_access(scenario.board_access, get_default_provider())
 
     tlog = logger.bind(trajectory_id=trajectory_id)
 
@@ -308,6 +311,7 @@ async def _run_step(
     max_steps: int = 1,
     state_schema: dict | None = None,
 ) -> Step:
+    ensure_provider_supports_board_access(scenario.board_access, get_default_provider())
     if scenario.narrative_window is not None:
         raw = board.narrative_path.read_text()
         compressed = compress_narrative(raw, scenario.narrative_window)
@@ -753,11 +757,12 @@ async def _run_flat_step(
     narrative_text = _read_narrative(board)
     wildcard_dict = _read_wildcard_dict(board, step_num)
 
-    embed_kwargs: dict = {
-        "state": current_state,
-        "narrative": narrative_text,
-        "wildcard": wildcard_dict,
-    }
+    embed_kwargs = prompt_context(
+        scenario.board_access,
+        state=current_state,
+        narrative=narrative_text,
+        wildcard=wildcard_dict,
+    )
     actor_extra: dict = {}
     if scenario.diversity_lenses:
         actor_extra["diversity_lenses"] = scenario.diversity_lenses
@@ -790,11 +795,9 @@ async def _run_flat_step(
         result = actor_results.get(a.name)
         _collect_tokens_from_result(result, a.role.value, token_calls)
         output = result.output if result else None
-        p = None
-        if output:
-            p = parse_proposal_from_text(output, a.name)
-        if p is None:
-            p = parse_proposal(board.workspace, a.name, step_num)
+        p = parse_proposal_result(
+            scenario.board_access, output, board.workspace, a.name, step_num,
+        )
         if p:
             proposals.append(p)
             board.save_proposal(p, step_num)
@@ -826,7 +829,13 @@ async def _run_flat_step(
         # PATH C: Full review — constraint evaluator (if defined) then resolver
         if constraint_evaluators:
             proposals_dicts = [p.model_dump() for p in proposals]
-            ce_kwargs = {**embed_kwargs, "proposals": proposals_dicts}
+            ce_kwargs = prompt_context(
+                scenario.board_access,
+                state=current_state,
+                narrative=narrative_text,
+                wildcard=wildcard_dict,
+                proposals=proposals_dicts,
+            )
 
             logger.debug("flat_step.evaluate_start", step=step_num, n_evaluators=len(constraint_evaluators))
             t1 = time.monotonic()
@@ -859,11 +868,9 @@ async def _run_flat_step(
                 result = ce_results.get(c.name)
                 _collect_tokens_from_result(result, c.role.value, token_calls)
                 output = result.output if result else None
-                cr = None
-                if output:
-                    cr = parse_critique_from_text(output, c.name)
-                if cr is None:
-                    cr = parse_critique(board.workspace, c.name, step_num)
+                cr = parse_critique_result(
+                    scenario.board_access, output, board.workspace, c.name, step_num,
+                )
                 if cr:
                     critiques.append(cr)
                     board.save_critique(cr, step_num)
@@ -872,12 +879,15 @@ async def _run_flat_step(
             logger.debug("flat_step.resolve_start", step=step_num)
             t2 = time.monotonic()
             resolver = resolvers[0]
-            resolver_kwargs = {
-                **embed_kwargs,
-                "proposals": [p.model_dump() for p in proposals],
-                "critiques": [c.model_dump() for c in critiques],
-                "conflicts": conflicts,
-            }
+            resolver_kwargs = prompt_context(
+                scenario.board_access,
+                state=current_state,
+                narrative=narrative_text,
+                wildcard=wildcard_dict,
+                proposals=[p.model_dump() for p in proposals],
+                critiques=[c.model_dump() for c in critiques],
+                conflicts=conflicts,
+            )
             prompt = build_prompt(resolver, step_num, rules, **resolver_kwargs)
             resolver_result = await _invoke_with_retry_return(
                 resolver, board.workspace, step_num, prompt, timeout,
@@ -885,10 +895,9 @@ async def _run_flat_step(
             )
             _collect_tokens_from_result(resolver_result, resolver.role.value, token_calls)
             resolver_output = resolver_result.output if resolver_result else None
-            if resolver_output:
-                resolution = parse_resolution_from_text(resolver_output)
-            if resolution is None:
-                resolution = parse_resolution(board.workspace, step_num)
+            resolution = parse_resolution_result(
+                scenario.board_access, resolver_output, board.workspace, step_num,
+            )
             logger.debug(
                 "flat_step.resolve_done", step=step_num,
                 duration_s=round(time.monotonic() - t2, 3),
@@ -919,11 +928,14 @@ async def _run_flat_step(
             logger.debug("flat_step.resolve_start", step=step_num)
             t2 = time.monotonic()
             resolver = resolvers[0]
-            resolver_kwargs = {
-                **embed_kwargs,
-                "proposals": [p.model_dump() for p in proposals],
-                "conflicts": conflicts,
-            }
+            resolver_kwargs = prompt_context(
+                scenario.board_access,
+                state=current_state,
+                narrative=narrative_text,
+                wildcard=wildcard_dict,
+                proposals=[p.model_dump() for p in proposals],
+                conflicts=conflicts,
+            )
             prompt = build_prompt(resolver, step_num, rules, **resolver_kwargs)
             resolver_result = await _invoke_with_retry_return(
                 resolver, board.workspace, step_num, prompt, timeout,
@@ -931,10 +943,9 @@ async def _run_flat_step(
             )
             _collect_tokens_from_result(resolver_result, resolver.role.value, token_calls)
             resolver_output = resolver_result.output if resolver_result else None
-            if resolver_output:
-                resolution = parse_resolution_from_text(resolver_output)
-            if resolution is None:
-                resolution = parse_resolution(board.workspace, step_num)
+            resolution = parse_resolution_result(
+                scenario.board_access, resolver_output, board.workspace, step_num,
+            )
             logger.debug(
                 "flat_step.resolve_done", step=step_num,
                 duration_s=round(time.monotonic() - t2, 3),
@@ -1025,11 +1036,12 @@ async def _run_entity_step(
     current_state = board.read_state()
     narrative_text = _read_narrative(board)
     wildcard_dict = _read_wildcard_dict(board, step_num)
-    embed_kwargs: dict = {
-        "state": current_state,
-        "narrative": narrative_text,
-        "wildcard": wildcard_dict,
-    }
+    embed_kwargs = prompt_context(
+        scenario.board_access,
+        state=current_state,
+        narrative=narrative_text,
+        wildcard=wildcard_dict,
+    )
     actor_extra: dict = {}
     if scenario.diversity_lenses:
         actor_extra["diversity_lenses"] = scenario.diversity_lenses
@@ -1066,11 +1078,9 @@ async def _run_entity_step(
             result = force_results.get(a.name)
             _collect_tokens_from_result(result, a.role.value, token_calls)
             output = result.output if result else None
-            p = None
-            if output:
-                p = parse_proposal_from_text(output, a.name)
-            if p is None:
-                p = parse_proposal(board.workspace, a.name, step_num)
+            p = parse_proposal_result(
+                scenario.board_access, output, board.workspace, a.name, step_num,
+            )
             if p:
                 proposals.append(p)
                 board.save_proposal(p, step_num)
@@ -1083,7 +1093,12 @@ async def _run_entity_step(
         for a in entity.agents:
             entity_interaction[a.name] = ctx
 
-    embed_kwargs["state"] = current_state
+    embed_kwargs = prompt_context(
+        scenario.board_access,
+        state=current_state,
+        narrative=narrative_text,
+        wildcard=wildcard_dict,
+    )
 
     pop_agents = [a for e in pop_entities for a in e.agents]
     if pop_agents:
@@ -1119,11 +1134,9 @@ async def _run_entity_step(
             result = pop_results.get(a.name)
             _collect_tokens_from_result(result, a.role.value, token_calls)
             output = result.output if result else None
-            p = None
-            if output:
-                p = parse_proposal_from_text(output, a.name)
-            if p is None:
-                p = parse_proposal(board.workspace, a.name, step_num)
+            p = parse_proposal_result(
+                scenario.board_access, output, board.workspace, a.name, step_num,
+            )
             if p:
                 proposals.append(p)
                 board.save_proposal(p, step_num)
@@ -1155,7 +1168,13 @@ async def _run_entity_step(
         ce_agents = [a for e in ce_entities for a in e.agents]
         if ce_agents:
             proposals_dicts = [p.model_dump() for p in proposals]
-            ce_kwargs = {**embed_kwargs, "proposals": proposals_dicts}
+            ce_kwargs = prompt_context(
+                scenario.board_access,
+                state=current_state,
+                narrative=narrative_text,
+                wildcard=wildcard_dict,
+                proposals=proposals_dicts,
+            )
 
             logger.debug("entity_step.evaluate_start", step=step_num, n_agents=len(ce_agents))
             t2 = time.monotonic()
@@ -1186,11 +1205,9 @@ async def _run_entity_step(
                 result = ce_results.get(c.name)
                 _collect_tokens_from_result(result, c.role.value, token_calls)
                 output = result.output if result else None
-                cr = None
-                if output:
-                    cr = parse_critique_from_text(output, c.name)
-                if cr is None:
-                    cr = parse_critique(board.workspace, c.name, step_num)
+                cr = parse_critique_result(
+                    scenario.board_access, output, board.workspace, c.name, step_num,
+                )
                 if cr:
                     critiques.append(cr)
                     board.save_critique(cr, step_num)
@@ -1200,12 +1217,15 @@ async def _run_entity_step(
             logger.debug("entity_step.resolve_start", step=step_num)
             t3 = time.monotonic()
             resolver = resolver_agents[0]
-            resolver_kwargs = {
-                **embed_kwargs,
-                "proposals": [p.model_dump() for p in proposals],
-                "critiques": [c.model_dump() for c in critiques],
-                "conflicts": conflicts,
-            }
+            resolver_kwargs = prompt_context(
+                scenario.board_access,
+                state=current_state,
+                narrative=narrative_text,
+                wildcard=wildcard_dict,
+                proposals=[p.model_dump() for p in proposals],
+                critiques=[c.model_dump() for c in critiques],
+                conflicts=conflicts,
+            )
             prompt = build_prompt(resolver, step_num, rules, **resolver_kwargs)
             resolver_result = await _invoke_with_retry_return(
                 resolver, board.workspace, step_num, prompt, timeout,
@@ -1213,10 +1233,9 @@ async def _run_entity_step(
             )
             _collect_tokens_from_result(resolver_result, resolver.role.value, token_calls)
             resolver_output = resolver_result.output if resolver_result else None
-            if resolver_output:
-                resolution = parse_resolution_from_text(resolver_output)
-            if resolution is None:
-                resolution = parse_resolution(board.workspace, step_num)
+            resolution = parse_resolution_result(
+                scenario.board_access, resolver_output, board.workspace, step_num,
+            )
             logger.debug(
                 "entity_step.resolve_done", step=step_num,
                 duration_s=round(time.monotonic() - t3, 3),
@@ -1248,11 +1267,14 @@ async def _run_entity_step(
             logger.debug("entity_step.resolve_start", step=step_num)
             t3 = time.monotonic()
             resolver = resolver_agents[0]
-            resolver_kwargs = {
-                **embed_kwargs,
-                "proposals": [p.model_dump() for p in proposals],
-                "conflicts": conflicts,
-            }
+            resolver_kwargs = prompt_context(
+                scenario.board_access,
+                state=current_state,
+                narrative=narrative_text,
+                wildcard=wildcard_dict,
+                proposals=[p.model_dump() for p in proposals],
+                conflicts=conflicts,
+            )
             prompt = build_prompt(resolver, step_num, rules, **resolver_kwargs)
             resolver_result = await _invoke_with_retry_return(
                 resolver, board.workspace, step_num, prompt, timeout,
@@ -1260,10 +1282,9 @@ async def _run_entity_step(
             )
             _collect_tokens_from_result(resolver_result, resolver.role.value, token_calls)
             resolver_output = resolver_result.output if resolver_result else None
-            if resolver_output:
-                resolution = parse_resolution_from_text(resolver_output)
-            if resolution is None:
-                resolution = parse_resolution(board.workspace, step_num)
+            resolution = parse_resolution_result(
+                scenario.board_access, resolver_output, board.workspace, step_num,
+            )
             logger.debug(
                 "entity_step.resolve_done", step=step_num,
                 duration_s=round(time.monotonic() - t3, 3),

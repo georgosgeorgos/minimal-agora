@@ -28,6 +28,8 @@ class AnthropicAPIProvider:
     ``--api-base`` flags) to override.
     """
 
+    supports_workspace_io = False
+
     def __init__(
         self,
         model: str = "claude-sonnet-4-20250514",

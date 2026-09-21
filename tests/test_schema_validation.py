@@ -165,8 +165,8 @@ class TestLoopIntegration:
 
         with (
             patch("minimal_agora.loop._invoke_and_collect", new_callable=AsyncMock) as mock_invoke,
-            patch("minimal_agora.loop.parse_proposal_from_text") as mock_parse_prop,
-            patch("minimal_agora.loop.parse_resolution_from_text") as mock_parse_res,
+            patch("minimal_agora.loop.parse_proposal_result") as mock_parse_prop,
+            patch("minimal_agora.loop.parse_resolution_result") as mock_parse_res,
         ):
             from minimal_agora.models import Proposal
             from minimal_agora.providers.protocol import AgentInvocationResult

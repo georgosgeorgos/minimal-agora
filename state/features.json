@@ -252,10 +252,19 @@
             "priority": 19,
             "area": "architecture",
             "title": "State-in-prompt vs. file-based board",
-            "status": "not_started",
-            "verification": [],
-            "evidence": [],
-            "notes": "Current design has agents read state.json, narrative.md, proposals, and critiques via tool use (multiple turns per call). Passing state inline in the prompt is a single API round-trip but gives up the agent's ability to explore the workspace and write structured output files. Could be a per-scenario or per-step-type choice."
+            "status": "passing",
+            "verification": [
+                "uv run pytest tests/test_board_access.py -q",
+                "uv run pytest tests/ -q",
+                "uv run ruff check src/ tests/",
+                "Run scenarios/examples/intelligence.yaml for one complete step with --provider subprocess and verify proposal, critique, resolution, checkpoint, and report artifacts."
+            ],
+            "evidence": [
+                "7 focused board-access tests cover defaults, invalid combinations, provider capability and turn-budget checks, flat file mode, and population file mode.",
+                "415 total tests passing and ruff clean as of 2026-09-21.",
+                "Authenticated Claude CLI completed a fresh one-step intelligence simulation with 4 proposals, 1 critique, 1 resolution, an 8-field state delta, and a step-1 checkpoint."
+            ],
+            "notes": "Scenario-level board_access selects embedded or files. Embedded mode remains the default, passes state inline, and falls back to artifacts when stdout is invalid. File mode omits board contents from prompts, requires a workspace-capable provider with at least three tool-use turns, and treats artifact files as authoritative. Both flat and population loops share the same policy seam; file mode is rejected with step batching because batched responses use a stdout step-index contract. Tracking issue: #66."
         }
     ]
 }

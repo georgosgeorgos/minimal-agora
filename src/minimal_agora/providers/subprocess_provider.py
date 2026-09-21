@@ -13,9 +13,12 @@ logger = structlog.stdlib.get_logger(__name__)
 class ClaudeSubprocessProvider:
     """Provider that invokes the ``claude -p`` CLI subprocess."""
 
+    supports_workspace_io = True
+    minimum_workspace_turns = 3
+
     def __init__(
         self,
-        max_turns: int = 1,
+        max_turns: int = 5,
         output_format: str = "text",
     ) -> None:
         self.max_turns = max_turns
