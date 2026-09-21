@@ -480,6 +480,10 @@ narrative_window: null                 # Keep only this many recent steps in nar
 adaptive_steps:
   reasoning_interval: 10               # Full LLM loop at least every N steps
   change_threshold: 0.25                # Full loop after this mean relative drift
+
+# Multi-step batching (alternative to adaptive_steps; see constraints below)
+# step_batching:
+#   batch_size: 10                      # One call per agent for N periods
 ```
 
 When `adaptive_steps` is present, the first step, final step, wildcard steps,
@@ -494,6 +498,25 @@ Each saved step records `execution_mode` as `reasoned` or `routine`.
 `metadata.adaptive_steps` so call reduction is auditable. Use a shorter interval
 or lower threshold for discontinuous systems where linear extrapolation is a
 poor approximation.
+
+As an alternative, `step_batching` asks every actor to plan `batch_size` periods
+in one call, asks each constraint evaluator to assess the whole plan in one
+call, and asks the resolver to produce step-indexed resolutions in one call.
+The engine then applies those resolutions sequentially, preserving a normal
+proposal, critique, resolution, state snapshot, and termination check for every
+period. Invalid or incomplete resolver output falls back to deterministic actor
+proposal merging for the affected periods. Token usage is distributed across
+the persisted steps without changing the trajectory total.
+
+Batching currently supports flat counterfactual and open-ended scenarios. It is
+rejected during scenario validation when combined with population entities,
+enabled wildcards, particle resampling, or `adaptive_steps`; those features
+require state-dependent decisions between periods and cannot honestly be
+preplanned as one batch. Constraint evaluation and resolution happen once per
+batch, so `review_interval` does not add per-period provider calls inside a
+batch. Saved steps use `execution_mode: batched` and record `batch_start_step`;
+run metadata reports batch count, batched steps, and avoided per-agent step
+calls.
 
 ### Annotated Example: Counterfactual
 

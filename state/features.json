@@ -234,10 +234,18 @@
             "priority": 18,
             "area": "performance",
             "title": "Step batching (multi-step per LLM call)",
-            "status": "not_started",
-            "verification": [],
-            "evidence": [],
-            "notes": "Instead of 1 LLM call per step, have agents process N steps at once ('simulate the next 50 steps'). Reduces total calls by N. Tradeoff: loses the per-step propose/critique/resolve adversarial loop. Need to determine how much adversarial structure can be sacrificed — maybe batch routine stretches but run full loop at inflection points."
+            "status": "passing",
+            "verification": [
+                "uv run pytest tests/test_step_batching.py -q",
+                "uv run pytest tests/ -q",
+                "uv run ruff check src/ tests/"
+            ],
+            "evidence": [
+                "10 batching tests passing, including a 4-step, 3-role trajectory completed in 6 provider calls instead of 12.",
+                "Per-step checkpoints, intermediate termination, exact aggregate token accounting, and invalid-resolver fallback verified.",
+                "408 total tests passing and ruff clean as of 2026-09-21."
+            ],
+            "notes": "Opt-in step_batching preserves actor/evaluator/resolver debate once per batch and persists normal Step records for every simulated period. Current scope is flat counterfactual/open-ended scenarios without enabled wildcards, resampling, population entities, or adaptive_steps; unsupported combinations fail scenario validation."
         },
         {
             "id": "feat-012",

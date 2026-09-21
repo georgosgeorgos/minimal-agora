@@ -5,9 +5,9 @@
 - Repository root: `/Users/ggiannon/Documents/gcg/minimal-harness/minimal-agora`
 - Standard startup path: `./init.sh` (runs `uv sync`, `ruff check`, `pytest`)
 - Standard verification path: `uv run pytest tests/ -v && uv run ruff check src/ tests/`
-- Features through feat-010 passing; feat-004 validated (8 scenarios ran end-to-end with API provider)
+- Features through feat-011 passing; feat-004 validated (8 scenarios ran end-to-end with API provider)
 - Current blocker: None
-- Test count: 398 tests, all green
+- Test count: 408 tests, all green
 - Lint: clean (ruff, 0 errors)
 - Simulation validated: all 8 scenarios completed 50-step runs via RITS GLM-5.2
 
@@ -88,6 +88,23 @@
 - Commits: a12f51c (baseline test fix); adaptive-step feature commit in this session
 - Next priority: feat-011 (step batching)
 
+### Session 006
+
+- Date: 2026-09-21
+- Goal: Implement multi-step LLM batching (feat-011)
+- Completed:
+  - Added opt-in `step_batching.batch_size` configuration
+  - Added role-specific batch prompts and strict step-indexed response models
+  - Preserved actor/evaluator/resolver debate with one provider call per role per batch
+  - Applied and checkpointed each planned period sequentially
+  - Preserved per-period termination and fitness/plateau checks
+  - Conserved aggregate token counts by distributing batch-call usage across saved steps
+  - Added deterministic fallback for missing or invalid batch resolutions
+  - Rejected unsupported population, wildcard, resampling, and adaptive combinations explicitly
+  - Documented scope, semantics, metrics, and tradeoffs
+- Verification run: `uv run pytest tests/ -q` — 408 passed; `uv run ruff check src/ tests/` — 0 errors
+- Next priority: feat-012 (state-in-prompt vs. file-based board)
+
 ## Roadmap (priority order)
 
 | ID | Area | Title | Status |
@@ -109,5 +126,5 @@
 | feat-008 | scenarios | Additional example scenarios | passing |
 | feat-009 | core | Multi-provider LLM backend | passing |
 | feat-010 | performance | Adaptive step resolution (skip LLM for routine steps) | passing |
-| feat-011 | performance | Step batching (multi-step per LLM call) | not_started |
+| feat-011 | performance | Step batching (multi-step per LLM call) | passing |
 | feat-012 | architecture | State-in-prompt vs. file-based board | not_started |

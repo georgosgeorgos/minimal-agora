@@ -186,6 +186,14 @@ class AdaptiveStepConfig(BaseModel):
     change_threshold: float | None = Field(default=None, gt=0.0)
 
 
+class StepBatchingConfig(BaseModel):
+    """Policy for simulating several periods in one call per agent."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    batch_size: int = Field(default=5, ge=2)
+
+
 class Scenario(BaseModel):
     """Top-level simulation scenario defining agents, rules, and termination conditions."""
 
@@ -211,10 +219,25 @@ class Scenario(BaseModel):
     review_interval: int = Field(default=1, ge=1)
     review_threshold: float | None = None
     adaptive_steps: AdaptiveStepConfig | None = None
+    step_batching: StepBatchingConfig | None = None
     diversity_lenses: list[str] = Field(default_factory=list)
     resampling: ResamplingConfig | None = None
     temperature_start: float = Field(default=1.0, ge=0.0, le=2.0)
     temperature_end: float = Field(default=1.0, ge=0.0, le=2.0)
+
+    @model_validator(mode="after")
+    def _validate_step_batching_compatibility(self) -> Scenario:
+        if self.step_batching is None:
+            return self
+        if self.entities or self.mode == SimMode.POPULATION:
+            raise ValueError("step_batching currently supports flat scenarios only")
+        if self.wildcards_enabled:
+            raise ValueError("step_batching does not yet support enabled wildcards")
+        if self.adaptive_steps is not None:
+            raise ValueError("step_batching and adaptive_steps cannot be enabled together")
+        if self.resampling is not None:
+            raise ValueError("step_batching does not yet support resampling")
+        return self
 
 
 class ConflictSource(BaseModel):
@@ -241,6 +264,16 @@ class Proposal(BaseModel):
     confidence: float = 0.5
 
 
+class BatchProposalStep(Proposal):
+    step_number: int = Field(ge=0)
+
+
+class BatchProposal(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    steps: list[BatchProposalStep]
+
+
 class Critique(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -252,6 +285,16 @@ class Critique(BaseModel):
     issues: list[str] = Field(default_factory=list)
 
 
+class BatchCritiqueStep(Critique):
+    step_number: int = Field(ge=0)
+
+
+class BatchCritique(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    steps: list[BatchCritiqueStep]
+
+
 class Resolution(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -259,6 +302,16 @@ class Resolution(BaseModel):
     narrative: str = ""
     reasoning: str = ""
     validation_warnings: list[str] = Field(default_factory=list)
+
+
+class BatchResolutionStep(Resolution):
+    step_number: int = Field(ge=0)
+
+
+class BatchResolution(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    steps: list[BatchResolutionStep]
 
 
 class Evaluation(BaseModel):
@@ -289,6 +342,7 @@ class StepTokenUsage(BaseModel):
 class StepExecutionMode(str, Enum):
     REASONED = "reasoned"
     ROUTINE = "routine"
+    BATCHED = "batched"
 
 
 class Step(BaseModel):
@@ -302,6 +356,7 @@ class Step(BaseModel):
     state_after: dict[str, Any] = Field(default_factory=dict)
     token_usage: StepTokenUsage | None = None
     execution_mode: StepExecutionMode = StepExecutionMode.REASONED
+    batch_start_step: int | None = None
 
 
 class TrajectoryOutcome(BaseModel):

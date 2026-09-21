@@ -4,6 +4,7 @@ import asyncio
 import random
 import time
 from copy import deepcopy
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -25,6 +26,7 @@ from minimal_agora.agents import (
     parse_resolution,
     parse_resolution_from_text,
 )
+from minimal_agora.batching import build_batch_prompt, parse_batch_output
 from minimal_agora.board import (
     Board,
     _atomic_write,
@@ -36,7 +38,12 @@ from minimal_agora.board import (
 from minimal_agora.models import (
     AgentCallTokens,
     AgentRole,
+    BatchCritique,
+    BatchProposal,
+    BatchResolution,
+    Critique,
     FitnessConfig,
+    Proposal,
     Resolution,
     Scenario,
     SimMode,
@@ -171,7 +178,57 @@ async def run_trajectory(
     plateau_window = scenario.termination.get("plateau_window", 5)
     plateau_threshold = scenario.termination.get("plateau_threshold", 0.01)
 
-    for step_num in range(resume_from, max_steps):
+    def record_step(step: Step, slog) -> bool:
+        trajectory.steps.append(step)
+
+        if scenario.fitness:
+            score = _evaluate_fitness(step.state_after, scenario.fitness)
+            fitness_history.append(score)
+            if score is not None:
+                slog.info("step.fitness", score=score)
+
+        if _check_termination(step.state_after, conditions):
+            slog.info("trajectory.terminated", reason="condition_met")
+            return True
+
+        if scenario.mode == SimMode.OPEN_ENDED and scenario.fitness and _check_plateau(
+            fitness_history, plateau_window, plateau_threshold,
+        ):
+            slog.info("trajectory.terminated", reason="fitness_plateau")
+            return True
+        return False
+
+    step_num = resume_from
+    while step_num < max_steps:
+        if scenario.step_batching is not None:
+            batch_end = min(step_num + scenario.step_batching.batch_size, max_steps)
+            planned_steps = await _plan_flat_batch(
+                scenario,
+                board,
+                list(range(step_num, batch_end)),
+                agent_timeout,
+                trajectory_id,
+                agent_semaphore,
+                max_steps,
+            )
+            terminated = False
+            for planned_step in planned_steps:
+                slog = tlog.bind(step=planned_step.step_number, max_steps=max_steps)
+                slog.info("step.start", batch_start=step_num, batch_end=batch_end - 1)
+                step = _apply_planned_batch_step(
+                    board,
+                    planned_step,
+                    batch_start_step=step_num,
+                    state_schema=state_schema,
+                )
+                if record_step(step, slog):
+                    terminated = True
+                    break
+            if terminated:
+                break
+            step_num = batch_end
+            continue
+
         slog = tlog.bind(step=step_num, max_steps=max_steps)
         if scenario.wildcards_enabled:
             current_state = board.read_state()
@@ -193,23 +250,9 @@ async def run_trajectory(
             board.clear_wildcard(step_num)
 
         step = await _run_step(scenario, board, step_num, agent_timeout, trajectory_id, agent_semaphore, max_steps, state_schema)
-        trajectory.steps.append(step)
-
-        if scenario.fitness:
-            score = _evaluate_fitness(step.state_after, scenario.fitness)
-            fitness_history.append(score)
-            if score is not None:
-                slog.info("step.fitness", score=score)
-
-        if _check_termination(step.state_after, conditions):
-            slog.info("trajectory.terminated", reason="condition_met")
+        if record_step(step, slog):
             break
-
-        if scenario.mode == SimMode.OPEN_ENDED and scenario.fitness and _check_plateau(
-            fitness_history, plateau_window, plateau_threshold,
-        ):
-            slog.info("trajectory.terminated", reason="fitness_plateau")
-            break
+        step_num += 1
 
     final_state = board.read_state()
     final_step = len(trajectory.steps) - 1
@@ -225,6 +268,21 @@ async def run_trajectory(
             "reasoned_steps": len(trajectory.steps) - routine_steps,
             "routine_steps": routine_steps,
             "llm_steps_skipped": routine_steps,
+        }
+
+    if scenario.step_batching is not None:
+        batch_starts = {
+            step.batch_start_step
+            for step in trajectory.steps
+            if step.execution_mode == StepExecutionMode.BATCHED
+        }
+        batched_steps = sum(
+            step.execution_mode == StepExecutionMode.BATCHED for step in trajectory.steps
+        )
+        trajectory.metadata["step_batching"] = {
+            "batches": len(batch_starts),
+            "batched_steps": batched_steps,
+            "per_agent_step_calls_avoided": batched_steps - len(batch_starts),
         }
 
     classification = _classify_outcome(final_state, scenario)
@@ -427,6 +485,249 @@ async def _invoke_with_retry_return(
             else:
                 logger.error("Agent %s failed after %d attempts: %s", agent.name, attempt + 1, e)
     return None
+
+
+@dataclass
+class _PlannedBatchStep:
+    step_number: int
+    proposals: list[Proposal]
+    critiques: list[Critique]
+    resolution: Resolution
+    token_usage: StepTokenUsage | None
+
+
+async def _plan_flat_batch(
+    scenario: Scenario,
+    board: Board,
+    step_numbers: list[int],
+    timeout: int,
+    trajectory_id: int,
+    agent_semaphore: asyncio.Semaphore | None,
+    max_steps: int,
+) -> list[_PlannedBatchStep]:
+    """Run each configured role once and return an unapplied multi-step plan."""
+    actors = [agent for agent in scenario.agents if agent.role == AgentRole.ACTOR]
+    evaluators = [
+        agent for agent in scenario.agents
+        if agent.role == AgentRole.CONSTRAINT_EVALUATOR
+    ]
+    resolvers = [agent for agent in scenario.agents if agent.role == AgentRole.RESOLVER]
+    state = board.read_state()
+    narrative = _read_narrative(board)
+    temperature = _compute_temperature(scenario, step_numbers[0], max_steps)
+    max_concurrent = scenario.max_concurrent_agents
+    batch_calls: list[tuple[str, AgentInvocationResult]] = []
+
+    proposals_by_step: dict[int, list[Proposal]] = {step: [] for step in step_numbers}
+    actor_results: dict[str, AgentInvocationResult | None] = {}
+
+    async def run_actor(agent) -> None:
+        prompt = build_batch_prompt(
+            agent,
+            step_numbers=step_numbers,
+            rules=scenario.rules,
+            state=state,
+            narrative=narrative,
+            trajectory_id=trajectory_id,
+        )
+        actor_results[agent.name] = await _invoke_and_collect(
+            agent,
+            board.workspace,
+            step_numbers[0],
+            prompt,
+            timeout,
+            agent_semaphore,
+            max_concurrent,
+            temperature=temperature,
+        )
+
+    async with asyncio.TaskGroup() as task_group:
+        for actor in actors:
+            task_group.create_task(run_actor(actor))
+
+    for actor in actors:
+        result = actor_results.get(actor.name)
+        if result is None:
+            continue
+        batch_calls.append((actor.role.value, result))
+        parsed = parse_batch_output(actor.role, result.output)
+        if not isinstance(parsed, BatchProposal):
+            logger.warning("batch.actor_output_invalid", agent=actor.name)
+            continue
+        for item in parsed.steps:
+            if item.step_number not in proposals_by_step:
+                continue
+            proposals_by_step[item.step_number].append(
+                Proposal.model_validate(item.model_dump(exclude={"step_number"}))
+            )
+
+    proposal_payload = [
+        {"step_number": step_number, **proposal.model_dump()}
+        for step_number, proposals in proposals_by_step.items()
+        for proposal in proposals
+    ]
+    critiques_by_step: dict[int, list[Critique]] = {step: [] for step in step_numbers}
+    evaluator_results: dict[str, AgentInvocationResult | None] = {}
+
+    async def run_evaluator(agent) -> None:
+        prompt = build_batch_prompt(
+            agent,
+            step_numbers=step_numbers,
+            rules=scenario.rules,
+            state=state,
+            narrative=narrative,
+            trajectory_id=trajectory_id,
+            proposals=proposal_payload,
+        )
+        evaluator_results[agent.name] = await _invoke_and_collect(
+            agent,
+            board.workspace,
+            step_numbers[0],
+            prompt,
+            timeout,
+            agent_semaphore,
+            max_concurrent,
+            temperature=temperature,
+        )
+
+    if evaluators:
+        async with asyncio.TaskGroup() as task_group:
+            for evaluator in evaluators:
+                task_group.create_task(run_evaluator(evaluator))
+
+    for evaluator in evaluators:
+        result = evaluator_results.get(evaluator.name)
+        if result is None:
+            continue
+        batch_calls.append((evaluator.role.value, result))
+        parsed = parse_batch_output(evaluator.role, result.output)
+        if not isinstance(parsed, BatchCritique):
+            logger.warning("batch.evaluator_output_invalid", agent=evaluator.name)
+            continue
+        for item in parsed.steps:
+            if item.step_number not in critiques_by_step:
+                continue
+            critiques_by_step[item.step_number].append(
+                Critique.model_validate(item.model_dump(exclude={"step_number"}))
+            )
+
+    critique_payload = [
+        {"step_number": step_number, **critique.model_dump()}
+        for step_number, critiques in critiques_by_step.items()
+        for critique in critiques
+    ]
+    resolutions_by_step: dict[int, Resolution] = {}
+
+    if resolvers:
+        resolver = resolvers[0]
+        prompt = build_batch_prompt(
+            resolver,
+            step_numbers=step_numbers,
+            rules=scenario.rules,
+            state=state,
+            narrative=narrative,
+            trajectory_id=trajectory_id,
+            proposals=proposal_payload,
+            critiques=critique_payload,
+        )
+        result = await _invoke_and_collect(
+            resolver,
+            board.workspace,
+            step_numbers[0],
+            prompt,
+            timeout,
+            agent_semaphore,
+            max_concurrent,
+            temperature=temperature,
+        )
+        if result is not None:
+            batch_calls.append((resolver.role.value, result))
+            parsed = parse_batch_output(resolver.role, result.output)
+            if isinstance(parsed, BatchResolution):
+                for item in parsed.steps:
+                    if item.step_number in proposals_by_step:
+                        resolutions_by_step[item.step_number] = Resolution.model_validate(
+                            item.model_dump(exclude={"step_number"}),
+                        )
+            else:
+                logger.warning("batch.resolver_output_invalid", agent=resolver.name)
+
+    token_usage = _distribute_batch_token_usage(batch_calls, len(step_numbers))
+    return [
+        _PlannedBatchStep(
+            step_number=step_number,
+            proposals=proposals_by_step[step_number],
+            critiques=critiques_by_step[step_number],
+            resolution=resolutions_by_step.get(step_number)
+            or _fallback_resolution(proposals_by_step[step_number]),
+            token_usage=token_usage[index],
+        )
+        for index, step_number in enumerate(step_numbers)
+    ]
+
+
+def _distribute_batch_token_usage(
+    calls: list[tuple[str, AgentInvocationResult]],
+    step_count: int,
+) -> list[StepTokenUsage | None]:
+    per_step_calls: list[list[AgentCallTokens]] = [[] for _ in range(step_count)]
+    for role, result in calls:
+        input_parts = _split_integer(result.input_tokens or 0, step_count)
+        output_parts = _split_integer(result.output_tokens or 0, step_count)
+        for index in range(step_count):
+            if input_parts[index] or output_parts[index]:
+                per_step_calls[index].append(AgentCallTokens(
+                    role=role,
+                    input_tokens=input_parts[index],
+                    output_tokens=output_parts[index],
+                ))
+    return [_build_step_token_usage(calls_for_step) for calls_for_step in per_step_calls]
+
+
+def _split_integer(total: int, count: int) -> list[int]:
+    quotient, remainder = divmod(total, count)
+    return [quotient + (index < remainder) for index in range(count)]
+
+
+def _apply_planned_batch_step(
+    board: Board,
+    planned: _PlannedBatchStep,
+    *,
+    batch_start_step: int,
+    state_schema: dict | None,
+) -> Step:
+    state_before = deepcopy(board.read_state())
+    resolution = planned.resolution.model_copy(deep=True)
+    if state_schema and resolution.state_delta:
+        warnings = validate_state_delta(resolution.state_delta, state_schema)
+        resolution.validation_warnings = warnings
+        if warnings:
+            logger.warning(
+                "state_delta.validation",
+                step=planned.step_number,
+                warnings=warnings,
+            )
+
+    for proposal in planned.proposals:
+        board.save_proposal(proposal, planned.step_number)
+    for critique in planned.critiques:
+        board.save_critique(critique, planned.step_number)
+    board.save_resolution(resolution, planned.step_number)
+    state_after = board.apply_resolution(resolution, planned.step_number)
+
+    step = Step(
+        step_number=planned.step_number,
+        proposals=planned.proposals,
+        critiques=planned.critiques,
+        resolution=resolution,
+        state_before=state_before,
+        state_after=state_after,
+        token_usage=planned.token_usage,
+        execution_mode=StepExecutionMode.BATCHED,
+        batch_start_step=batch_start_step,
+    )
+    board.save_step(step)
+    return step
 
 
 async def _run_flat_step(
