@@ -12,6 +12,7 @@ import structlog
 
 logger = structlog.stdlib.get_logger(__name__)
 
+from minimal_agora.adaptive import extrapolate_numeric_state, should_reason
 from minimal_agora.agents import (
     build_interaction_context,
     build_prompt,
@@ -40,6 +41,7 @@ from minimal_agora.models import (
     Scenario,
     SimMode,
     Step,
+    StepExecutionMode,
     StepTokenUsage,
     Trajectory,
     TrajectoryOutcome,
@@ -215,6 +217,16 @@ async def run_trajectory(
     if fitness_history:
         trajectory.metadata["fitness_history"] = fitness_history
 
+    if scenario.adaptive_steps is not None:
+        routine_steps = sum(
+            step.execution_mode == StepExecutionMode.ROUTINE for step in trajectory.steps
+        )
+        trajectory.metadata["adaptive_steps"] = {
+            "reasoned_steps": len(trajectory.steps) - routine_steps,
+            "routine_steps": routine_steps,
+            "llm_steps_skipped": routine_steps,
+        }
+
     classification = _classify_outcome(final_state, scenario)
     trajectory.outcome = TrajectoryOutcome(
         classification=classification,
@@ -247,9 +259,65 @@ async def _run_step(
 
     state_before = deepcopy(board.read_state())
 
+    if scenario.adaptive_steps is not None:
+        last_reasoned_step = _load_last_reasoned_step(board, step_num)
+        wildcard_active = _read_wildcard_dict(board, step_num) is not None
+        if not should_reason(
+            scenario.adaptive_steps,
+            step_num=step_num,
+            max_steps=max_steps,
+            current_state=state_before,
+            last_reasoned_step=last_reasoned_step,
+            wildcard_active=wildcard_active,
+        ):
+            return _run_routine_step(board, step_num, state_before, last_reasoned_step)
+
     if scenario.entities:
         return await _run_entity_step(scenario, board, step_num, timeout, state_before, trajectory_id, agent_semaphore, state_schema, max_steps)
     return await _run_flat_step(scenario, board, step_num, timeout, state_before, trajectory_id, agent_semaphore, max_steps, state_schema)
+
+
+def _load_last_reasoned_step(board: Board, step_num: int) -> Step | None:
+    for previous_step_num in range(step_num - 1, -1, -1):
+        path = board.workspace / "history" / f"step_{previous_step_num:03d}_full.json"
+        if not path.exists():
+            continue
+        with open(path) as f:
+            step = Step.model_validate_json(f.read())
+        if step.execution_mode == StepExecutionMode.REASONED:
+            return step
+    return None
+
+
+def _run_routine_step(
+    board: Board,
+    step_num: int,
+    state_before: dict,
+    last_reasoned_step: Step,
+) -> Step:
+    state_after = extrapolate_numeric_state(state_before, last_reasoned_step)
+    board.write_state(state_after)
+    board.snapshot_state(step_num + 1)
+
+    narrative = (
+        f"Step {step_num}: Applied deterministic numeric extrapolation from "
+        f"reasoned step {last_reasoned_step.step_number}."
+    )
+    board._append_narrative(narrative, step_num)
+
+    step = Step(
+        step_number=step_num,
+        state_before=state_before,
+        state_after=state_after,
+        execution_mode=StepExecutionMode.ROUTINE,
+    )
+    board.save_step(step)
+    logger.info(
+        "step.routine_extrapolation",
+        step=step_num,
+        source_step=last_reasoned_step.step_number,
+    )
+    return step
 
 
 def _collect_tokens_from_result(

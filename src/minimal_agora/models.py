@@ -177,6 +177,15 @@ DEFAULT_RESAMPLING_CRITERIA = [
 ]
 
 
+class AdaptiveStepConfig(BaseModel):
+    """Policy for replacing routine LLM steps with deterministic extrapolation."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    reasoning_interval: int = Field(default=5, ge=2)
+    change_threshold: float | None = Field(default=None, gt=0.0)
+
+
 class Scenario(BaseModel):
     """Top-level simulation scenario defining agents, rules, and termination conditions."""
 
@@ -201,6 +210,7 @@ class Scenario(BaseModel):
     max_concurrent_agents: int = Field(default=8, ge=1)
     review_interval: int = Field(default=1, ge=1)
     review_threshold: float | None = None
+    adaptive_steps: AdaptiveStepConfig | None = None
     diversity_lenses: list[str] = Field(default_factory=list)
     resampling: ResamplingConfig | None = None
     temperature_start: float = Field(default=1.0, ge=0.0, le=2.0)
@@ -276,6 +286,11 @@ class StepTokenUsage(BaseModel):
     total_output_tokens: int = 0
 
 
+class StepExecutionMode(str, Enum):
+    REASONED = "reasoned"
+    ROUTINE = "routine"
+
+
 class Step(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -286,6 +301,7 @@ class Step(BaseModel):
     state_before: dict[str, Any] = Field(default_factory=dict)
     state_after: dict[str, Any] = Field(default_factory=dict)
     token_usage: StepTokenUsage | None = None
+    execution_mode: StepExecutionMode = StepExecutionMode.REASONED
 
 
 class TrajectoryOutcome(BaseModel):

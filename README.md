@@ -227,6 +227,9 @@ mode: counterfactual
 n_trajectories: 10
 step_budget: 200
 review_interval: 5              # constraint evaluation every N steps
+adaptive_steps:                 # optional: skip LLM calls on routine steps
+  reasoning_interval: 10        # always reason every 10th step
+  change_threshold: 0.25        # reason early after 25% mean numeric drift
 temperature_start: 1.0          # exploratory early...
 temperature_end: 0.5            # ...conservative late
 

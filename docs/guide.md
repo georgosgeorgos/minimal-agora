@@ -475,7 +475,25 @@ fitness:
 # Narrative compression
 narrative_window: null                 # Keep only this many recent steps in narrative
                                        # Older steps are summarized into a preamble
+
+# Adaptive step execution (optional)
+adaptive_steps:
+  reasoning_interval: 10               # Full LLM loop at least every N steps
+  change_threshold: 0.25                # Full loop after this mean relative drift
 ```
+
+When `adaptive_steps` is present, the first step, final step, wildcard steps,
+cadence checkpoints, and steps exceeding `change_threshold` use the full agent
+loop. Between those inflection points, the engine deterministically repeats the
+numeric leaf deltas from the most recent reasoned step. Non-numeric fields and
+fields whose shape changed are held constant. This makes the optimization
+explicit and opt-in; omit `adaptive_steps` to reason on every step.
+
+Each saved step records `execution_mode` as `reasoned` or `routine`.
+`trajectory.json` also records reasoned, routine, and skipped-step counts under
+`metadata.adaptive_steps` so call reduction is auditable. Use a shorter interval
+or lower threshold for discontinuous systems where linear extrapolation is a
+poor approximation.
 
 ### Annotated Example: Counterfactual
 

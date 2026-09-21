@@ -2,12 +2,12 @@
 
 ## Current Verified State
 
-- Repository root: `/Users/ggiannon/minimal-harness`
+- Repository root: `/Users/ggiannon/Documents/gcg/minimal-harness/minimal-agora`
 - Standard startup path: `./init.sh` (runs `uv sync`, `ruff check`, `pytest`)
 - Standard verification path: `uv run pytest tests/ -v && uv run ruff check src/ tests/`
-- All features passing, feat-004 validated (8 scenarios ran end-to-end with API provider)
+- Features through feat-010 passing; feat-004 validated (8 scenarios ran end-to-end with API provider)
 - Current blocker: None
-- Test count: 344 tests, all green
+- Test count: 398 tests, all green
 - Lint: clean (ruff, 0 errors)
 - Simulation validated: all 8 scenarios completed 50-step runs via RITS GLM-5.2
 
@@ -72,6 +72,22 @@
 - Commits: 3427019, ae59431, afebe0f
 - Open issues: #62 (parallel evaluator+resolver), #63 (Plotly viz), #64 (Three.js dashboard)
 
+### Session 005
+
+- Date: 2026-09-21
+- Goal: Restore the baseline and implement adaptive step resolution (feat-010)
+- Completed:
+  - Repaired stale review-interval test isolation after the provider invocation refactor
+  - Added opt-in `adaptive_steps` scenario configuration
+  - Added deterministic numeric-delta extrapolation for routine steps
+  - Forced full reasoning on first/final, wildcard, cadence, and state-drift inflection steps
+  - Routed particle-filter execution through the shared step seam
+  - Persisted per-step execution mode and trajectory-level skipped-call counts
+  - Documented configuration, semantics, and approximation tradeoffs
+- Verification run: `uv run pytest tests/ -q` — 398 passed; `uv run ruff check src/ tests/` — 0 errors
+- Commits: a12f51c (baseline test fix); adaptive-step feature commit in this session
+- Next priority: feat-011 (step batching)
+
 ## Roadmap (priority order)
 
 | ID | Area | Title | Status |
@@ -91,7 +107,7 @@
 | feat-006 | reliability | Mode collapse mitigation | passing |
 | feat-007 | reliability | Checkpoint and resume | passing |
 | feat-008 | scenarios | Additional example scenarios | passing |
-| feat-009 | core | Claude API direct backend | not_started |
-| feat-010 | performance | Adaptive step resolution (skip LLM for routine steps) | not_started |
+| feat-009 | core | Multi-provider LLM backend | passing |
+| feat-010 | performance | Adaptive step resolution (skip LLM for routine steps) | passing |
 | feat-011 | performance | Step batching (multi-step per LLM call) | not_started |
 | feat-012 | architecture | State-in-prompt vs. file-based board | not_started |

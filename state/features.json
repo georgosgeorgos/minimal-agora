@@ -1,6 +1,6 @@
 {
     "project": "minimal-agora",
-    "last_updated": "2026-08-13",
+    "last_updated": "2026-09-21",
     "rules": {
         "single_active_feature": true,
         "passing_requires_evidence": true,
@@ -217,10 +217,17 @@
             "priority": 17,
             "area": "performance",
             "title": "Adaptive step resolution (skip LLM for routine steps)",
-            "status": "not_started",
-            "verification": [],
-            "evidence": [],
-            "notes": "Most steps in a 500-step simulation are incremental — state barely changes. Only inflection points (wildcards, threshold crossings, phase transitions) need full agent reasoning. Routine steps could use deterministic updates, interpolation, or a cheaper/faster model. Reduces LLM calls by 10-50x without losing trajectory quality at critical moments."
+            "status": "passing",
+            "verification": [
+                "uv run pytest tests/test_adaptive_steps.py -q",
+                "uv run pytest tests/ -q",
+                "uv run ruff check src/ tests/"
+            ],
+            "evidence": [
+                "11 adaptive-step tests passing, including a 5-step trajectory that uses 3 reasoned steps and 2 deterministic routine steps.",
+                "398 total tests passing and ruff clean as of 2026-09-21."
+            ],
+            "notes": "Opt-in adaptive_steps policy extrapolates numeric deltas on routine steps. First/final steps, wildcard steps, fixed cadence checkpoints, and configured state-drift thresholds force full reasoning. Step mode and skipped-call counts are persisted for auditability."
         },
         {
             "id": "feat-011",

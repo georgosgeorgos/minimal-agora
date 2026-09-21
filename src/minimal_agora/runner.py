@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import time
-from copy import deepcopy
 from pathlib import Path
 
 import structlog
@@ -11,12 +10,13 @@ from minimal_agora.board import Board, _deep_merge
 from minimal_agora.loop import (
     _classify_outcome,
     _roll_wildcard,
-    _run_flat_step,
+    _run_step,
     run_trajectory,
 )
 from minimal_agora.models import (
     Scenario,
     Step,
+    StepExecutionMode,
     Trajectory,
     TrajectoryOutcome,
 )
@@ -133,10 +133,9 @@ async def run_particle_filter(
         async def _safe_run_step(idx: int, _boards=boards, _step_num=step_num) -> None:
             try:
                 async with semaphore:
-                    state_before = deepcopy(_boards[idx].read_state())
-                    step = await _run_flat_step(
+                    step = await _run_step(
                         scenario, _boards[idx], _step_num, agent_timeout,
-                        state_before, trajectory_id=idx,
+                        trajectory_id=idx,
                         agent_semaphore=agent_sem, max_steps=max_steps,
                     )
                     all_steps[idx].append(step)
@@ -184,6 +183,16 @@ async def run_particle_filter(
         final_state = boards[i].read_state()
         final_step = len(all_steps[i]) - 1
         classification = _classify_outcome(final_state, scenario)
+        metadata = {"ess_history": ess_history}
+        if scenario.adaptive_steps is not None:
+            routine_steps = sum(
+                step.execution_mode == StepExecutionMode.ROUTINE for step in all_steps[i]
+            )
+            metadata["adaptive_steps"] = {
+                "reasoned_steps": len(all_steps[i]) - routine_steps,
+                "routine_steps": routine_steps,
+                "llm_steps_skipped": routine_steps,
+            }
         traj = Trajectory(
             scenario_name=scenario.name,
             trajectory_id=i,
@@ -193,7 +202,7 @@ async def run_particle_filter(
                 final_step=final_step,
                 final_state=final_state,
             ),
-            metadata={"ess_history": ess_history},
+            metadata=metadata,
         )
         trajectories.append(traj)
 
