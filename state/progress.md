@@ -7,9 +7,9 @@
 - Standard verification path: `uv run pytest tests/ -v && uv run ruff check src/ tests/`
 - All roadmap features through feat-012 passing; feat-004 validated with both API and Claude CLI providers
 - Current blocker: None
-- Test count: 422 tests, all green
+- Test count: 431 tests, all green
 - Lint: clean (ruff, 0 errors)
-- Simulation validated: all 8 scenarios completed 50-step runs via RITS GLM-5.2; all 8 completed three-step, one-trajectory runs via OpenRouter DeepSeek V4.1 Flash on 2026-09-23 (capitalism emitted schema warnings; see `docs/openrouter-deepseek-live-2026-09-23.md`)
+- Simulation validated: all 8 scenarios completed 50-step runs via RITS GLM-5.2; all 8 completed three-step, one-trajectory runs via OpenRouter DeepSeek V4.1 Flash; intelligence and Mediterranean additionally completed three trajectories × 20 steps each on 2026-09-23 (see `docs/openrouter-deepseek-3x20-2026-09-23.md` for output quality)
 - Latest review: `docs/code-review-2026-09-23.md`; issues #68–#71 closed by merged PR #72
 
 ## Session Log
@@ -190,6 +190,21 @@
 - Merge result: PR #74 merged as `feef223`; lint, Python 3.12 and 3.13 tests, and typecheck all passed in CI; issue #73 remains open
 - Risk: capitalism's type-invalid state deltas were warned about but applied; short single-trajectory outcomes are not statistical conclusions
 - Next priority: enforce or reconcile state-delta schema violations before treating capitalism's outcome as domain-valid
+
+### Session 013
+
+- Date: 2026-09-23
+- Goal: Run two existing examples for three trajectories × 20 steps and add named OpenRouter DeepSeek V4.1 Flash support
+- Completed:
+  - Stopped an initial intelligence run after discovering API resampling critics were asked to write files they cannot access, which gave uniform fallback weights
+  - Embedded state and narrative in API critic prompts, parsed and saved stdout scores, and honored the configured five-step resampling interval
+  - Added `--provider openrouter` with DeepSeek V4.1 Flash as the default, using `OPENROUTER_API_KEY` from the environment and disabling reasoning for that model by default
+  - Verified three live resampling critic calls produced valid saved scores and nonuniform weights
+  - Completed intelligence and Mediterranean with three trajectories and 20 contiguous saved steps each; documented outcomes and output quality in `docs/openrouter-deepseek-3x20-2026-09-23.md`
+  - Opened issue #76 for malformed agent output retries and run-level quality visibility; issue #73 remains open for schema enforcement
+- Verification: `./init.sh` — 431 passed with five existing statistical warnings; Ruff check/format, mypy, and PR #75 CI (Python 3.12/3.13) passed
+- Risk: 12 actor proposals were omitted across the two long runs, some resolver outputs used fallbacks, one resampling score was missing, and Mediterranean applied 127 newly introduced state fields after warnings; outcomes are live execution evidence rather than robust domain conclusions
+- Next priority: #76 and #73 before relying on long-run outcome distributions
 
 ## Roadmap (priority order)
 
