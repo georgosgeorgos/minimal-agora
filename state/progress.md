@@ -7,9 +7,10 @@
 - Standard verification path: `uv run pytest tests/ -v && uv run ruff check src/ tests/`
 - All roadmap features through feat-012 passing; feat-004 validated with both API and Claude CLI providers
 - Current blocker: None
-- Test count: 415 tests, all green
+- Test count: 416 tests, all green
 - Lint: clean (ruff, 0 errors)
 - Simulation validated: all 8 scenarios completed 50-step runs via RITS GLM-5.2; a fresh one-step intelligence run completed via authenticated Claude CLI on 2026-09-21
+- Latest review: `docs/code-review-2026-09-23.md`; three runtime follow-ups remain
 
 ## Session Log
 
@@ -123,6 +124,19 @@
 - Verification run: `uv run pytest tests/test_board_access.py -q` — 7 passed; `uv run pytest tests/ -q` — 415 passed; `uv run ruff check src/ tests/` — 0 errors
 - External provider note: the configured RITS GLM-5.2 endpoint returned HTTP 503 during a separate 3-step attempt; the engine completed its failure path, then the Claude CLI validation succeeded
 - Next priority: no unfinished roadmap features
+
+### Session 008
+
+- Date: 2026-09-23
+- Goal: Review and organize the repository, add a compact architecture diagram
+- Completed:
+  - Fixed resampling workspace copies so overwritten parents are read from the original generation; added regression coverage for parent indices `[0, 0, 1]`
+  - Consolidated duplicate development requirements and pytest configuration
+  - Updated repository map, provider list, and README architecture diagram; removed the stale test-count badge
+  - Recorded remaining review findings in `docs/code-review-2026-09-23.md`
+- Verification: `./init.sh` completed with local cache access; 416 tests passed; Ruff check and format check passed
+- Known risks: particle step history is not rebased after resampling; critics are invoked twice at resampling; checkpoint gap handling needs hardening. See the review note.
+- Next priority: fix particle history lineage with an integration test, then remove the duplicate critic round
 
 ## Roadmap (priority order)
 

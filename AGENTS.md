@@ -14,8 +14,9 @@ repo in a state where the next session can continue without guessing.
 | `README.md` | Project overview, simulation modes, CLI usage |
 | `init.sh` | Standard startup: install deps, run lint + tests |
 | `pyproject.toml` | Python project config, dependencies, tool settings |
-| `harness-findings.md` | Harness engineering reference (CLI, isolation, patterns) |
-| `quality.md` | Quality standards and domain/layer grades |
+| `docs/harness-findings.md` | Harness engineering reference (CLI, isolation, patterns) |
+| `docs/quality.md` | Quality standards and domain/layer grades |
+| `docs/code-review-2026-09-23.md` | Review findings and follow-up work |
 | `state/features.json` | Source of truth for feature state and verification |
 | `state/progress.md` | Session log and current verified status |
 | `session/checklist.md` | Session checklist |
@@ -24,7 +25,8 @@ repo in a state where the next session can continue without guessing.
 | `src/minimal_agora/` | Core engine: models, board, agents, loop, runner, analysis, CLI |
 | `scenarios/examples/` | Example scenario YAML files |
 | `tests/` | Pytest test suite |
-| `_references/` | Related project references |
+| `docs/` | Design guide, simulation structure, quality notes, review |
+| `assets/diagrams/` | Existing architecture figures |
 
 ## Tech Stack
 
@@ -32,7 +34,7 @@ repo in a state where the next session can continue without guessing.
 - **Package manager**: uv
 - **Models**: Pydantic v2 (strict validation)
 - **Config**: YAML scenarios
-- **Agent backend**: Claude Code CLI (`claude -p` subprocess)
+- **Agent backends**: Claude Code CLI, Anthropic API, LiteLLM
 - **Testing**: pytest
 - **Linting**: ruff
 
@@ -105,11 +107,14 @@ In population mode, propose phase is ordered:
 | `models.py` | Pydantic models: Scenario, AgentConfig, EntityConfig, Proposal, Resolution, etc. |
 | `scenario.py` | Load YAML/JSON scenarios, set up workspace directories |
 | `board.py` | Board management: state read/write, snapshots, narrative, wildcards |
-| `agents.py` | Build role-specific prompts, invoke `claude -p`, parse agent output |
+| `agents.py` | Build role-specific prompts, invoke providers, parse agent output |
+| `providers/` | Claude CLI, Anthropic API, LiteLLM, and mock adapters |
+| `board_access.py` | Embedded versus file-based board context and result policy |
+| `adaptive.py`, `batching.py` | Optional routine-step extrapolation and multi-step prompts |
 | `loop.py` | Single-trajectory orchestrator: flat step and entity step |
-| `runner.py` | Batch runner: parallel trajectories with concurrency control |
+| `runner.py`, `resampling.py` | Parallel trajectories and particle filtering |
 | `analysis.py` | Outcome classification, aggregation, report generation |
-| `cli.py` | CLI: `run` and `report` subcommands |
+| `cli.py` | CLI: run, report, validation, comparison, visualization |
 
 ### Scenario YAML Structure
 

@@ -7,7 +7,7 @@
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT"></a>
   <img src="https://img.shields.io/badge/python-3.12%2B-blue.svg" alt="Python 3.12+">
-  <img src="https://img.shields.io/badge/tests-387%20passing-brightgreen.svg" alt="Tests: 387 passing">
+  <img src="https://img.shields.io/badge/tests-pytest-brightgreen.svg" alt="Tests: pytest">
   <img src="https://img.shields.io/badge/lint-ruff-orange.svg" alt="Lint: ruff">
   <img src="https://img.shields.io/badge/scenarios-8%20validated-purple.svg" alt="Scenarios: 8 validated">
 </p>
@@ -122,18 +122,19 @@ uv run minimal-agora dashboard --static --open
 
 Each step follows a conflict-gated loop:
 
+```mermaid
+flowchart LR
+    S[Scenario] --> R[Runner] --> B[Board]
+    B --> P[Actor proposals] --> G{Conflict gate}
+    G -->|No conflict| U[Update board]
+    G -->|Conflict| V[Resolver] --> U
+    G -->|Review step| E[Constraint evaluator] --> V
+    U --> A[Outcome analysis]
 ```
-PROPOSE (actors in parallel)
-    |
-    v
-detect_conflicts()
-    |
-    +-- No conflicts, not review step --> auto-merge (0 LLM calls)
-    |
-    +-- Conflicts detected --> resolver only (1 LLM call)
-    |
-    +-- Review step --> constraint_evaluator + resolver (2 LLM calls)
-```
+
+On an ordinary step, auto-merge adds no evaluation calls. A conflict adds one
+resolver call; a review step adds evaluator and resolver calls. Wildcards are
+applied to the board before proposals, and each update is checkpointed.
 
 In population mode, the propose phase is ordered:
 **forces --> populations --> constraint_evaluators --> resolver**
@@ -328,6 +329,7 @@ minimal-agora visualize [run_dir] [--types ...] [--fields ...]
 
 - [Design Guide](docs/guide.md) — architecture, configuration, flow diagrams
 - [Simulation Structure](docs/simulation-structure.md) — detailed internals
+- [Code Review](docs/code-review-2026-09-23.md) — current findings and follow-up work
 - [Example Scenarios](scenarios/examples/) — 8 ready-to-run scenarios with validation results
 
 ---

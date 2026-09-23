@@ -3,13 +3,16 @@
 ## Verified Now
 
 - Core engine and all roadmap features through feat-012 are passing.
-- `uv run pytest tests/ -q` — 415 passed, 5 known statistical warnings.
+- `./init.sh` — completed with local uv cache access; 416 passed, 5 known statistical warnings.
 - `uv run ruff check src/ tests/` — clean.
 - All eight example scenarios previously completed 50-step provider validation.
 - A fresh one-step intelligence simulation completed through authenticated Claude CLI with all actor, critic, resolver, checkpoint, and report artifacts.
 
 ## Changed This Session
 
+- Fixed resampling copy order by staging parents that would be overwritten.
+- Consolidated duplicate dev requirements and pytest configuration.
+- Updated the repo map and README diagram; added `docs/code-review-2026-09-23.md`.
 - Fixed `test_review_interval_skip` so it mocks the current provider-return seam;
   this prevents a unit test from invoking the real Claude subprocess.
 - Added opt-in adaptive step execution through `Scenario.adaptive_steps`.
@@ -40,6 +43,10 @@
 
 ## Risks And Tradeoffs
 
+- Particle step histories are not remapped when a particle workspace is copied;
+  see the high-priority finding in `docs/code-review-2026-09-23.md`.
+- Resampling currently invokes critics twice, and resume detection assumes
+  contiguous checkpoint files; both are recorded in the review note.
 - Numeric extrapolation is intentionally opt-in because discontinuous systems
   may need shorter reasoning intervals or lower drift thresholds.
 - Existing scenarios omit `adaptive_steps`, so their behavior is unchanged.
@@ -56,8 +63,8 @@
 
 ## Next Best Step
 
-- No roadmap features are unfinished. Select the next roadmap item through an
-  issue before implementation.
+- Fix particle history lineage after resampling and add an integration test.
+  Then remove the duplicate critic round. No roadmap features are unfinished.
 
 ## Commands
 
