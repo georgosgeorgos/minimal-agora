@@ -10,7 +10,12 @@ from minimal_agora.models import (
     Scenario,
     SimMode,
 )
-from minimal_agora.resampling import compute_weights, fork_workspace, systematic_resample
+from minimal_agora.resampling import (
+    compute_weights,
+    fork_resampled_workspaces,
+    fork_workspace,
+    systematic_resample,
+)
 
 
 def test_resampling_config_default():
@@ -92,6 +97,22 @@ def test_fork_workspace():
         assert (dst / "board" / "state.json").exists()
         assert json.loads((dst / "board" / "state.json").read_text()) == {"x": 1}
         assert (dst / "narrative.md").read_text() == "# Log"
+
+
+def test_resampling_reads_each_parent_from_original_generation(tmp_path):
+    workspaces = [tmp_path / f"particle_{i}" for i in range(3)]
+    for i, workspace in enumerate(workspaces):
+        workspace.mkdir()
+        (workspace / "state.txt").write_text(str(i))
+
+    # Destination 1 overwrites particle 1 before destination 2 needs it.
+    fork_resampled_workspaces(workspaces, [0, 0, 1])
+
+    assert [(workspace / "state.txt").read_text() for workspace in workspaces] == [
+        "0",
+        "0",
+        "1",
+    ]
 
 
 def test_build_resampling_critic_prompt():

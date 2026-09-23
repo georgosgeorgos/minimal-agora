@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import shutil
+import tempfile
 from pathlib import Path
 
 import structlog
@@ -59,6 +60,20 @@ def fork_workspace(src_workspace: Path, dst_workspace: Path) -> None:
     if dst_workspace.exists():
         shutil.rmtree(dst_workspace)
     shutil.copytree(src_workspace, dst_workspace)
+
+
+def fork_resampled_workspaces(workspaces: list[Path], parent_indices: list[int]) -> None:
+    """Copy from the pre-resampling generation, even when a parent is overwritten."""
+    overwritten = {i for i, parent in enumerate(parent_indices) if i != parent}
+    parents_to_stage = overwritten.intersection(parent_indices)
+    with tempfile.TemporaryDirectory(dir=workspaces[0].parent) as tmpdir:
+        staged = {}
+        for i in parents_to_stage:
+            staged[i] = Path(tmpdir) / f"parent_{i:03d}"
+            shutil.copytree(workspaces[i], staged[i])
+        for dst_idx, src_idx in enumerate(parent_indices):
+            if src_idx != dst_idx:
+                fork_workspace(staged.get(src_idx, workspaces[src_idx]), workspaces[dst_idx])
 
 
 async def score_particles(
@@ -150,12 +165,7 @@ async def resample_particles(
     n_replaced = len(set(range(n)) - set(parent_indices))
     n_duplicated = len(parent_indices) - len(set(parent_indices))
 
-    new_workspaces = list(workspaces)
-    for dst_idx in range(n):
-        src_idx = parent_indices[dst_idx]
-        if src_idx != dst_idx:
-            fork_workspace(workspaces[src_idx], workspaces[dst_idx])
-            new_workspaces[dst_idx] = workspaces[dst_idx]
+    fork_resampled_workspaces(workspaces, parent_indices)
 
     logger.info(
         "resample.complete",
@@ -166,4 +176,4 @@ async def resample_particles(
         scores=[s.total for s in scores],
     )
 
-    return new_workspaces
+    return workspaces
