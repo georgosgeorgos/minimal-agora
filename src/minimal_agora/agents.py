@@ -4,6 +4,7 @@ import json
 import re
 from collections import defaultdict
 from pathlib import Path
+from typing import NotRequired, TypedDict, Unpack
 
 import structlog
 
@@ -23,6 +24,16 @@ from minimal_agora.providers.protocol import AgentInvocationResult, AgentProvide
 from minimal_agora.providers.subprocess_provider import ClaudeSubprocessProvider
 
 logger = structlog.stdlib.get_logger(__name__)
+
+
+class PromptContext(TypedDict):
+    state: NotRequired[dict]
+    narrative: NotRequired[str]
+    wildcard: NotRequired[dict | None]
+    proposals: NotRequired[list[dict]]
+    critiques: NotRequired[list[dict]]
+    conflicts: NotRequired[list[Conflict]]
+
 
 _default_provider: AgentProvider = ClaudeSubprocessProvider()
 
@@ -526,9 +537,11 @@ def build_resampling_critic_prompt(
             "the trajectory should receive more copies in the resampled population.\n"
         )
     criteria = state_or_criteria
-    step = narrative_or_step
+    if not isinstance(narrative_or_step, int):
+        raise TypeError("A step number is required for criterion-based resampling prompts")
+    critic_step = narrative_or_step
     criteria_lines = "\n".join(f"{i + 1}. {c}" for i, c in enumerate(criteria))
-    return f"""You are a **resampling critic** evaluating trajectory quality at step {step}.
+    return f"""You are a **resampling critic** evaluating trajectory quality at step {critic_step}.
 
 ## Instructions
 1. Read the current world state from `board/state.json`
@@ -537,7 +550,7 @@ def build_resampling_critic_prompt(
 
 {criteria_lines}
 
-4. Write your result as a JSON file to `critiques/resample_step_{step:03d}.json`
+4. Write your result as a JSON file to `critiques/resample_step_{critic_step:03d}.json`
 
 The JSON must have this structure:
 ```json
@@ -559,14 +572,43 @@ def build_prompt(
     rules: list[SimRule] | None = None,
     interaction_context: str = "",
     trajectory_id: int | None = None,
-    **kwargs: object,
+    diversity_lenses: list[str] | None = None,
+    **kwargs: Unpack[PromptContext],
 ) -> str:
     if agent.role == AgentRole.ACTOR:
-        return build_actor_prompt(agent, step, rules, interaction_context, trajectory_id, **kwargs)
+        return build_actor_prompt(
+            agent,
+            step,
+            rules,
+            interaction_context,
+            trajectory_id,
+            state=kwargs.get("state"),
+            narrative=kwargs.get("narrative"),
+            wildcard=kwargs.get("wildcard"),
+            diversity_lenses=diversity_lenses,
+        )
     elif agent.role == AgentRole.CONSTRAINT_EVALUATOR:
-        return build_constraint_evaluator_prompt(agent, step, rules, **kwargs)
+        return build_constraint_evaluator_prompt(
+            agent,
+            step,
+            rules,
+            state=kwargs.get("state"),
+            narrative=kwargs.get("narrative"),
+            proposals=kwargs.get("proposals"),
+            wildcard=kwargs.get("wildcard"),
+        )
     elif agent.role == AgentRole.RESOLVER:
-        return build_resolver_prompt(agent, step, rules, **kwargs)
+        return build_resolver_prompt(
+            agent,
+            step,
+            rules,
+            state=kwargs.get("state"),
+            narrative=kwargs.get("narrative"),
+            proposals=kwargs.get("proposals"),
+            critiques=kwargs.get("critiques"),
+            wildcard=kwargs.get("wildcard"),
+            conflicts=kwargs.get("conflicts"),
+        )
     elif agent.role == AgentRole.RESAMPLING_CRITIC:
         raise ValueError(
             "RESAMPLING_CRITIC must be invoked via build_resampling_critic_prompt() directly, "

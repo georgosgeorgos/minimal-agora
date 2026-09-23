@@ -352,9 +352,9 @@ def plot_wildcard_impact(
 
     freq = [0] * (max_step + 1)
     for t_events in events.values():
-        for s in t_events:
-            if s <= max_step:
-                freq[s] += 1
+        for step_idx in t_events:
+            if step_idx <= max_step:
+                freq[step_idx] += 1
 
     ax_freq.bar(range(max_step + 1), freq, color=COLORS[4], alpha=0.7)
     ax_freq.set_xlabel("Step")

@@ -136,17 +136,16 @@ def parse_batch_output(role: AgentRole, text: str) -> BatchOutput | None:
     extracted = _extract_json(text)
     if extracted is None:
         return None
-    model = {
-        AgentRole.ACTOR: BatchProposal,
-        AgentRole.CONSTRAINT_EVALUATOR: BatchCritique,
-        AgentRole.RESOLVER: BatchResolution,
-    }.get(role)
-    if model is None:
-        return None
     try:
-        return model.model_validate_json(extracted)
+        if role == AgentRole.ACTOR:
+            return BatchProposal.model_validate_json(extracted)
+        if role == AgentRole.CONSTRAINT_EVALUATOR:
+            return BatchCritique.model_validate_json(extracted)
+        if role == AgentRole.RESOLVER:
+            return BatchResolution.model_validate_json(extracted)
     except ValueError:
         return None
+    return None
 
 
 def _format_rules(rules: list[SimRule], agent: AgentConfig) -> str:

@@ -381,6 +381,8 @@ async def _run_step(
             last_reasoned_step=last_reasoned_step,
             wildcard_active=wildcard_active,
         ):
+            if last_reasoned_step is None:
+                raise RuntimeError("A routine step requires a previous reasoned step")
             return _run_routine_step(board, step_num, state_before, last_reasoned_step)
 
     if scenario.entities:
@@ -642,11 +644,11 @@ async def _plan_flat_batch(
         if not isinstance(parsed, BatchProposal):
             logger.warning("batch.actor_output_invalid", agent=actor.name)
             continue
-        for item in parsed.steps:
-            if item.step_number not in proposals_by_step:
+        for proposal_item in parsed.steps:
+            if proposal_item.step_number not in proposals_by_step:
                 continue
-            proposals_by_step[item.step_number].append(
-                Proposal.model_validate(item.model_dump(exclude={"step_number"}))
+            proposals_by_step[proposal_item.step_number].append(
+                Proposal.model_validate(proposal_item.model_dump(exclude={"step_number"}))
             )
 
     proposal_payload = [
@@ -692,11 +694,11 @@ async def _plan_flat_batch(
         if not isinstance(parsed, BatchCritique):
             logger.warning("batch.evaluator_output_invalid", agent=evaluator.name)
             continue
-        for item in parsed.steps:
-            if item.step_number not in critiques_by_step:
+        for critique_item in parsed.steps:
+            if critique_item.step_number not in critiques_by_step:
                 continue
-            critiques_by_step[item.step_number].append(
-                Critique.model_validate(item.model_dump(exclude={"step_number"}))
+            critiques_by_step[critique_item.step_number].append(
+                Critique.model_validate(critique_item.model_dump(exclude={"step_number"}))
             )
 
     critique_payload = [
@@ -732,10 +734,12 @@ async def _plan_flat_batch(
             batch_calls.append((resolver.role.value, result))
             parsed = parse_batch_output(resolver.role, result.output)
             if isinstance(parsed, BatchResolution):
-                for item in parsed.steps:
-                    if item.step_number in proposals_by_step:
-                        resolutions_by_step[item.step_number] = Resolution.model_validate(
-                            item.model_dump(exclude={"step_number"}),
+                for resolution_item in parsed.steps:
+                    if resolution_item.step_number in proposals_by_step:
+                        resolutions_by_step[resolution_item.step_number] = (
+                            Resolution.model_validate(
+                                resolution_item.model_dump(exclude={"step_number"}),
+                            )
                         )
             else:
                 logger.warning("batch.resolver_output_invalid", agent=resolver.name)
@@ -849,10 +853,6 @@ async def _run_flat_step(
         narrative=narrative_text,
         wildcard=wildcard_dict,
     )
-    actor_extra: dict = {}
-    if scenario.diversity_lenses:
-        actor_extra["diversity_lenses"] = scenario.diversity_lenses
-
     logger.debug(
         "flat_step.propose_start", step=step_num, n_actors=len(actors), temperature=step_temperature
     )
@@ -863,7 +863,12 @@ async def _run_flat_step(
 
     async def _run_actor(a):
         prompt = build_prompt(
-            a, step_num, rules, trajectory_id=trajectory_id, **embed_kwargs, **actor_extra
+            a,
+            step_num,
+            rules,
+            trajectory_id=trajectory_id,
+            diversity_lenses=scenario.diversity_lenses,
+            **embed_kwargs,
         )
         result = await _invoke_and_collect(
             a,
@@ -1176,10 +1181,6 @@ async def _run_entity_step(
         narrative=narrative_text,
         wildcard=wildcard_dict,
     )
-    actor_extra: dict = {}
-    if scenario.diversity_lenses:
-        actor_extra["diversity_lenses"] = scenario.diversity_lenses
-
     # Phase 1: Forces propose world-level changes
     force_agents = [a for e in force_entities for a in e.agents]
     if force_agents:
@@ -1189,7 +1190,12 @@ async def _run_entity_step(
 
         async def _run_force(a):
             prompt = build_prompt(
-                a, step_num, rules, trajectory_id=trajectory_id, **embed_kwargs, **actor_extra
+                a,
+                step_num,
+                rules,
+                trajectory_id=trajectory_id,
+                diversity_lenses=scenario.diversity_lenses,
+                **embed_kwargs,
             )
             result = await _invoke_and_collect(
                 a,
@@ -1262,8 +1268,8 @@ async def _run_entity_step(
                 rules,
                 entity_interaction.get(a.name, ""),
                 trajectory_id=trajectory_id,
+                diversity_lenses=scenario.diversity_lenses,
                 **embed_kwargs,
-                **actor_extra,
             )
             result = await _invoke_and_collect(
                 a,
