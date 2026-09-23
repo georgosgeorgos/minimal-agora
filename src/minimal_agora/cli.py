@@ -484,14 +484,22 @@ def cmd_dashboard(args) -> int:
     if err is not None:
         return err
 
-    if not args.fields:
-        trajectories = load_trajectories(args.run_dir)
-        if trajectories and trajectories[0].steps:
-            state = trajectories[0].steps[0].state_after
-            detected = _extract_numeric_field_paths(state)
-            if detected:
-                args.fields = detected
-                print(f"Auto-detected fields: {', '.join(detected)}")
+    from minimal_agora.dashboard import _list_runs
+
+    if not args.run_dir.is_dir():
+        print(f"No trajectories found in {args.run_dir}")
+        return 1
+    sibling_runs = _list_runs(args.run_dir.parent, args.run_dir)
+    if not any(run["current"] for run in sibling_runs):
+        child_runs = _list_runs(args.run_dir, args.run_dir)
+        if not child_runs:
+            print(f"No trajectories found in {args.run_dir}")
+            return 1
+        args.run_dir = max(
+            (args.run_dir / run["dirname"] for run in child_runs),
+            key=lambda d: d.stat().st_mtime,
+        )
+        print(f"Using run: {args.run_dir}")
 
     if args.static:
         from minimal_agora.dashboard import generate_static_dashboard

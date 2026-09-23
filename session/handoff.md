@@ -2,13 +2,15 @@
 
 ## Verified Now
 
-- Core engine and all roadmap features through feat-012 are passing.
-- `./init.sh` — 431 passed, 5 known statistical warnings.
+- Core engine and all roadmap features through feat-013 are passing.
+- `./init.sh` — 436 passed, 5 known statistical warnings.
 - `uv run ruff check src/ tests/` — clean.
 - `uv run mypy src/minimal_agora/ --ignore-missing-imports` — no errors.
 - All eight example scenarios previously completed 50-step provider validation.
 - All eight examples completed fresh three-step, one-trajectory live runs via OpenRouter DeepSeek V4.1 Flash. See `docs/openrouter-deepseek-live-2026-09-23.md`.
 - Intelligence and Mediterranean also completed three live trajectories × 20 steps each. See `docs/openrouter-deepseek-3x20-2026-09-23.md` for outcomes and output-quality counts.
+- Dashboard can switch between those runs, show outcome and quality summaries, and export a combined static HTML view. README includes the captured dashboard screenshot.
+- Historical intelligence particle run is loaded from complete step checkpoints; future particle runs now write `trajectory.json` for normal analysis.
 - PR #74 merged as `feef223`; all four CI checks passed. Issue #73 remains open.
 - PR #75 merged as `f6a3582`; all four CI checks passed. Issues #73 and #76 remain open.
 - A fresh one-step intelligence simulation completed through authenticated Claude CLI with all actor, critic, resolver, checkpoint, and report artifacts.
@@ -85,6 +87,9 @@
   tracks bounded retries and visible quality counters.
 - Mediterranean added new state fields 127 times after schema warnings. No
   original-field type mismatches were logged. Issue #73 covers the policy.
+- Historical intelligence particle outputs lack `trajectory.json` files. The
+  dashboard reconstructs them from saved full step checkpoints and the run
+  summary; the particle runner now saves summaries for future runs.
 
 ## Next Best Step
 

@@ -7,7 +7,7 @@
 - Standard verification path: `uv run pytest tests/ -v && uv run ruff check src/ tests/`
 - All roadmap features through feat-012 passing; feat-004 validated with both API and Claude CLI providers
 - Current blocker: None
-- Test count: 431 tests, all green
+- Test count: 436 tests, all green
 - Lint: clean (ruff, 0 errors)
 - Simulation validated: all 8 scenarios completed 50-step runs via RITS GLM-5.2; all 8 completed three-step, one-trajectory runs via OpenRouter DeepSeek V4.1 Flash; intelligence and Mediterranean additionally completed three trajectories × 20 steps each on 2026-09-23 (see `docs/openrouter-deepseek-3x20-2026-09-23.md` for output quality)
 - Latest review: `docs/code-review-2026-09-23.md`; issues #68–#71 closed by merged PR #72
@@ -207,6 +207,20 @@
 - Risk: 12 actor proposals were omitted across the two long runs, some resolver outputs used fallbacks, one resampling score was missing, and Mediterranean applied 127 newly introduced state fields after warnings; outcomes are live execution evidence rather than robust domain conclusions
 - Next priority: #76 and #73 before relying on long-run outcome distributions
 
+### Session 014
+
+- Date: 2026-09-23
+- Goal: Make results across simulations easy to inspect and explain in the dashboard
+- Completed:
+  - Added sibling-run overview cards with outcome counts and working run switching in live and standalone dashboards
+  - Added plain-language result summaries with the leading outcome, saved step count, validation warning count, and a small-sample caveat
+  - Loaded historical particle runs from complete step checkpoints when trajectory summaries are absent; future particle runs now save `trajectory.json`
+  - Made live requests concurrent, applied per-run field detection, and refreshed live data when step counts change
+  - Captured the verified dashboard view in `assets/dashboard-results.png` and documented live and static commands in README
+- Verification: `./init.sh` — 436 passed with five existing statistical warnings; Ruff, format check, mypy, and the two saved 3×20 run payloads verified
+- Risk: Historical intelligence trajectory summaries remain absent in the ignored run directory; the dashboard reconstructs them read-only from saved checkpoints. Live model output quality issues #76 and #73 remain open.
+- Next priority: #76 and #73 before relying on long-run outcome distributions
+
 ## Roadmap (priority order)
 
 | ID | Area | Title | Status |
@@ -230,3 +244,4 @@
 | feat-010 | performance | Adaptive step resolution (skip LLM for routine steps) | passing |
 | feat-011 | performance | Step batching (multi-step per LLM call) | passing |
 | feat-012 | architecture | State-in-prompt vs. file-based board | passing |
+| feat-013 | visualization | Cross-run dashboard and text summaries | passing |
