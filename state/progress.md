@@ -187,6 +187,7 @@
   - Ran all eight existing scenarios with one trajectory and three steps each; all saved reports and complete step artifacts
   - Recorded outcomes, usage, and capitalism schema warnings in `docs/openrouter-deepseek-live-2026-09-23.md`; opened issue #73 for state-delta enforcement
 - Verification: `./init.sh` and `uv run pytest tests/ -q` — 422 passed; Ruff check/format and mypy passed
+- Merge result: PR #74 merged as `feef223`; lint, Python 3.12 and 3.13 tests, and typecheck all passed in CI; issue #73 remains open
 - Risk: capitalism's type-invalid state deltas were warned about but applied; short single-trajectory outcomes are not statistical conclusions
 - Next priority: enforce or reconcile state-delta schema violations before treating capitalism's outcome as domain-valid
 

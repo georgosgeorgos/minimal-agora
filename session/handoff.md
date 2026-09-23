@@ -8,6 +8,7 @@
 - `uv run mypy src/minimal_agora/ --ignore-missing-imports` — no errors.
 - All eight example scenarios previously completed 50-step provider validation.
 - All eight examples completed fresh three-step, one-trajectory live runs via OpenRouter DeepSeek V4.1 Flash. See `docs/openrouter-deepseek-live-2026-09-23.md`.
+- PR #74 merged as `feef223`; all four CI checks passed. Issue #73 remains open.
 - A fresh one-step intelligence simulation completed through authenticated Claude CLI with all actor, critic, resolver, checkpoint, and report artifacts.
 
 ## Changed This Session
