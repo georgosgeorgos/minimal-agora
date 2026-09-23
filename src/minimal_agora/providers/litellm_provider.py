@@ -34,12 +34,14 @@ class LiteLLMProvider:
         temperature: float = 1.0,
         api_base: str | None = None,
         api_key: str | None = None,
+        disable_reasoning: bool = False,
     ) -> None:
         self.model = model
         self.max_tokens = max_tokens
         self.temperature = temperature
         self.api_base = api_base
         self.api_key = api_key
+        self.disable_reasoning = disable_reasoning
 
     async def invoke(
         self,
@@ -79,6 +81,8 @@ class LiteLLMProvider:
             kwargs["api_base"] = self.api_base
         if self.api_key:
             kwargs["api_key"] = self.api_key
+        if self.disable_reasoning:
+            kwargs["extra_body"] = {"reasoning": {"enabled": False}}
 
         response = await litellm.acompletion(**kwargs)
 

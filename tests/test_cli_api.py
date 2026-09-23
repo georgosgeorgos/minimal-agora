@@ -244,6 +244,7 @@ def _run_namespace(**kwargs):
         "model": None,
         "api_base": None,
         "api_key": None,
+        "disable_reasoning": False,
     }
     defaults.update(kwargs)
     return Namespace(**defaults)
@@ -293,3 +294,10 @@ def test_create_provider_litellm_passes_api_key_and_base():
     assert provider.model == "openai/gpt-4o"
     assert provider.api_base == "http://localhost:8000/v1"
     assert provider.api_key == "sk-test"
+
+
+def test_create_provider_litellm_disables_reasoning():
+    from minimal_agora.cli import _create_provider
+
+    provider = _create_provider(_run_namespace(provider="litellm", disable_reasoning=True))
+    assert provider.disable_reasoning is True

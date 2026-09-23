@@ -3,14 +3,19 @@
 ## Verified Now
 
 - Core engine and all roadmap features through feat-012 are passing.
-- `./init.sh` — 420 passed, 5 known statistical warnings.
+- `./init.sh` — 422 passed, 5 known statistical warnings.
 - `uv run ruff check src/ tests/` — clean.
 - `uv run mypy src/minimal_agora/ --ignore-missing-imports` — no errors.
 - All eight example scenarios previously completed 50-step provider validation.
+- All eight examples completed fresh three-step, one-trajectory live runs via OpenRouter DeepSeek V4.1 Flash. See `docs/openrouter-deepseek-live-2026-09-23.md`.
 - A fresh one-step intelligence simulation completed through authenticated Claude CLI with all actor, critic, resolver, checkpoint, and report artifacts.
 
 ## Changed This Session
 
+- Added LiteLLM `--disable-reasoning` to avoid exhausting the 2,048-token output
+  budget on hidden reasoning in the OpenRouter DeepSeek run.
+- Verified all eight example scenarios through OpenRouter with complete step and
+  report artifacts; recorded outcomes and usage in the live-validation note.
 - Fixed review issues #68–#71 in merged PR #72: particle lineage, duplicate critic
   calls, checkpoint validation, and the CI type-check gate.
 - Replaced the README hero reference with a generated, text-free agora image at
@@ -63,11 +68,13 @@
 - The configured RITS GLM-5.2 endpoint returned HTTP 503 during the latest
   attempted run; authenticated Claude CLI validation succeeded afterward.
 - The test suite still emits five known warnings for degenerate statistical data.
+- Capitalism's live run emitted state-delta schema warnings; the engine applies
+  warned changes, so that short run's domain outcome is not trustworthy. Issue #73 tracks this.
 
 ## Next Best Step
 
-- PR #72 is merged and issues #68–#71 are closed. Select the next roadmap
-  item from open issues #42, #39, or #37. No roadmap features are unfinished.
+- Enforce or reconcile invalid state-delta types and unexpected fields before
+  treating capitalism's live outcome as domain-valid. No roadmap features are unfinished.
 
 ## Commands
 

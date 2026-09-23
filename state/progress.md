@@ -7,9 +7,9 @@
 - Standard verification path: `uv run pytest tests/ -v && uv run ruff check src/ tests/`
 - All roadmap features through feat-012 passing; feat-004 validated with both API and Claude CLI providers
 - Current blocker: None
-- Test count: 420 tests, all green
+- Test count: 422 tests, all green
 - Lint: clean (ruff, 0 errors)
-- Simulation validated: all 8 scenarios completed 50-step runs via RITS GLM-5.2; a fresh one-step intelligence run completed via authenticated Claude CLI on 2026-09-21
+- Simulation validated: all 8 scenarios completed 50-step runs via RITS GLM-5.2; all 8 completed three-step, one-trajectory runs via OpenRouter DeepSeek V4.1 Flash on 2026-09-23 (capitalism emitted schema warnings; see `docs/openrouter-deepseek-live-2026-09-23.md`)
 - Latest review: `docs/code-review-2026-09-23.md`; issues #68–#71 closed by merged PR #72
 
 ## Session Log
@@ -174,6 +174,21 @@
 - Commits: `a4fc248`, `700b8a7`, `0a49ec4`, `5e2c472`; documentation commit follows
 - Merge result: PR #72 merged as `59e444c`; lint, Python 3.12 and 3.13 tests, and typecheck all passed in CI; issues #68–#71 closed
 - Next priority: select from remaining open issues #42, #39, and #37 or define a new roadmap item
+
+### Session 012
+
+- Date: 2026-09-23
+- Goal: Validate existing scenarios through OpenRouter with DeepSeek V4.1 Flash
+- Completed:
+  - Loaded the OpenRouter key from the sibling opentutor environment without copying or printing it
+  - Confirmed live API access with a tiny completion
+  - Found that default reasoning consumed the 2,048-token output budget and left three intelligence actor proposals unparsable
+  - Added opt-in LiteLLM `--disable-reasoning`, documented it, and verified a complete intelligence step
+  - Ran all eight existing scenarios with one trajectory and three steps each; all saved reports and complete step artifacts
+  - Recorded outcomes, usage, and capitalism schema warnings in `docs/openrouter-deepseek-live-2026-09-23.md`; opened issue #73 for state-delta enforcement
+- Verification: `./init.sh` and `uv run pytest tests/ -q` — 422 passed; Ruff check/format and mypy passed
+- Risk: capitalism's type-invalid state deltas were warned about but applied; short single-trajectory outcomes are not statistical conclusions
+- Next priority: enforce or reconcile state-delta schema violations before treating capitalism's outcome as domain-valid
 
 ## Roadmap (priority order)
 
