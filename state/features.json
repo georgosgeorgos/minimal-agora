@@ -217,8 +217,8 @@
                 "Run all 8 scenarios end-to-end with the API backend.",
                 "Verify report.json produced with valid outcomes."
             ],
-            "evidence": ["AnthropicAPIProvider + LiteLLMProvider implemented. .env support via python-dotenv. Lazy client reuse. Per-invocation token tracking. All 8 scenarios validated via RITS GLM-5.2 (2026-08-21).", "All 8 examples completed one-trajectory, three-step live OpenRouter DeepSeek V4.1 Flash runs on 2026-09-23; reports and complete step artifacts verified. See docs/openrouter-deepseek-live-2026-09-23.md."],
-            "notes": "Three providers: subprocess (claude -p), anthropic (SDK), litellm (multi-provider). Default max_tokens is 2048. LiteLLM supports opt-in --disable-reasoning for compatible models. Capitalism run showed advisory state-schema warnings; its result is not domain-valid until addressed."
+            "evidence": ["AnthropicAPIProvider + LiteLLMProvider implemented. .env support via python-dotenv. Lazy client reuse. Per-invocation token tracking. All 8 scenarios validated via RITS GLM-5.2 (2026-08-21).", "All 8 examples completed one-trajectory, three-step live OpenRouter DeepSeek V4.1 Flash runs on 2026-09-23; reports and complete step artifacts verified. See docs/openrouter-deepseek-live-2026-09-23.md.", "Named OpenRouterProvider and CLI route verified with a three-trajectory, 20-step Mediterranean run; 431 tests, Ruff, mypy, and CI passed. See docs/openrouter-deepseek-3x20-2026-09-23.md."],
+            "notes": "Four CLI providers: subprocess (claude -p), anthropic (SDK), litellm (multi-provider), openrouter (DeepSeek V4.1 Flash default). Default max_tokens is 2048. LiteLLM supports opt-in --disable-reasoning; the OpenRouter default model disables it automatically. Long-run output quality and schema drift are tracked by issues #76 and #73."
         },
         {
             "id": "feat-010",
@@ -273,6 +273,25 @@
                 "Authenticated Claude CLI completed a fresh one-step intelligence simulation with 4 proposals, 1 critique, 1 resolution, an 8-field state delta, and a step-1 checkpoint."
             ],
             "notes": "Scenario-level board_access selects embedded or files. Embedded mode remains the default, passes state inline, and falls back to artifacts when stdout is invalid. File mode omits board contents from prompts, requires a workspace-capable provider with at least three tool-use turns, and treats artifact files as authoritative. Both flat and population loops share the same policy seam; file mode is rejected with step batching because batched responses use a stdout step-index contract. Tracking issue: #66."
+        },
+        {
+            "id": "fix-003",
+            "priority": 20,
+            "area": "reliability",
+            "title": "Parse API resampling scores and honor resampling interval",
+            "status": "passing",
+            "verification": [
+                "uv run pytest tests/test_resampling.py tests/test_particle_filter.py -q",
+                "uv run pytest tests/ -q",
+                "uv run ruff check src/ tests/",
+                "Run a three-trajectory intelligence scenario through an API provider and verify score files at configured checkpoints."
+            ],
+            "evidence": [
+                "Embedded critic prompts include current state and narrative; stdout scores are validated and saved while file-mode critics remain supported.",
+                "Live DeepSeek critic check saved three valid scores with nonuniform weights; 20-step intelligence run saved 8 of 9 scheduled scores at steps 4, 9, and 14.",
+                "431 tests passed as of 2026-09-23; Ruff, mypy, and PR #75 CI passed."
+            ],
+            "notes": "One malformed live critic response used the documented zero-score fallback; retry and run-quality reporting are tracked by issue #76."
         }
     ]
 }

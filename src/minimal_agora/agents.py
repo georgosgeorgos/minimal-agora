@@ -498,19 +498,21 @@ def build_resampling_critic_prompt(
     trajectory_summaries: list[dict] | None = None,
     *,
     step: int | None = None,
+    state: dict | None = None,
+    narrative: str | None = None,
 ) -> str:
     if step is not None and narrative_or_step is None:
         narrative_or_step = step
     if isinstance(state_or_criteria, dict):
         state_json = json.dumps(state_or_criteria, indent=2)
         summaries_json = json.dumps(trajectory_summaries or [], indent=2)
-        narrative = narrative_or_step
+        narrative_text = narrative_or_step
         return (
             "You are a **resampling critic** in a particle-filtering world simulation.\n\n"
             "Your job is to evaluate a set of parallel trajectories and decide which are most\n"
             "promising (should be duplicated) and which are least promising (should be pruned).\n\n"
             f"## Current World State\n```json\n{state_json}\n```\n\n"
-            f"## Narrative So Far\n{narrative}\n\n"
+            f"## Narrative So Far\n{narrative_text}\n\n"
             "## Trajectory Summaries\n"
             "Each entry describes one trajectory's recent progress, fitness, and outcome so far.\n"
             f"```json\n{summaries_json}\n```\n\n"
@@ -541,16 +543,28 @@ def build_resampling_critic_prompt(
         raise TypeError("A step number is required for criterion-based resampling prompts")
     critic_step = narrative_or_step
     criteria_lines = "\n".join(f"{i + 1}. {c}" for i, c in enumerate(criteria))
+    if state is not None:
+        context = (
+            f"## Current World State\n```json\n{json.dumps(state, indent=2)}\n```\n\n"
+            f"## Narrative So Far\n{narrative or '(none)'}\n\n"
+        )
+        instructions = "Return your result as JSON on stdout."
+    else:
+        context = ""
+        instructions = (
+            "Read the current world state from `board/state.json` and the narrative "
+            "history from `board/narrative.md`. Write your result as a JSON file to "
+            f"`critiques/resample_step_{critic_step:03d}.json`."
+        )
     return f"""You are a **resampling critic** evaluating trajectory quality at step {critic_step}.
 
+{context}
 ## Instructions
-1. Read the current world state from `board/state.json`
-2. Read the narrative history from `board/narrative.md`
-3. For each criterion below, score 0 (no) or 1 (yes):
+For each criterion below, score 0 (no) or 1 (yes):
 
 {criteria_lines}
 
-4. Write your result as a JSON file to `critiques/resample_step_{critic_step:03d}.json`
+{instructions}
 
 The JSON must have this structure:
 ```json
@@ -725,8 +739,6 @@ def parse_resampling_score(
         logger.warning("Resampling score file missing: %s", path)
         return None
     try:
-        import json
-
         with open(path) as f:
             data = json.load(f)
         return ResamplingScore(
@@ -737,4 +749,35 @@ def parse_resampling_score(
         )
     except (ValueError, OSError, KeyError) as e:
         logger.warning("Failed to parse resampling score %s: %s", path.name, e)
+        return None
+
+
+def parse_resampling_score_from_text(
+    text: str, trajectory_id: int, criteria_count: int
+) -> ResamplingScore | None:
+    extracted = _extract_json_from_text(text)
+    if extracted is None:
+        logger.warning("parse.resampling_score_from_text.no_json", trajectory_id=trajectory_id)
+        return None
+    try:
+        data = json.loads(extracted)
+        score = ResamplingScore(
+            trajectory_id=trajectory_id,
+            scores=data["scores"],
+            total=data["total"],
+            notes=data.get("notes", ""),
+        )
+        if (
+            len(score.scores) != criteria_count
+            or any(value not in (0, 1) for value in score.scores)
+            or score.total != sum(score.scores)
+        ):
+            raise ValueError("scores must contain one 0/1 value per criterion and sum to total")
+        return score
+    except (ValueError, KeyError, TypeError) as exc:
+        logger.warning(
+            "parse.resampling_score_from_text.invalid",
+            trajectory_id=trajectory_id,
+            error=str(exc),
+        )
         return None

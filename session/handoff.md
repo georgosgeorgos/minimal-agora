@@ -3,16 +3,24 @@
 ## Verified Now
 
 - Core engine and all roadmap features through feat-012 are passing.
-- `./init.sh` — 422 passed, 5 known statistical warnings.
+- `./init.sh` — 431 passed, 5 known statistical warnings.
 - `uv run ruff check src/ tests/` — clean.
 - `uv run mypy src/minimal_agora/ --ignore-missing-imports` — no errors.
 - All eight example scenarios previously completed 50-step provider validation.
 - All eight examples completed fresh three-step, one-trajectory live runs via OpenRouter DeepSeek V4.1 Flash. See `docs/openrouter-deepseek-live-2026-09-23.md`.
+- Intelligence and Mediterranean also completed three live trajectories × 20 steps each. See `docs/openrouter-deepseek-3x20-2026-09-23.md` for outcomes and output-quality counts.
 - PR #74 merged as `feef223`; all four CI checks passed. Issue #73 remains open.
 - A fresh one-step intelligence simulation completed through authenticated Claude CLI with all actor, critic, resolver, checkpoint, and report artifacts.
 
 ## Changed This Session
 
+- Added a named `--provider openrouter` CLI route with DeepSeek V4.1 Flash as the
+  default model and `OPENROUTER_API_KEY` from the environment.
+- Fixed API resampling critics to receive embedded state and narrative, parse
+  their stdout scores, and save score files. Scoring now honors the configured
+  interval. File-mode critic behavior remains supported.
+- Verified the fix with live DeepSeek scoring and completed both requested
+  three-trajectory, 20-step examples.
 - Added LiteLLM `--disable-reasoning` to avoid exhausting the 2,048-token output
   budget on hidden reasoning in the OpenRouter DeepSeek run.
 - Verified all eight example scenarios through OpenRouter with complete step and
@@ -71,11 +79,17 @@
 - The test suite still emits five known warnings for degenerate statistical data.
 - Capitalism's live run emitted state-delta schema warnings; the engine applies
   warned changes, so that short run's domain outcome is not trustworthy. Issue #73 tracks this.
+- Long runs with DeepSeek still produced malformed actor/resolver JSON. The
+  engine continued with missing proposals or fallback resolutions; issue #76
+  tracks bounded retries and visible quality counters.
+- Mediterranean added new state fields 127 times after schema warnings. No
+  original-field type mismatches were logged. Issue #73 covers the policy.
 
 ## Next Best Step
 
-- Enforce or reconcile invalid state-delta types and unexpected fields before
-  treating capitalism's live outcome as domain-valid. No roadmap features are unfinished.
+- Merge PR #75 after reviewing its run evidence and passing CI. Then address
+  issue #76 (structured-output reliability) and #73 (state-schema policy)
+  before relying on long-run outcome distributions.
 
 ## Commands
 

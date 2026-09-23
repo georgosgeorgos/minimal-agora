@@ -68,6 +68,22 @@ uv run minimal-agora run scenarios/examples/pandemic.yaml -n 3 --steps 10 \
 Works with any Anthropic-compatible endpoint (including LiteLLM proxies).
 Set `ANTHROPIC_BASE_URL` in `.env` for custom endpoints.
 
+### OpenRouter (DeepSeek V4.1 Flash default)
+
+Install the LiteLLM extra and set `OPENROUTER_API_KEY` in `.env` or the process
+environment. The key is read from the environment and does not need a CLI flag.
+
+```bash
+uv pip install 'minimal-agora[litellm]'
+uv run minimal-agora run scenarios/examples/intelligence.yaml \
+  -n 3 --steps 20 --provider openrouter
+```
+
+`--provider openrouter` defaults to `deepseek/deepseek-v4.1-flash` and disables
+reasoning for that model so agent JSON fits the default output limit. Use
+`--model <OpenRouter model slug>` to select another model. Model slugs may be
+passed with or without LiteLLM's `openrouter/` prefix.
+
 ### LiteLLM (multi-provider)
 
 ```bash
@@ -78,8 +94,8 @@ uv run minimal-agora run scenarios/examples/pandemic.yaml -n 3 --steps 10 \
 ```
 
 Supports 100+ providers via [LiteLLM](https://docs.litellm.ai/docs/providers).
-For OpenRouter models that spend the output budget on hidden reasoning, pass
-`--disable-reasoning` with `--provider litellm`. For example:
+For reasoning-capable models that spend the output budget on hidden reasoning,
+pass `--disable-reasoning` with `--provider litellm`. For example:
 
 ```bash
 uv run minimal-agora run scenarios/examples/intelligence.yaml \

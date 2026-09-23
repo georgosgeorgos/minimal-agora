@@ -18,6 +18,7 @@ from minimal_agora.providers import (
     ClaudeSubprocessProvider,
     LiteLLMProvider,
     MockProvider,
+    OpenRouterProvider,
 )
 from minimal_agora.runner import run_batch
 from minimal_agora.scenario import load_scenario
@@ -33,6 +34,7 @@ __all__ = [
     "EntityConfig",
     "LiteLLMProvider",
     "MockProvider",
+    "OpenRouterProvider",
     "Scenario",
     "StepBatchingConfig",
     "Trajectory",

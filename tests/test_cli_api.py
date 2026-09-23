@@ -301,3 +301,24 @@ def test_create_provider_litellm_disables_reasoning():
 
     provider = _create_provider(_run_namespace(provider="litellm", disable_reasoning=True))
     assert provider.disable_reasoning is True
+
+
+def test_create_provider_openrouter_defaults_to_deepseek():
+    from minimal_agora.cli import _create_provider
+    from minimal_agora.providers import OpenRouterProvider
+
+    provider = _create_provider(_run_namespace(provider="openrouter"))
+    assert isinstance(provider, OpenRouterProvider)
+    assert provider.model == "openrouter/deepseek/deepseek-v4.1-flash"
+    assert provider.disable_reasoning is True
+
+
+def test_create_provider_openrouter_accepts_model_override():
+    from minimal_agora.cli import _create_provider
+
+    provider = _create_provider(
+        _run_namespace(provider="openrouter", model="deepseek/deepseek-v3.2", api_key="k")
+    )
+    assert provider.model == "openrouter/deepseek/deepseek-v3.2"
+    assert provider.api_key == "k"
+    assert provider.disable_reasoning is False
