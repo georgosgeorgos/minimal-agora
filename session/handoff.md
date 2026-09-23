@@ -46,9 +46,13 @@
 ## Risks And Tradeoffs
 
 - Particle step histories are not remapped when a particle workspace is copied;
-  see the high-priority finding in `docs/code-review-2026-09-23.md`.
+  see [issue #68](https://github.com/georgosgeorgos/minimal-agora/issues/68).
 - Resampling currently invokes critics twice, and resume detection assumes
-  contiguous checkpoint files; both are recorded in the review note.
+  contiguous checkpoint files; see issues
+  [#69](https://github.com/georgosgeorgos/minimal-agora/issues/69) and
+  [#70](https://github.com/georgosgeorgos/minimal-agora/issues/70).
+- CI type checking is non-blocking; see
+  [#71](https://github.com/georgosgeorgos/minimal-agora/issues/71).
 - Numeric extrapolation is intentionally opt-in because discontinuous systems
   may need shorter reasoning intervals or lower drift thresholds.
 - Existing scenarios omit `adaptive_steps`, so their behavior is unchanged.
@@ -65,8 +69,8 @@
 
 ## Next Best Step
 
-- Fix particle history lineage after resampling and add an integration test.
-  Then remove the duplicate critic round. No roadmap features are unfinished.
+- Fix particle history lineage after resampling in issue #68 and add an
+  integration test. Then address #69 and #70. No roadmap features are unfinished.
 
 ## Commands
 

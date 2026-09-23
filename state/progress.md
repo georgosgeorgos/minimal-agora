@@ -149,6 +149,17 @@
 - Verification: visually inspected the saved image; `./init.sh` passed lint and the full 416-test suite
 - Next priority: fix particle history lineage after resampling, as recorded in `docs/code-review-2026-09-23.md`
 
+### Session 010
+
+- Date: 2026-09-23
+- Goal: Publish the README image update and track open review findings
+- Completed:
+  - Confirmed commit `00360a9` is on `origin/main` with a clean working tree
+  - Opened issues #68 (particle history), #69 (duplicate critic calls), #70 (checkpoint gaps), and #71 (CI type-check gate)
+  - Linked each issue from the code-review note and handoff
+- Verification: issue list checked for duplicates; all four issue URLs returned by GitHub; no runtime code changed
+- Next priority: #68, then #69 and #70
+
 ## Roadmap (priority order)
 
 | ID | Area | Title | Status |

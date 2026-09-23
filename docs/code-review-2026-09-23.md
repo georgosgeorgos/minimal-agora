@@ -23,6 +23,7 @@ local uv cache. The first sandboxed startup attempt failed on uv cache access.
 ## Follow-up findings
 
 1. **High — Particle history can disagree with the copied board.**
+   Tracking: [#68](https://github.com/georgosgeorgos/minimal-agora/issues/68).
    `runner.py:186-195` replaces particle workspaces after resampling but keeps
    `all_steps[i]` under the destination index. A copied board can therefore
    have a source particle's state and history files while the returned
@@ -31,6 +32,7 @@ local uv cache. The first sandboxed startup attempt failed on uv cache access.
    a particle-filter integration test that forces a non-identity resample.
 
 2. **Medium — A resampling event invokes critics twice.**
+   Tracking: [#69](https://github.com/georgosgeorgos/minimal-agora/issues/69).
    `runner.py:165-190` calls `score_particles()` to decide whether ESS crosses
    the threshold, then `resample_particles()` calls the same critics again in
    `resampling.py:126-150`. This adds one provider call per particle and can
@@ -38,6 +40,7 @@ local uv cache. The first sandboxed startup attempt failed on uv cache access.
    Pass the first score vector into the resampling operation.
 
 3. **Medium — Resume detection assumes contiguous checkpoints.**
+   Tracking: [#70](https://github.com/georgosgeorgos/minimal-agora/issues/70).
    `loop.py:125-130` counts matching full-step files instead of finding the
    last contiguous completed step. If a checkpoint is missing, it can resume
    at the wrong step; `_restore_checkpoint()` then silently skips absent step
@@ -45,6 +48,7 @@ local uv cache. The first sandboxed startup attempt failed on uv cache access.
    before resuming.
 
 4. **Low — CI type checking cannot fail the build.**
+   Tracking: [#71](https://github.com/georgosgeorgos/minimal-agora/issues/71).
    `.github/workflows/ci.yml:44` ends the mypy command with `|| true`. This
    hides type errors until they surface elsewhere. Make it a required gate
    after the current type errors are triaged.
