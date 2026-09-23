@@ -326,6 +326,7 @@ class TestLiteLLMProvider:
             assert call_kwargs["model"] == "openai/gpt-4o"
             assert call_kwargs["messages"] == [{"role": "user", "content": "test prompt"}]
             assert call_kwargs["max_tokens"] == 2048
+            assert "extra_body" not in call_kwargs
 
             assert result.output == '{"agent": "test", "result": "ok"}'
             assert result.tokens_used == 150
@@ -363,6 +364,25 @@ class TestLiteLLMProvider:
             call_kwargs = mock_litellm.acompletion.call_args[1]
             assert call_kwargs["api_base"] == "http://localhost:8000"
             assert call_kwargs["api_key"] == "sk-test"
+
+    def test_invoke_disables_reasoning_when_requested(self) -> None:
+        mock_response = MagicMock()
+        mock_response.usage = None
+        mock_response.model = "deepseek/deepseek-v4.1-flash"
+        mock_response.choices[0].message.content = "{}"
+        with (
+            patch("minimal_agora.providers.litellm_provider.litellm") as mock_litellm,
+            patch("minimal_agora.providers.litellm_provider._HAS_LITELLM", True),
+        ):
+            mock_litellm.acompletion = AsyncMock(return_value=mock_response)
+            provider = LiteLLMProvider(
+                model="openrouter/deepseek/deepseek-v4.1-flash", disable_reasoning=True
+            )
+            with tempfile.TemporaryDirectory() as tmp:
+                asyncio.run(provider.invoke("prompt", Path(tmp)))
+            assert mock_litellm.acompletion.call_args.kwargs["extra_body"] == {
+                "reasoning": {"enabled": False}
+            }
 
     def test_invoke_without_litellm_raises(self) -> None:
         with patch("minimal_agora.providers.litellm_provider._HAS_LITELLM", False):

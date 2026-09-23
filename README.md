@@ -78,6 +78,14 @@ uv run minimal-agora run scenarios/examples/pandemic.yaml -n 3 --steps 10 \
 ```
 
 Supports 100+ providers via [LiteLLM](https://docs.litellm.ai/docs/providers).
+For OpenRouter models that spend the output budget on hidden reasoning, pass
+`--disable-reasoning` with `--provider litellm`. For example:
+
+```bash
+uv run minimal-agora run scenarios/examples/intelligence.yaml \
+  -n 1 --steps 3 --provider litellm \
+  --model openrouter/deepseek/deepseek-v4.1-flash --disable-reasoning
+```
 
 ### Claude CLI subprocess (default)
 

@@ -59,6 +59,11 @@ def main() -> int:
     )
     run_parser.add_argument("--model", default=None, help="Model name (provider-specific)")
     run_parser.add_argument(
+        "--disable-reasoning",
+        action="store_true",
+        help="Disable reasoning tokens for LiteLLM models that support this request setting",
+    )
+    run_parser.add_argument(
         "--api-base",
         default=None,
         help="API base URL (anthropic base_url / litellm api_base). Defaults to the provider's env var.",
@@ -326,6 +331,8 @@ def _create_provider(args):
             kwargs["api_base"] = args.api_base
         if args.api_key:
             kwargs["api_key"] = args.api_key
+        if args.disable_reasoning:
+            kwargs["disable_reasoning"] = True
         return LiteLLMProvider(**kwargs)
 
     if provider_type == "anthropic":
