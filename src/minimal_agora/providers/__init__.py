@@ -3,6 +3,7 @@
 from minimal_agora.providers.api_provider import AnthropicAPIProvider
 from minimal_agora.providers.litellm_provider import LiteLLMProvider
 from minimal_agora.providers.mock import MockProvider
+from minimal_agora.providers.openrouter_provider import OpenRouterProvider
 from minimal_agora.providers.protocol import AgentInvocationResult, AgentProvider
 from minimal_agora.providers.subprocess_provider import ClaudeSubprocessProvider
 
@@ -13,4 +14,5 @@ __all__ = [
     "ClaudeSubprocessProvider",
     "LiteLLMProvider",
     "MockProvider",
+    "OpenRouterProvider",
 ]

@@ -12,6 +12,7 @@ from minimal_agora.providers import (
     ClaudeSubprocessProvider,
     LiteLLMProvider,
     MockProvider,
+    OpenRouterProvider,
 )
 
 
@@ -395,6 +396,24 @@ class TestLiteLLMProvider:
                     assert "litellm package not installed" in str(e)
 
 
+class TestOpenRouterProvider:
+    def test_default_model_and_reasoning(self) -> None:
+        provider = OpenRouterProvider()
+        assert provider.model == "openrouter/deepseek/deepseek-v4.1-flash"
+        assert provider.disable_reasoning is True
+        assert provider.api_key is None
+
+    def test_custom_model_normalizes_prefix(self) -> None:
+        provider = OpenRouterProvider(model="openrouter/deepseek/deepseek-v3.2")
+        assert provider.model == "openrouter/deepseek/deepseek-v3.2"
+        assert provider.disable_reasoning is False
+
+    def test_explicit_key_and_reasoning(self) -> None:
+        provider = OpenRouterProvider(api_key="test-key", disable_reasoning=False)
+        assert provider.api_key == "test-key"
+        assert provider.disable_reasoning is False
+
+
 class TestTopLevelExports:
     def test_provider_exports(self) -> None:
         import minimal_agora
@@ -416,6 +435,11 @@ class TestTopLevelExports:
 
         assert hasattr(minimal_agora, "LiteLLMProvider")
         assert minimal_agora.LiteLLMProvider is LiteLLMProvider
+
+    def test_openrouter_provider_export(self) -> None:
+        import minimal_agora
+
+        assert minimal_agora.OpenRouterProvider is OpenRouterProvider
 
     def test_all_contains_provider_names(self) -> None:
         import minimal_agora

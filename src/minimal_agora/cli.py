@@ -53,7 +53,7 @@ def main() -> int:
     )
     run_parser.add_argument(
         "--provider",
-        choices=["subprocess", "anthropic", "litellm"],
+        choices=["subprocess", "anthropic", "litellm", "openrouter"],
         default=None,
         help="LLM provider backend (default: subprocess)",
     )
@@ -320,6 +320,20 @@ def _extract_numeric_field_paths(state: dict, prefix: str = "") -> list[str]:
 def _create_provider(args):
     """Create an AgentProvider from CLI arguments."""
     provider_type = args.provider or "subprocess"
+
+    if provider_type == "openrouter":
+        from minimal_agora.providers.openrouter_provider import OpenRouterProvider
+
+        kwargs: dict = {}
+        if args.model:
+            kwargs["model"] = args.model
+        if args.api_base:
+            kwargs["api_base"] = args.api_base
+        if args.api_key:
+            kwargs["api_key"] = args.api_key
+        if args.disable_reasoning:
+            kwargs["disable_reasoning"] = True
+        return OpenRouterProvider(**kwargs)
 
     if provider_type == "litellm":
         from minimal_agora.providers.litellm_provider import LiteLLMProvider
