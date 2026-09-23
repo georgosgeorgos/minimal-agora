@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from pathlib import Path
 
 from minimal_agora import resampling, runner
@@ -31,19 +32,22 @@ def test_resampled_trajectory_history_matches_copied_workspace(monkeypatch, tmp_
         board.save_step(step)
         return step
 
-    async def fake_scores(*args, **kwargs):
-        return [0.55, 0.40, 0.05]  # ESS is below 0.9 * 3.
+    critic_calls = []
 
-    async def fake_invoke(*args, **kwargs):
-        return None
+    async def fake_invoke(agent, workspace, step, prompt, timeout):
+        idx = int(workspace.name.rsplit("_", 1)[1])
+        critic_calls.append((idx, step))
+        score = [9, 1, 0][idx]
+        (workspace / "critiques" / f"resample_step_{step:03d}.json").write_text(
+            json.dumps({"scores": [score], "total": score})
+        )
 
     monkeypatch.setattr(runner, "_run_step", fake_step)
-    monkeypatch.setattr(runner, "score_particles", fake_scores)
     monkeypatch.setattr(resampling, "invoke_agent", fake_invoke)
-    monkeypatch.setattr(resampling, "systematic_resample", lambda weights, n: [0, 0, 1])
 
     trajectories = asyncio.run(runner.run_particle_filter(scenario, tmp_path))
 
+    assert sorted(critic_calls) == [(0, 1), (1, 1), (2, 1)]
     for destination, parent in enumerate([0, 0, 1]):
         trajectory = trajectories[destination]
         workspace = tmp_path / f"trajectory_{destination:03d}"

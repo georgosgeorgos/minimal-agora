@@ -120,46 +120,13 @@ async def score_particles(
     return compute_weights(scores)
 
 
-async def resample_particles(
-    scenario: Scenario,
-    workspaces: list[Path],
-    step: int,
-    agent_timeout: int,
-    agent_semaphore: asyncio.Semaphore | None,
+def resample_particles(
+    workspaces: list[Path], weights: list[float], step: int
 ) -> tuple[list[Path], list[int]]:
-    resample_cfg = scenario.resampling
-    if resample_cfg is None:
-        return workspaces, list(range(len(workspaces)))
-
-    criteria = resample_cfg.criteria or DEFAULT_RESAMPLING_CRITERIA
+    """Fork a particle generation using the weights already scored for ESS."""
     n = len(workspaces)
-
-    critic_agent = AgentConfig(
-        role=AgentRole.RESAMPLING_CRITIC,
-        name="resampling_critic",
-        perspective="You evaluate trajectory quality for resampling.",
-    )
-    prompt = build_resampling_critic_prompt(criteria, step)
-
-    async def run_critic(idx: int) -> None:
-        ws = workspaces[idx]
-        (ws / "critiques").mkdir(parents=True, exist_ok=True)
-        if agent_semaphore:
-            async with agent_semaphore:
-                await invoke_agent(critic_agent, ws, step, prompt, agent_timeout)
-        else:
-            await invoke_agent(critic_agent, ws, step, prompt, agent_timeout)
-
-    await asyncio.gather(*[run_critic(i) for i in range(n)], return_exceptions=True)
-
-    scores: list[ResamplingScore] = []
-    for i in range(n):
-        score = parse_resampling_score(workspaces[i], step, trajectory_id=i)
-        if score is None:
-            score = ResamplingScore(trajectory_id=i, scores=[0] * len(criteria), total=0)
-        scores.append(score)
-
-    weights = compute_weights(scores)
+    if len(weights) != n:
+        raise ValueError("Resampling weights must match the number of workspaces")
     parent_indices = systematic_resample(weights, n)
 
     n_replaced = len(set(range(n)) - set(parent_indices))
@@ -173,7 +140,6 @@ async def resample_particles(
         n_replaced=n_replaced,
         n_duplicated=n_duplicated,
         weights=[round(w, 4) for w in weights],
-        scores=[s.total for s in scores],
     )
 
     return workspaces, parent_indices
