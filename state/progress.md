@@ -203,6 +203,7 @@
   - Completed intelligence and Mediterranean with three trajectories and 20 contiguous saved steps each; documented outcomes and output quality in `docs/openrouter-deepseek-3x20-2026-09-23.md`
   - Opened issue #76 for malformed agent output retries and run-level quality visibility; issue #73 remains open for schema enforcement
 - Verification: `./init.sh` — 431 passed with five existing statistical warnings; Ruff check/format, mypy, and PR #75 CI (Python 3.12/3.13) passed
+- Merge result: PR #75 merged as `f6a3582`; lint, Python 3.12 and 3.13 tests, and typecheck passed on the final evidence commit
 - Risk: 12 actor proposals were omitted across the two long runs, some resolver outputs used fallbacks, one resampling score was missing, and Mediterranean applied 127 newly introduced state fields after warnings; outcomes are live execution evidence rather than robust domain conclusions
 - Next priority: #76 and #73 before relying on long-run outcome distributions
 

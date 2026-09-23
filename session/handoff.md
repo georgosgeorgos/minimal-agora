@@ -10,6 +10,7 @@
 - All eight examples completed fresh three-step, one-trajectory live runs via OpenRouter DeepSeek V4.1 Flash. See `docs/openrouter-deepseek-live-2026-09-23.md`.
 - Intelligence and Mediterranean also completed three live trajectories × 20 steps each. See `docs/openrouter-deepseek-3x20-2026-09-23.md` for outcomes and output-quality counts.
 - PR #74 merged as `feef223`; all four CI checks passed. Issue #73 remains open.
+- PR #75 merged as `f6a3582`; all four CI checks passed. Issues #73 and #76 remain open.
 - A fresh one-step intelligence simulation completed through authenticated Claude CLI with all actor, critic, resolver, checkpoint, and report artifacts.
 
 ## Changed This Session
@@ -87,9 +88,8 @@
 
 ## Next Best Step
 
-- Merge PR #75 after reviewing its run evidence and passing CI. Then address
-  issue #76 (structured-output reliability) and #73 (state-schema policy)
-  before relying on long-run outcome distributions.
+- Address issue #76 (structured-output reliability) and #73 (state-schema
+  policy) before relying on long-run outcome distributions.
 
 ## Commands
 
