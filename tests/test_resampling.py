@@ -1,8 +1,13 @@
+import asyncio
 import json
 import tempfile
 from pathlib import Path
 
-from minimal_agora.agents import build_resampling_critic_prompt, parse_resampling_score
+from minimal_agora.agents import (
+    build_resampling_critic_prompt,
+    parse_resampling_score,
+    parse_resampling_score_from_text,
+)
 from minimal_agora.models import (
     DEFAULT_RESAMPLING_CRITERIA,
     ResamplingConfig,
@@ -10,12 +15,15 @@ from minimal_agora.models import (
     Scenario,
     SimMode,
 )
+from minimal_agora.providers.protocol import AgentInvocationResult
 from minimal_agora.resampling import (
     compute_weights,
     fork_resampled_workspaces,
     fork_workspace,
+    score_particles,
     systematic_resample,
 )
+from minimal_agora.scenario import setup_workspace
 
 
 def test_resampling_config_default():
@@ -153,6 +161,48 @@ def test_parse_resampling_score_missing():
         (workspace / "critiques").mkdir()
         score = parse_resampling_score(workspace, step=5, trajectory_id=0)
         assert score is None
+
+
+def test_parse_resampling_score_from_text_validates_criteria():
+    valid = parse_resampling_score_from_text(
+        '```json\n{"scores":[1,0],"total":1,"notes":"ok"}\n```', 2, 2
+    )
+    assert valid is not None and valid.trajectory_id == 2 and valid.total == 1
+    assert parse_resampling_score_from_text('{"scores":[1],"total":1}', 0, 2) is None
+    assert parse_resampling_score_from_text('{"scores":[1,1],"total":1}', 0, 2) is None
+
+
+def test_score_particles_embeds_state_and_saves_stdout_scores(monkeypatch, tmp_path):
+    from minimal_agora import resampling
+
+    scenario = Scenario(
+        name="embedded-scores",
+        mode=SimMode.COUNTERFACTUAL,
+        n_trajectories=3,
+        step_budget=5,
+        initial_state={"marker": "visible to critic"},
+        resampling=ResamplingConfig(criteria=["Is this promising?"]),
+    )
+    workspaces = [setup_workspace(scenario, tmp_path, i) for i in range(3)]
+    seen_prompts = []
+
+    async def fake_invoke(agent, workspace, step, prompt, timeout):
+        seen_prompts.append(prompt)
+        idx = int(workspace.name.rsplit("_", 1)[1])
+        score = 1 if idx == 0 else 0
+        return AgentInvocationResult(
+            output=json.dumps({"scores": [score], "total": score, "notes": "scored"})
+        )
+
+    monkeypatch.setattr(resampling, "invoke_agent", fake_invoke)
+    weights = asyncio.run(score_particles(scenario, workspaces, 4, 30, None))
+
+    assert weights == [0.5, 0.25, 0.25]
+    assert all("visible to critic" in prompt for prompt in seen_prompts)
+    assert all("Return your result as JSON on stdout" in prompt for prompt in seen_prompts)
+    assert all(
+        (workspace / "critiques/resample_step_004.json").exists() for workspace in workspaces
+    )
 
 
 def test_systematic_resample_uniform():

@@ -7,7 +7,7 @@ import json
 from pathlib import Path
 
 from minimal_agora import resampling, runner
-from minimal_agora.models import ResamplingConfig, Scenario, SimMode, Step
+from minimal_agora.models import BoardAccessMode, ResamplingConfig, Scenario, SimMode, Step
 
 
 def test_resampled_trajectory_history_matches_copied_workspace(monkeypatch, tmp_path: Path):
@@ -17,7 +17,8 @@ def test_resampled_trajectory_history_matches_copied_workspace(monkeypatch, tmp_
         n_trajectories=3,
         step_budget=3,
         initial_state={"origin": -1, "step": 0},
-        resampling=ResamplingConfig(min_particles=2, ess_threshold=0.9),
+        resampling=ResamplingConfig(interval=2, min_particles=2, ess_threshold=0.9),
+        board_access=BoardAccessMode.FILES,
     )
 
     async def fake_step(scenario, board, step_num, timeout, *, trajectory_id, **kwargs):
@@ -59,3 +60,37 @@ def test_resampled_trajectory_history_matches_copied_workspace(monkeypatch, tmp_
                 (workspace / "history" / f"step_{step_num:03d}_full.json").read_text()
             )
             assert saved_step.state_after == trajectory.steps[step_num].state_after
+
+
+def test_particle_filter_scores_only_at_configured_interval(monkeypatch, tmp_path: Path):
+    scenario = Scenario(
+        name="particle-cadence",
+        mode=SimMode.COUNTERFACTUAL,
+        n_trajectories=3,
+        step_budget=7,
+        initial_state={"step": 0},
+        resampling=ResamplingConfig(interval=3, min_particles=2),
+    )
+
+    async def fake_step(scenario, board, step_num, timeout, *, trajectory_id, **kwargs):
+        before = board.read_state()
+        after = {"step": step_num + 1}
+        board.write_state(after)
+        board.snapshot_state(step_num + 1)
+        step = Step(step_number=step_num, state_before=before, state_after=after)
+        board.save_step(step)
+        return step
+
+    scored_steps = []
+
+    async def fake_scores(scenario, workspaces, step, timeout, agent_semaphore):
+        scored_steps.append(step)
+        return [1 / 3] * 3
+
+    monkeypatch.setattr(runner, "_run_step", fake_step)
+    monkeypatch.setattr(runner, "score_particles", fake_scores)
+
+    trajectories = asyncio.run(runner.run_particle_filter(scenario, tmp_path))
+
+    assert scored_steps == [2, 5]
+    assert [len(trajectory.steps) for trajectory in trajectories] == [7, 7, 7]

@@ -162,7 +162,12 @@ async def run_particle_filter(
             for exc in eg.exceptions:
                 logger.error("filter.step.unhandled_failure", step=step_num, error=str(exc))
 
-        if step_num > 0 and not is_last and n > resample_cfg.min_particles:
+        if (
+            step_num > 0
+            and not is_last
+            and n > resample_cfg.min_particles
+            and (step_num + 1) % resample_cfg.interval == 0
+        ):
             weights = await score_particles(
                 scenario,
                 workspaces,

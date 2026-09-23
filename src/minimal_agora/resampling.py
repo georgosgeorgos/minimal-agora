@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import shutil
 import tempfile
 from pathlib import Path
@@ -11,11 +12,14 @@ from minimal_agora.agents import (
     build_resampling_critic_prompt,
     invoke_agent,
     parse_resampling_score,
+    parse_resampling_score_from_text,
 )
+from minimal_agora.board import Board, compress_narrative
 from minimal_agora.models import (
     DEFAULT_RESAMPLING_CRITERIA,
     AgentConfig,
     AgentRole,
+    BoardAccessMode,
     ResamplingScore,
     Scenario,
 )
@@ -97,22 +101,44 @@ async def score_particles(
         name="resampling_critic",
         perspective="You evaluate trajectory quality for resampling.",
     )
-    prompt = build_resampling_critic_prompt(criteria, step)
 
-    async def run_critic(idx: int) -> None:
+    async def run_critic(idx: int) -> ResamplingScore | None:
         ws = workspaces[idx]
         (ws / "critiques").mkdir(parents=True, exist_ok=True)
+        if scenario.board_access == BoardAccessMode.EMBEDDED:
+            board = Board(ws)
+            narrative = board.narrative_path.read_text()
+            if scenario.narrative_window is not None:
+                narrative = compress_narrative(narrative, scenario.narrative_window)
+            prompt = build_resampling_critic_prompt(
+                criteria, step, state=board.read_state(), narrative=narrative
+            )
+        else:
+            prompt = build_resampling_critic_prompt(criteria, step)
         if agent_semaphore:
             async with agent_semaphore:
-                await invoke_agent(critic_agent, ws, step, prompt, agent_timeout)
+                result = await invoke_agent(critic_agent, ws, step, prompt, agent_timeout)
         else:
-            await invoke_agent(critic_agent, ws, step, prompt, agent_timeout)
+            result = await invoke_agent(critic_agent, ws, step, prompt, agent_timeout)
+        if scenario.board_access == BoardAccessMode.EMBEDDED:
+            score = parse_resampling_score_from_text(result.output, idx, len(criteria))
+            if score is not None:
+                path = ws / "critiques" / f"resample_step_{step:03d}.json"
+                path.write_text(json.dumps(score.model_dump(exclude={"trajectory_id"}), indent=2))
+                return score
+        return parse_resampling_score(ws, step, trajectory_id=idx)
 
-    await asyncio.gather(*[run_critic(i) for i in range(n)], return_exceptions=True)
+    results = await asyncio.gather(*[run_critic(i) for i in range(n)], return_exceptions=True)
 
     scores: list[ResamplingScore] = []
-    for i in range(n):
-        score = parse_resampling_score(workspaces[i], step, trajectory_id=i)
+    for i, result in enumerate(results):
+        if isinstance(result, BaseException):
+            logger.warning(
+                "resampling.critic_failed", trajectory_id=i, step=step, error=str(result)
+            )
+            score = None
+        else:
+            score = result
         if score is None:
             score = ResamplingScore(trajectory_id=i, scores=[0] * len(criteria), total=0)
         scores.append(score)
