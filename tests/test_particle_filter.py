@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 
 from minimal_agora import resampling, runner
+from minimal_agora.analysis import load_trajectories
 from minimal_agora.models import BoardAccessMode, ResamplingConfig, Scenario, SimMode, Step
 
 
@@ -49,9 +50,13 @@ def test_resampled_trajectory_history_matches_copied_workspace(monkeypatch, tmp_
     trajectories = asyncio.run(runner.run_particle_filter(scenario, tmp_path))
 
     assert sorted(critic_calls) == [(0, 1), (1, 1), (2, 1)]
+    assert len(load_trajectories(tmp_path)) == 3
     for destination, parent in enumerate([0, 0, 1]):
         trajectory = trajectories[destination]
         workspace = tmp_path / f"trajectory_{destination:03d}"
+        saved_trajectory = json.loads((workspace / "trajectory.json").read_text())
+        assert saved_trajectory["trajectory_id"] == destination
+        assert saved_trajectory["outcome"]["final_state"] == trajectory.outcome.final_state
         assert trajectory.trajectory_id == destination
         assert [step.state_after["origin"] for step in trajectory.steps] == [parent] * 3
         assert trajectory.outcome.final_state == trajectory.steps[-1].state_after

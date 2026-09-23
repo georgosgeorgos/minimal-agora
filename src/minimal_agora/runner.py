@@ -12,6 +12,7 @@ from minimal_agora.loop import (
     _classify_outcome,
     _roll_wildcard,
     _run_step,
+    _save_trajectory,
     run_trajectory,
 )
 from minimal_agora.models import (
@@ -222,6 +223,7 @@ async def run_particle_filter(
             ),
             metadata=metadata,
         )
+        _save_trajectory(traj, workspaces[i])
         trajectories.append(traj)
 
     logger.info(
