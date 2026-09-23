@@ -2,7 +2,16 @@ import json
 import tempfile
 from pathlib import Path
 
-from minimal_agora.dashboard import _collect_data, _collect_events, _list_runs
+from minimal_agora.dashboard import (
+    DashboardHandler,
+    _auto_detect_fields,
+    _collect_data,
+    _collect_events,
+    _list_runs,
+    _load_dashboard_trajectories,
+    _summarize_results,
+    generate_static_dashboard,
+)
 from minimal_agora.models import (
     Proposal,
     Resolution,
@@ -128,6 +137,44 @@ class TestTrajectoryTimelines:
 
         tt = data["trajectory_timelines"]
         assert tt["x"]["0"] == [{"step": 1, "value": 10}]
+
+
+class TestResultsSummary:
+    def test_describes_leading_outcome_and_quality_limit(self):
+        trajectories = [
+            _make_trajectory(0, "persian_dominance", [{"x": 1}] * 20),
+            _make_trajectory(1, "persian_dominance", [{"x": 2}] * 20),
+            _make_trajectory(2, "balance_of_power", [{"x": 3}] * 20),
+        ]
+        summary = _summarize_results(
+            trajectories,
+            {"persian_dominance": 2, "balance_of_power": 1},
+            [{"type": "validation"}],
+        )
+
+        assert "2 of 3 trajectories (67%)" in summary["headline"]
+        assert "20 steps" in summary["detail"]
+        assert "1 validation warning" in summary["detail"]
+        assert "do not establish outcome probabilities" in summary["caveat"]
+
+    def test_static_dashboard_includes_sibling_runs(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            first = root / "first"
+            second = root / "second"
+            first.mkdir()
+            second.mkdir()
+            _write_trajectories(first, [_make_trajectory(0, "A", [{"x": 1}])])
+            _write_trajectories(second, [_make_trajectory(0, "B", [{"y": 2}])])
+            output = root / "dashboard.html"
+
+            generate_static_dashboard(first, output_path=output)
+            html = output.read_text()
+
+        assert "const EMBEDDED_RUNS = [{" in html
+        assert '"dirname": "first"' in html
+        assert '"dirname": "second"' in html
+        assert '"headline": "A was the final classification' in html
 
 
 class TestWildcardEvents:
@@ -272,7 +319,7 @@ class TestListRuns:
 
         names = [r["dirname"] for r in runs]
         assert "run-alpha" in names
-        assert "run-beta" in names
+        assert "run-beta" not in names
 
     def test_marks_current_run(self):
         t1 = _make_trajectory(0, "A", [{"x": 1}])
@@ -315,6 +362,81 @@ class TestListRuns:
             runs = _list_runs(runs_root, run_dir)
 
         assert runs[0]["n_trajectories"] == 2
+
+    def test_reads_outcomes_from_report(self):
+        t1 = _make_trajectory(0, "A", [{"x": 1}])
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            runs_root = Path(tmpdir)
+            run_dir = runs_root / "my-run"
+            run_dir.mkdir()
+            _write_trajectories(run_dir, [t1])
+            (run_dir / "report.json").write_text(json.dumps({"outcomes": {"A": 1}}))
+
+            runs = _list_runs(runs_root, run_dir)
+
+        assert runs[0]["outcomes"] == {"A": 1}
+
+    def test_selected_run_uses_its_own_fields_and_stays_in_runs_root(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            run_a = root / "run-a"
+            run_b = root / "run-b"
+            run_a.mkdir()
+            run_b.mkdir()
+            _write_trajectories(run_a, [_make_trajectory(0, "A", [{"x": 1}])])
+            _write_trajectories(run_b, [_make_trajectory(0, "B", [{"y": 2}])])
+
+            handler = object.__new__(DashboardHandler)
+            handler.runs_root = root
+            handler.run_dir = run_a
+            handler.path = "/api/data?run=run-b"
+            selected = handler._resolve_run_dir()
+            fields = _auto_detect_fields(selected)
+            data = _collect_data(selected, fields, [], [])
+            assert selected == run_b
+            assert fields == ["y"]
+            assert list(data["timelines"]) == ["y"]
+
+            handler.path = "/api/data?run=.."
+            assert handler._resolve_run_dir() == run_a
+
+    def test_recovers_completed_run_from_step_checkpoints(self):
+        trajectory = _make_trajectory(0, "stagnation", [{"oxygen": 1}, {"oxygen": 2}])
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            run_dir = Path(tmpdir) / "intelligence"
+            history = run_dir / "trajectory_000" / "history"
+            history.mkdir(parents=True)
+            for step in trajectory.steps:
+                (history / f"step_{step.step_number:03d}_full.json").write_text(
+                    step.model_dump_json()
+                )
+            artifacts = run_dir / "artifacts"
+            artifacts.mkdir()
+            (artifacts / "summary.json").write_text(
+                json.dumps(
+                    {
+                        "scenario": "intelligence",
+                        "trajectories": [
+                            {"id": 0, "n_steps": 2, "outcome": "stagnation", "final_step": 1}
+                        ],
+                    }
+                )
+            )
+            (run_dir / "report.json").write_text(
+                json.dumps({"scenario_name": "intelligence", "outcomes": {"stagnation": 1}})
+            )
+
+            loaded = _load_dashboard_trajectories(run_dir)
+            runs = _list_runs(run_dir.parent, run_dir)
+            data = _collect_data(run_dir, None, [], [])
+
+        assert len(loaded) == 1
+        assert loaded[0].outcome.classification == "stagnation"
+        assert runs[0]["n_trajectories"] == 1
+        assert data["total_steps"] == 2
+        assert list(data["timelines"]) == ["oxygen"]
 
     def test_nonexistent_runs_root_returns_fallback(self):
         with tempfile.TemporaryDirectory() as tmpdir:

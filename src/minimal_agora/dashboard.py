@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import time
-from http.server import HTTPServer, SimpleHTTPRequestHandler
+from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlparse
@@ -13,6 +13,7 @@ from minimal_agora.analysis import (
     extract_field_timelines,
     load_trajectories,
 )
+from minimal_agora.models import Step, Trajectory, TrajectoryOutcome
 
 
 class DashboardHandler(SimpleHTTPRequestHandler):
@@ -48,15 +49,15 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         parsed = urlparse(self.path)
         params = parse_qs(parsed.query)
         run_name = params.get("run", [None])[0]
-        if run_name and self.runs_root:
-            candidate = self.runs_root / run_name
-            if candidate.is_dir():
-                return candidate
+        if run_name and any(
+            run["dirname"] == run_name for run in _list_runs(self.runs_root, self.run_dir)
+        ):
+            return self.runs_root / run_name
         return self.run_dir
 
     def _serve_data(self):
         run_dir = self._resolve_run_dir()
-        data = _collect_data(run_dir, self.fields, self.populations, self.score_fields)
+        data = _collect_data(run_dir, self.fields or None, self.populations, self.score_fields)
         data["run_dir"] = run_dir.name
         body = json.dumps(data).encode()
         self.send_response(200)
@@ -81,16 +82,20 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         self.send_header("Connection", "keep-alive")
         self.end_headers()
 
-        last_count = 0
+        last_signature = None
         try:
             while True:
-                data = _collect_data(self.run_dir, self.fields, self.populations, self.score_fields)
-                count = data.get("n_trajectories", 0)
-                if count != last_count:
+                run_dir = self._resolve_run_dir()
+                data = _collect_data(
+                    run_dir, self.fields or None, self.populations, self.score_fields
+                )
+                data["run_dir"] = run_dir.name
+                signature = (data.get("n_trajectories", 0), data.get("total_steps", 0))
+                if signature != last_signature:
                     msg = f"data: {json.dumps(data)}\n\n"
                     self.wfile.write(msg.encode())
                     self.wfile.flush()
-                    last_count = count
+                    last_signature = signature
                 time.sleep(2)
         except (BrokenPipeError, ConnectionResetError):
             pass
@@ -113,35 +118,105 @@ def _list_runs(runs_root: Path, current_run_dir: Path) -> list[dict]:
     for d in sorted(runs_root.iterdir()):
         if not d.is_dir():
             continue
-        traj_dirs = list(d.glob("trajectory_*"))
+        traj_dirs = sorted(
+            td
+            for td in d.glob("trajectory_*")
+            if (td / "trajectory.json").is_file() or any((td / "history").glob("step_*_full.json"))
+        )
+        if not traj_dirs:
+            continue
         scenario = d.name
-        for td in traj_dirs[:1]:
-            tj = td / "trajectory.json"
-            if tj.exists():
-                try:
-                    meta = json.loads(tj.read_text())
-                    scenario = meta.get("scenario_name", d.name)
-                except (json.JSONDecodeError, OSError):
-                    pass
-                break
+        traj_file = traj_dirs[0] / "trajectory.json"
+        if traj_file.is_file():
+            try:
+                meta = json.loads(traj_file.read_text())
+                scenario = meta.get("scenario_name", d.name)
+            except (json.JSONDecodeError, OSError):
+                pass
+        outcomes = {}
+        report = d / "report.json"
+        if report.is_file():
+            try:
+                report_data = json.loads(report.read_text())
+                outcomes = report_data.get("outcomes", {})
+                scenario = report_data.get("scenario_name", scenario)
+            except (json.JSONDecodeError, OSError):
+                pass
         runs.append(
             {
                 "dirname": d.name,
                 "scenario": scenario,
                 "n_trajectories": len(traj_dirs),
+                "outcomes": outcomes,
                 "current": d.resolve() == current_run_dir.resolve(),
             }
         )
     return runs
 
 
+def _load_dashboard_trajectories(run_dir: Path) -> list[Trajectory]:
+    """Read completed trajectories, including particle runs saved as step checkpoints."""
+    trajectories = load_trajectories(run_dir)
+    loaded_ids = {t.trajectory_id for t in trajectories}
+    summary_path = run_dir / "artifacts" / "summary.json"
+    try:
+        summary = json.loads(summary_path.read_text()) if summary_path.is_file() else {}
+    except (json.JSONDecodeError, OSError):
+        summary = {}
+    summary_by_id = {entry["id"]: entry for entry in summary.get("trajectories", [])}
+
+    for traj_dir in sorted(run_dir.glob("trajectory_*")):
+        try:
+            trajectory_id = int(traj_dir.name.removeprefix("trajectory_"))
+        except ValueError:
+            continue
+        if trajectory_id in loaded_ids:
+            continue
+        step_files = sorted((traj_dir / "history").glob("step_*_full.json"))
+        if not step_files:
+            continue
+        try:
+            steps = [Step.model_validate_json(path.read_text()) for path in step_files]
+        except (OSError, ValueError):
+            continue
+        if [step.step_number for step in steps] != list(range(len(steps))):
+            continue
+        info = summary_by_id.get(trajectory_id, {})
+        if info.get("n_steps") is not None and info["n_steps"] != len(steps):
+            continue
+        outcome = None
+        if info.get("outcome"):
+            outcome = TrajectoryOutcome(
+                classification=info["outcome"],
+                final_step=info.get("final_step", steps[-1].step_number),
+                final_state=steps[-1].state_after,
+            )
+        trajectories.append(
+            Trajectory(
+                scenario_name=summary.get("scenario", run_dir.name),
+                trajectory_id=trajectory_id,
+                steps=steps,
+                outcome=outcome,
+                total_tokens={
+                    "total_input_tokens": sum(
+                        step.token_usage.total_input_tokens for step in steps if step.token_usage
+                    ),
+                    "total_output_tokens": sum(
+                        step.token_usage.total_output_tokens for step in steps if step.token_usage
+                    ),
+                },
+            )
+        )
+    return sorted(trajectories, key=lambda t: t.trajectory_id)
+
+
 def _collect_data(
     run_dir: Path,
-    fields: list[str],
+    fields: list[str] | None,
     populations: list[str],
     score_fields: list[str],
 ) -> dict:
-    trajectories = load_trajectories(run_dir)
+    trajectories = _load_dashboard_trajectories(run_dir)
     if not trajectories:
         return {
             "n_trajectories": 0,
@@ -150,6 +225,11 @@ def _collect_data(
             "timelines": {},
             "populations": {},
         }
+    if fields is None and trajectories[0].steps:
+        from minimal_agora.visualize_interactive import _flatten_state
+
+        fields = sorted(_flatten_state(trajectories[0].steps[0].state_after).keys())[:10]
+    fields = fields or []
 
     outcomes: dict[str, int] = {}
     steps_by_outcome: dict[str, list[int]] = {}
@@ -249,9 +329,18 @@ def _collect_data(
 
     token_summary, token_timeline = _collect_token_data(trajectories)
 
+    report_path = run_dir / "report.json"
+    try:
+        question = json.loads(report_path.read_text()).get("question", "")
+    except (json.JSONDecodeError, OSError):
+        question = ""
+
     return {
         "scenario": trajectories[0].scenario_name,
+        "question": question,
         "n_trajectories": n,
+        "total_steps": sum(len(t.steps) for t in trajectories),
+        "summary": _summarize_results(trajectories, outcomes, events),
         "outcomes": outcome_data,
         "timelines": timelines,
         "trajectory_timelines": trajectory_timelines,
@@ -262,6 +351,45 @@ def _collect_data(
         "token_timeline": token_timeline,
         "ess_timeline": ess_timeline,
     }
+
+
+def _summarize_results(
+    trajectories: list[Trajectory], outcomes: dict[str, int], events: list[dict]
+) -> dict[str, str]:
+    """Describe saved classifications without treating a small sample as probability."""
+    n = len(trajectories)
+    if not n:
+        return {"headline": "No trajectories are available yet.", "detail": "", "caveat": ""}
+
+    ranked = sorted(outcomes.items(), key=lambda item: (-item[1], item[0]))
+    if len(ranked) == 1:
+        name = ranked[0][0].replace("_", " ")
+        headline = f"{name.capitalize()} was the final classification in all {n} trajectories."
+    elif ranked[0][1] == ranked[1][1]:
+        headline = "No single final outcome led in this sample."
+    else:
+        name, count = ranked[0]
+        headline = (
+            f"{name.replace('_', ' ').capitalize()} led with {count} of {n} "
+            f"trajectories ({count / n:.0%})."
+        )
+
+    step_counts = [len(t.steps) for t in trajectories]
+    if min(step_counts) == max(step_counts):
+        detail = f"Each saved trajectory contains {step_counts[0]} steps."
+    else:
+        detail = f"Saved trajectories contain {min(step_counts)}–{max(step_counts)} steps."
+    warning_count = sum(event["type"] == "validation" for event in events)
+    if warning_count:
+        noun = "warning" if warning_count == 1 else "warnings"
+        detail += f" {warning_count} validation {noun} recorded in the saved steps."
+
+    caveat = (
+        f"This is a sample of {n} trajectories; the counts do not establish outcome probabilities."
+        if n < 30
+        else ""
+    )
+    return {"headline": headline, "detail": detail, "caveat": caveat}
 
 
 def _collect_token_data(trajectories: list) -> tuple[dict, list[dict]]:
@@ -443,6 +571,27 @@ def _build_html() -> str:
     border: 1px solid var(--border-light); border-radius: 4px; padding: 4px 8px;
     font-size: 0.8rem; cursor: pointer; }
   .theme-toggle { font-size: 1rem; line-height: 1; padding: 4px 6px; }
+  .run-overview { margin-bottom: 18px; }
+  .run-overview h2 { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.08em;
+                     color: var(--text-muted); margin-bottom: 10px; }
+  .run-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 10px; }
+  .run-card { text-align: left; background: var(--card-bg); color: var(--text);
+              border: 1px solid var(--border-light); border-radius: 8px; padding: 12px 14px;
+              cursor: pointer; font: inherit; min-width: 0; }
+  .run-card:hover, .run-card:focus-visible { border-color: #76b7b2; outline: none; }
+  .run-card.active { border-color: #76b7b2; box-shadow: inset 0 0 0 1px #76b7b2; }
+  .run-card strong { display: block; color: var(--text-heading); font-size: 0.9rem;
+                     margin-bottom: 7px; overflow-wrap: anywhere; }
+  .run-card span { display: block; font-size: 0.74rem; color: var(--text-muted); line-height: 1.45; }
+  .summary-card { background: var(--card-bg); border: 1px solid var(--border-light);
+                  border-left: 3px solid #76b7b2; border-radius: 8px; padding: 16px 18px;
+                  margin-bottom: 18px; line-height: 1.55; }
+  .summary-card h2 { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.08em;
+                     color: var(--text-muted); margin-bottom: 7px; }
+  .summary-question { color: var(--text-secondary); font-size: 0.82rem; margin-bottom: 5px; }
+  .summary-headline { color: var(--text-heading); font-size: 1rem; font-weight: 600; }
+  .summary-detail, .summary-caveat { font-size: 0.82rem; margin-top: 5px; }
+  .summary-caveat { color: var(--text-muted); }
   .page-layout { display: grid; grid-template-columns: 1fr 360px; gap: 20px; }
   @media (max-width: 1000px) { .page-layout { grid-template-columns: 1fr; } }
   .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
@@ -537,6 +686,17 @@ def _build_html() -> str:
 
 <div class="page-layout">
 <div class="main-col">
+  <section class="run-overview" id="run-overview" style="display:none" aria-label="Simulation runs">
+    <h2>Simulation runs</h2>
+    <div class="run-cards" id="run-cards"></div>
+  </section>
+  <section class="summary-card" aria-label="Results summary">
+    <h2>Results at a glance</h2>
+    <p class="summary-question" id="summary-question"></p>
+    <p class="summary-headline" id="summary-headline">Loading results...</p>
+    <p class="summary-detail" id="summary-detail"></p>
+    <p class="summary-caveat" id="summary-caveat"></p>
+  </section>
   <div class="stats-row" id="stats"></div>
   <div class="grid">
     <div class="card" id="outcomes-card">
@@ -603,6 +763,8 @@ def _build_html() -> str:
 <div class="footer">minimal-agora v0.1 &bull; powered by Chart.js</div>
 
 <script>
+const EMBEDDED_RUNS = null;
+const EMBEDDED_DATA = null;
 const COLORS = ['#4e79a7','#f28e2b','#e15759','#76b7b2','#59a14f',
                 '#edc948','#b07aa1','#ff9da7','#9c755f','#bab0ac'];
 const charts = {};
@@ -720,8 +882,7 @@ function renderStats(data) {
   const ts = data.token_summary || {};
   let tokenStats = '';
   if (ts.total_tokens > 0) {
-    tokenStats = `<div class="stat"><div class="icon">&#x1f4ac;</div><div class="value">${formatTokens(ts.total_tokens)}</div><div class="label">total tokens</div></div>` +
-      `<div class="stat"><div class="icon">&#x1f4b0;</div><div class="value">$${ts.estimated_cost_usd.toFixed(2)}</div><div class="label">est. cost</div></div>`;
+    tokenStats = `<div class="stat"><div class="icon">&#x1f4ac;</div><div class="value">${formatTokens(ts.total_tokens)}</div><div class="label">total tokens</div></div>`;
   }
   el.innerHTML = `
     <div class="stat"><div class="icon">&#x1f4ca;</div><div class="value">${n}</div><div class="label">trajectories</div></div>
@@ -742,7 +903,7 @@ function renderOutcomes(data) {
     const pct = (o.rate * 100).toFixed(1);
     const color = COLORS[i % COLORS.length];
     return `<div class="outcome-bar">
-      <span class="name">${name}</span>
+      <span class="name">${escapeHtml(name)}</span>
       <div class="bar-bg">
         <div class="bar-fill" style="width:${pct}%;background:${color}"></div>
         <span class="bar-label">${o.count}/${n} (${pct}%)</span>
@@ -802,12 +963,10 @@ function renderTimelines(data) {
 
   document.getElementById('timelines-card').style.display = '';
   const sel = document.getElementById('timeline-field-select');
+  const prev = sel.value;
+  sel.replaceChildren(...fields.map(f => new Option(f, f, f === prev, f === prev)));
   if (fields.length > 1) {
     sel.style.display = '';
-    const prev = sel.value;
-    sel.innerHTML = fields.map(f =>
-      `<option value="${f}"${f === prev ? ' selected' : ''}>${f}</option>`
-    ).join('');
   } else {
     sel.style.display = 'none';
   }
@@ -1265,10 +1424,34 @@ let currentRunDir = null;
 let evtSource = null;
 
 function render(data) {
+  if (lastData.run_dir && data.run_dir !== lastData.run_dir) {
+    Object.values(charts).forEach(chart => chart.destroy());
+    Object.keys(charts).forEach(key => delete charts[key]);
+    ['timelines-card', 'fitness-card', 'traj-compare-card', 'agent-activity-card',
+     'ess-card', 'token-usage-card', 'wildcard-impact-card'].forEach(id => {
+      document.getElementById(id).style.display = 'none';
+    });
+    document.getElementById('pop-grid').replaceChildren();
+  }
   lastData = data;
+  if (data.run_dir) {
+    currentRunDir = data.run_dir;
+    const sel = document.getElementById('run-select');
+    if (sel.value !== currentRunDir) sel.value = currentRunDir;
+    document.querySelectorAll('.run-card').forEach(card => {
+      const active = card.dataset.run === currentRunDir;
+      card.classList.toggle('active', active);
+      card.setAttribute('aria-pressed', String(active));
+    });
+  }
   document.getElementById('title').textContent = data.scenario || 'minimal-agora dashboard';
   document.getElementById('subtitle').textContent =
     `${data.n_trajectories || 0} trajectories` + (data.run_dir ? ` \\u2014 ${data.run_dir}` : '');
+  const summary = data.summary || {};
+  document.getElementById('summary-question').textContent = data.question || '';
+  document.getElementById('summary-headline').textContent = summary.headline || 'Waiting for results...';
+  document.getElementById('summary-detail').textContent = summary.detail || '';
+  document.getElementById('summary-caveat').textContent = summary.caveat || '';
   renderStats(data);
   renderOutcomes(data);
   renderStepsChart(data);
@@ -1316,35 +1499,66 @@ document.getElementById('traj-field-select').addEventListener('change', () => {
 
 // Simulation switcher
 function loadRuns() {
-  fetch('/api/runs').then(r => r.json()).then(runs => {
+  function showRuns(runs) {
     const sel = document.getElementById('run-select');
-    sel.innerHTML = runs.map(r =>
-      `<option value="${r.dirname}"${r.current ? ' selected' : ''}>${r.scenario} (${r.n_trajectories} traj)</option>`
-    ).join('');
-    const current = runs.find(r => r.current);
-    if (current) currentRunDir = current.dirname;
-  }).catch(() => {});
+    sel.replaceChildren(...runs.map(r => new Option(
+      `${r.scenario} (${r.n_trajectories} trajectories)`, r.dirname, r.current, r.current
+    )));
+    const overview = document.getElementById('run-overview');
+    const cards = document.getElementById('run-cards');
+    overview.style.display = runs.length > 1 ? '' : 'none';
+    const selected = currentRunDir || (runs.find(r => r.current) || {}).dirname;
+    cards.replaceChildren(...runs.map(r => {
+      const card = document.createElement('button');
+      card.type = 'button';
+      card.className = 'run-card' + (r.dirname === selected ? ' active' : '');
+      card.dataset.run = r.dirname;
+      card.setAttribute('aria-pressed', String(r.dirname === selected));
+      const title = document.createElement('strong');
+      title.textContent = r.scenario;
+      const count = document.createElement('span');
+      count.textContent = `${r.n_trajectories} trajectories`;
+      const outcomes = document.createElement('span');
+      outcomes.textContent = Object.entries(r.outcomes || {})
+        .map(([name, n]) => `${name.replaceAll('_', ' ')} ${n}/${r.n_trajectories}`)
+        .join(' · ') || 'Outcomes available in run detail';
+      card.append(title, count, outcomes);
+      card.addEventListener('click', () => switchRun(r.dirname));
+      return card;
+    }));
+    if (selected) { currentRunDir = selected; sel.value = selected; }
+  }
+  if (EMBEDDED_RUNS) showRuns(EMBEDDED_RUNS);
+  else fetch('/api/runs').then(r => r.json()).then(showRuns).catch(() => {});
 }
 loadRuns();
 
-document.getElementById('run-select').addEventListener('change', (e) => {
-  const dirname = e.target.value;
+function switchRun(dirname) {
+  if (dirname === currentRunDir) return;
   currentRunDir = dirname;
+  if (EMBEDDED_DATA) {
+    render(EMBEDDED_DATA[dirname]);
+    return;
+  }
   if (evtSource) { evtSource.close(); evtSource = null; }
   document.getElementById('status').textContent = 'loading...';
   document.getElementById('status').className = 'status done';
   fetch('/api/data?run=' + encodeURIComponent(dirname))
     .then(r => r.json())
-    .then(render)
-    .catch(() => {});
-});
+    .then(data => { render(data); connectSSE(); })
+    .catch(() => {
+      document.getElementById('status').textContent = 'load failed';
+    });
+}
+document.getElementById('run-select').addEventListener('change', (e) => switchRun(e.target.value));
 
 // Connect via SSE for live updates
 function connectSSE() {
-  evtSource = new EventSource('/api/stream');
+  const run = currentRunDir ? '?run=' + encodeURIComponent(currentRunDir) : '';
+  evtSource = new EventSource('/api/stream' + run);
   evtSource.onmessage = (e) => {
     const data = JSON.parse(e.data);
-    document.getElementById('status').textContent = 'live';
+    document.getElementById('status').textContent = 'connected';
     document.getElementById('status').className = 'status live';
     render(data);
   };
@@ -1353,17 +1567,22 @@ function connectSSE() {
     document.getElementById('status').className = 'status done';
   };
 }
-connectSSE();
-
-// Also fetch once immediately
-fetch('/api/data').then(r => r.json()).then(render).catch(() => {});
+if (EMBEDDED_DATA) {
+  const initial = EMBEDDED_RUNS.find(r => r.current) || EMBEDDED_RUNS[0];
+  if (initial) render(EMBEDDED_DATA[initial.dirname]);
+  document.getElementById('status').textContent = 'saved snapshot';
+  document.getElementById('status').className = 'status done';
+} else {
+  connectSSE();
+  fetch('/api/data').then(r => r.json()).then(render).catch(() => {});
+}
 </script>
 </body>
 </html>"""
 
 
 def _auto_detect_fields(run_dir: Path) -> list[str]:
-    trajectories = load_trajectories(run_dir)
+    trajectories = _load_dashboard_trajectories(run_dir)
     if not trajectories or not trajectories[0].steps:
         return []
     from minimal_agora.visualize_interactive import _flatten_state
@@ -1379,26 +1598,30 @@ def generate_static_dashboard(
     populations: list[str] | None = None,
     score_fields: list[str] | None = None,
 ) -> Path:
-    """Generate a standalone HTML dashboard with data inlined (no server needed)."""
-    if not fields:
-        fields = _auto_detect_fields(run_dir)
-    data = _collect_data(run_dir, fields or [], populations or [], score_fields or [])
-    data["run_dir"] = run_dir.name
+    """Generate a standalone HTML dashboard for sibling runs, with data inlined."""
+    runs = _list_runs(run_dir.parent, run_dir)
+    data_by_run = {}
+    for run in runs:
+        selected_dir = run_dir.parent / run["dirname"]
+        data = _collect_data(
+            selected_dir,
+            fields if fields else None,
+            populations or [],
+            score_fields or [],
+        )
+        data["run_dir"] = run["dirname"]
+        data_by_run[run["dirname"]] = data
 
-    html = _build_html()
-
-    data_json = json.dumps(data)
-    html = html.replace(
-        "connectSSE();\n\n// Also fetch once immediately\n"
-        "fetch('/api/data').then(r => r.json()).then(render).catch(() => {});",
-        f"// Static mode — data inlined, no server needed\nrender({data_json});",
-    )
-    html = html.replace(
-        "fetch('/api/data?run=' + encodeURIComponent(dirname))\n"
-        "    .then(r => r.json())\n"
-        "    .then(render)\n"
-        "    .catch(() => {});",
-        "// Run switching disabled in static mode",
+    html = (
+        _build_html()
+        .replace(
+            "const EMBEDDED_RUNS = null;",
+            "const EMBEDDED_RUNS = " + json.dumps(runs).replace("<", "\\u003c") + ";",
+        )
+        .replace(
+            "const EMBEDDED_DATA = null;",
+            "const EMBEDDED_DATA = " + json.dumps(data_by_run).replace("<", "\\u003c") + ";",
+        )
     )
 
     out = output_path or (run_dir / "dashboard.html")
@@ -1422,7 +1645,7 @@ def start_dashboard(
     ConfiguredHandler.populations = populations or []
     ConfiguredHandler.score_fields = score_fields or []
 
-    server = HTTPServer(("127.0.0.1", port), ConfiguredHandler)
+    server = ThreadingHTTPServer(("127.0.0.1", port), ConfiguredHandler)
     print(f"Dashboard: http://127.0.0.1:{port}")
     print(f"Watching: {run_dir}")
     print("Press Ctrl+C to stop\n")

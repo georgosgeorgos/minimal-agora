@@ -292,6 +292,28 @@
                 "431 tests passed as of 2026-09-23; Ruff, mypy, and PR #75 CI passed."
             ],
             "notes": "One malformed live critic response used the documented zero-score fallback; retry and run-quality reporting are tracked by issue #76."
+        },
+        {
+            "id": "feat-013",
+            "priority": 21,
+            "area": "visualization",
+            "title": "Cross-run dashboard and text summaries",
+            "status": "passing",
+            "verification": [
+                "uv run pytest tests/test_dashboard.py tests/test_particle_filter.py -q",
+                "./init.sh",
+                "uv run ruff check src/ tests/",
+                "uv run mypy src/minimal_agora/ --ignore-missing-imports",
+                "Inspect the saved dashboard screenshot and both 3x20 run payloads"
+            ],
+            "evidence": [
+                "Dashboard tests cover saved checkpoint recovery, sibling-run static export, run selection, and sample-aware text summary.",
+                "Particle-run regression confirms trajectory.json is saved with the final outcome.",
+                "Both OpenRouter runs appeared in the local dashboard; Mediterranean returned 3 trajectories, 60 steps, and 127 saved validation warnings.",
+                "436 tests passed; Ruff, format check, and mypy passed on 2026-09-23.",
+                "README screenshot: assets/dashboard-results.png"
+            ],
+            "notes": "The dashboard reconstructs older particle runs from contiguous saved step checkpoints when trajectory.json is absent. Future particle runs write trajectory.json. Three-trajectory summaries are descriptive and explicitly avoid probability claims."
         }
     ]
 }

@@ -134,8 +134,8 @@ uv run minimal-agora run scenarios/examples/intelligence.yaml \
 # View results
 uv run minimal-agora report
 
-# Generate interactive dashboard
-uv run minimal-agora dashboard --static --open
+# Open the live dashboard at http://127.0.0.1:8765
+uv run minimal-agora dashboard
 ```
 
 ---
@@ -204,16 +204,27 @@ uv run minimal-agora run scenarios/examples/nuclear_war.yaml -n 20 --provider an
 
 ## Visualization
 
-Three standalone HTML outputs per run — no server required, sharable as single files.
+Explore saved runs in the live dashboard, or export standalone HTML files to share.
 
 ### Dashboard
 
-Full simulation dashboard with Chart.js: field timelines, wildcard heatmap,
-agent activity, token usage, event log. Dark/light toggle.
+The dashboard compares sibling simulation runs, summarizes their outcomes in
+plain language, and shows field timelines, wildcard impact, agent activity,
+token usage, and the event log. The live view updates as new steps are saved;
+the static export includes sibling runs in one HTML file.
 
 ```bash
-minimal-agora dashboard runs/nuclear-war --static --open
+uv run minimal-agora dashboard runs/my-batch/intelligence
+# Open http://127.0.0.1:8765 and select another run in the same batch.
+
+uv run minimal-agora dashboard runs/my-batch/intelligence --static
+# Open runs/my-batch/intelligence/dashboard.html to view a saved snapshot.
 ```
+
+![Dashboard showing the intelligence and Mediterranean simulation results, text summary, outcome chart, field timeline, and event log](assets/dashboard-results.png)
+
+Screenshot from two OpenRouter DeepSeek V4.1 Flash example runs with three
+trajectories and 20 steps each. The counts describe these saved runs only.
 
 ### Interactive Report
 
