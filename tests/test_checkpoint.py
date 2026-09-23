@@ -5,7 +5,10 @@ import json
 import tempfile
 from pathlib import Path
 
+import pytest
+
 from minimal_agora.board import Board, _atomic_write
+from minimal_agora.loop import _detect_resume_point, _restore_checkpoint
 from minimal_agora.models import (
     AgentRole,
     Proposal,
@@ -134,10 +137,8 @@ def test_resume_metadata_populated():
             step = Step(step_number=i, state_before={"x": i}, state_after={"x": i + 1})
             with open(workspace / "history" / f"step_{i:03d}_full.json", "w") as f:
                 f.write(step.model_dump_json())
-
-        state_at_3 = {"x": 3}
-        with open(workspace / "history" / "step_003_state.json", "w") as f:
-            json.dump(state_at_3, f)
+            with open(workspace / "history" / f"step_{i + 1:03d}_state.json", "w") as f:
+                json.dump(step.state_after, f)
 
         scenario = Scenario(
             name="test",
@@ -158,3 +159,40 @@ def test_resume_metadata_populated():
         assert result.metadata.get("resumed") is True
         assert result.metadata.get("resume_from_step") == 3
         assert "resume_timestamp" in result.metadata
+
+
+def test_resume_rejects_gap_followed_by_later_checkpoint(tmp_path: Path):
+    history = tmp_path / "history"
+    history.mkdir()
+    for step_num in (0, 2):
+        step = Step(step_number=step_num, state_after={"x": step_num + 1})
+        (history / f"step_{step_num:03d}_full.json").write_text(step.model_dump_json())
+        (history / f"step_{step_num + 1:03d}_state.json").write_text(json.dumps(step.state_after))
+
+    with pytest.raises(ValueError, match="Checkpoint gap: expected step 1"):
+        _detect_resume_point(tmp_path)
+
+
+def test_resume_rejects_missing_state_snapshot(tmp_path: Path):
+    history = tmp_path / "history"
+    history.mkdir()
+    (history / "step_000_full.json").write_text(Step(step_number=0).model_dump_json())
+
+    with pytest.raises(ValueError, match="Missing state snapshot"):
+        _detect_resume_point(tmp_path)
+
+
+def test_restore_rejects_mismatched_state_snapshot(tmp_path: Path):
+    history = tmp_path / "history"
+    history.mkdir()
+    (tmp_path / "board").mkdir()
+    (tmp_path / "board" / "state.json").write_text('{"x": 0}')
+    (history / "step_000_full.json").write_text(
+        Step(step_number=0, state_after={"x": 1}).model_dump_json()
+    )
+    (history / "step_001_state.json").write_text('{"x": 2}')
+
+    assert _detect_resume_point(tmp_path) == 1
+    with pytest.raises(ValueError, match="Checkpoint state does not match"):
+        _restore_checkpoint(tmp_path, 1, Board(tmp_path))
+    assert Board(tmp_path).read_state() == {"x": 0}

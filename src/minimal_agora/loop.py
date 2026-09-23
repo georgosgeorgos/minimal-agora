@@ -126,7 +126,19 @@ def _detect_resume_point(workspace: Path) -> int:
     history_dir = workspace / "history"
     if not history_dir.exists():
         return 0
-    completed = sorted(history_dir.glob("step_*_full.json"))
+    completed = []
+    for path in history_dir.glob("step_*_full.json"):
+        try:
+            step_num = int(path.name.removeprefix("step_").removesuffix("_full.json"))
+        except ValueError as exc:
+            raise ValueError(f"Invalid checkpoint filename: {path.name}") from exc
+        completed.append(step_num)
+    for expected, actual in enumerate(sorted(completed)):
+        if actual != expected:
+            raise ValueError(f"Checkpoint gap: expected step {expected}, found step {actual}")
+        state_file = history_dir / f"step_{expected + 1:03d}_state.json"
+        if not state_file.exists():
+            raise ValueError(f"Missing state snapshot for completed step {expected}: {state_file}")
     return len(completed)
 
 
@@ -143,15 +155,19 @@ def _restore_checkpoint(workspace: Path, resume_from: int, board: Board) -> list
     steps = []
     for i in range(resume_from):
         step_file = workspace / "history" / f"step_{i:03d}_full.json"
-        if step_file.exists():
-            with open(step_file) as f:
-                steps.append(Step.model_validate_json(f.read()))
+        with open(step_file) as f:
+            step = Step.model_validate_json(f.read())
+        if step.step_number != i:
+            raise ValueError(f"Checkpoint step number mismatch: {step_file}")
+        steps.append(step)
     state_file = workspace / "history" / f"step_{resume_from:03d}_state.json"
-    if state_file.exists():
-        import json
+    import json
 
-        with open(state_file) as f:
-            board.write_state(json.load(f))
+    with open(state_file) as f:
+        state = json.load(f)
+    if steps and state != steps[-1].state_after:
+        raise ValueError(f"Checkpoint state does not match completed step: {state_file}")
+    board.write_state(state)
     return steps
 
 
