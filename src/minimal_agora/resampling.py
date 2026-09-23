@@ -126,10 +126,10 @@ async def resample_particles(
     step: int,
     agent_timeout: int,
     agent_semaphore: asyncio.Semaphore | None,
-) -> list[Path]:
+) -> tuple[list[Path], list[int]]:
     resample_cfg = scenario.resampling
     if resample_cfg is None:
-        return workspaces
+        return workspaces, list(range(len(workspaces)))
 
     criteria = resample_cfg.criteria or DEFAULT_RESAMPLING_CRITERIA
     n = len(workspaces)
@@ -176,4 +176,4 @@ async def resample_particles(
         scores=[s.total for s in scores],
     )
 
-    return workspaces
+    return workspaces, parent_indices

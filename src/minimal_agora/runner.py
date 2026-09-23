@@ -184,13 +184,14 @@ async def run_particle_filter(
 
             if triggered:
                 logger.info("filter.resample", step=step_num, ess=round(ess, 4))
-                workspaces = await resample_particles(
+                workspaces, parent_indices = await resample_particles(
                     scenario,
                     workspaces,
                     step_num,
                     agent_timeout,
                     agent_sem,
                 )
+                all_steps[:] = [list(all_steps[parent_idx]) for parent_idx in parent_indices]
                 boards = [Board(ws) for ws in workspaces]
         else:
             ess_history.append(float(n))
