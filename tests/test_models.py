@@ -459,6 +459,8 @@ def test_resume_detection_with_history():
             step = Step(step_number=i, state_before={}, state_after={"x": i})
             with open(history / f"step_{i:03d}_full.json", "w") as f:
                 f.write(step.model_dump_json())
+            with open(history / f"step_{i + 1:03d}_state.json", "w") as f:
+                json.dump(step.state_after, f)
         assert _detect_resume_point(workspace) == 3
 
 

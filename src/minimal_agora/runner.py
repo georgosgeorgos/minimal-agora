@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import time
 from pathlib import Path
+from typing import Any
 
 import structlog
 
@@ -184,13 +185,8 @@ async def run_particle_filter(
 
             if triggered:
                 logger.info("filter.resample", step=step_num, ess=round(ess, 4))
-                workspaces = await resample_particles(
-                    scenario,
-                    workspaces,
-                    step_num,
-                    agent_timeout,
-                    agent_sem,
-                )
+                workspaces, parent_indices = resample_particles(workspaces, weights, step_num)
+                all_steps[:] = [list(all_steps[parent_idx]) for parent_idx in parent_indices]
                 boards = [Board(ws) for ws in workspaces]
         else:
             ess_history.append(float(n))
@@ -200,7 +196,7 @@ async def run_particle_filter(
         final_state = boards[i].read_state()
         final_step = len(all_steps[i]) - 1
         classification = _classify_outcome(final_state, scenario)
-        metadata = {"ess_history": ess_history}
+        metadata: dict[str, Any] = {"ess_history": ess_history}
         if scenario.adaptive_steps is not None:
             routine_steps = sum(
                 step.execution_mode == StepExecutionMode.ROUTINE for step in all_steps[i]

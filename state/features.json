@@ -4,6 +4,7 @@
     "last_review": "docs/code-review-2026-09-23.md",
     "last_asset_update": "2026-09-23: README hero replaced with assets/minima-agora-hero-v2.png",
     "review_issues": [68, 69, 70, 71],
+    "review_resolution_pr": 72,
     "rules": {
         "single_active_feature": true,
         "passing_requires_evidence": true,
@@ -186,7 +187,10 @@
                 "uv run pytest tests/test_models.py::test_resume_detection_with_history -v",
                 "uv run pytest tests/test_models.py::test_skip_completed_trajectory -v"
             ],
-            "evidence": ["3 tests passing, resume from history snapshots"]
+            "evidence": [
+                "3 tests passing, resume from history snapshots",
+                "PR #72: resume rejects checkpoint gaps, missing state snapshots, and mismatched states; focused tests passing on 2026-09-23."
+            ]
         },
         {
             "id": "feat-008",

@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Unpack
 
 from minimal_agora.agents import (
+    PromptContext,
     parse_critique,
     parse_critique_from_text,
     parse_proposal,
@@ -20,7 +22,9 @@ from minimal_agora.models import (
 )
 
 
-def prompt_context(mode: BoardAccessMode, **embedded_values: object) -> dict[str, object]:
+def prompt_context(
+    mode: BoardAccessMode, **embedded_values: Unpack[PromptContext]
+) -> PromptContext:
     """Return inline prompt values only when embedded access is selected."""
     if mode == BoardAccessMode.EMBEDDED:
         return embedded_values
