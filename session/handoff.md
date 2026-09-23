@@ -11,7 +11,7 @@
 
 ## Changed This Session
 
-- Fixed review issues #68–#71 in PR #72: particle lineage, duplicate critic
+- Fixed review issues #68–#71 in merged PR #72: particle lineage, duplicate critic
   calls, checkpoint validation, and the CI type-check gate.
 - Replaced the README hero reference with a generated, text-free agora image at
   `assets/minima-agora-hero-v2.png`; retained the original JPEG.
@@ -66,7 +66,8 @@
 
 ## Next Best Step
 
-- Merge PR #72 after CI checks pass. No roadmap features are unfinished.
+- PR #72 is merged and issues #68–#71 are closed. Select the next roadmap
+  item from open issues #42, #39, or #37. No roadmap features are unfinished.
 
 ## Commands
 

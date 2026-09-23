@@ -10,7 +10,7 @@
 - Test count: 420 tests, all green
 - Lint: clean (ruff, 0 errors)
 - Simulation validated: all 8 scenarios completed 50-step runs via RITS GLM-5.2; a fresh one-step intelligence run completed via authenticated Claude CLI on 2026-09-21
-- Latest review: `docs/code-review-2026-09-23.md`; issues #68–#71 addressed in PR #72
+- Latest review: `docs/code-review-2026-09-23.md`; issues #68–#71 closed by merged PR #72
 
 ## Session Log
 
@@ -172,7 +172,8 @@
   - Opened PR #72 with issue-closing references
 - Verification: `./init.sh` — 420 passed and Ruff clean; `uv run mypy src/minimal_agora/ --ignore-missing-imports` — no errors; Ruff format check clean; deliberate type-error probe failed as expected
 - Commits: `a4fc248`, `700b8a7`, `0a49ec4`, `5e2c472`; documentation commit follows
-- Next priority: merge PR #72 after CI checks pass
+- Merge result: PR #72 merged as `59e444c`; lint, Python 3.12 and 3.13 tests, and typecheck all passed in CI; issues #68–#71 closed
+- Next priority: select from remaining open issues #42, #39, and #37 or define a new roadmap item
 
 ## Roadmap (priority order)
 
