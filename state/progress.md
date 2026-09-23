@@ -7,10 +7,10 @@
 - Standard verification path: `uv run pytest tests/ -v && uv run ruff check src/ tests/`
 - All roadmap features through feat-012 passing; feat-004 validated with both API and Claude CLI providers
 - Current blocker: None
-- Test count: 416 tests, all green
+- Test count: 420 tests, all green
 - Lint: clean (ruff, 0 errors)
 - Simulation validated: all 8 scenarios completed 50-step runs via RITS GLM-5.2; a fresh one-step intelligence run completed via authenticated Claude CLI on 2026-09-21
-- Latest review: `docs/code-review-2026-09-23.md`; three runtime follow-ups remain
+- Latest review: `docs/code-review-2026-09-23.md`; issues #68–#71 addressed in PR #72
 
 ## Session Log
 
@@ -159,6 +159,20 @@
   - Linked each issue from the code-review note and handoff
 - Verification: issue list checked for duplicates; all four issue URLs returned by GitHub; no runtime code changed
 - Next priority: #68, then #69 and #70
+
+### Session 011
+
+- Date: 2026-09-23
+- Goal: Resolve issues #68–#71 in one pull request
+- Completed:
+  - Rebased in-memory particle step histories onto selected resampling parents (#68)
+  - Reused ESS weights for parent selection, removing duplicate critic calls (#69)
+  - Rejected noncontiguous or incomplete resume checkpoints and mismatched state snapshots (#70)
+  - Fixed existing mypy errors and made the CI type-check exit status required (#71)
+  - Opened PR #72 with issue-closing references
+- Verification: `./init.sh` — 420 passed and Ruff clean; `uv run mypy src/minimal_agora/ --ignore-missing-imports` — no errors; Ruff format check clean; deliberate type-error probe failed as expected
+- Commits: `a4fc248`, `700b8a7`, `0a49ec4`, `5e2c472`; documentation commit follows
+- Next priority: merge PR #72 after CI checks pass
 
 ## Roadmap (priority order)
 

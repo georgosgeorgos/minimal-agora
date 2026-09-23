@@ -3,13 +3,16 @@
 ## Verified Now
 
 - Core engine and all roadmap features through feat-012 are passing.
-- `./init.sh` — completed with local uv cache access; 416 passed, 5 known statistical warnings.
+- `./init.sh` — 420 passed, 5 known statistical warnings.
 - `uv run ruff check src/ tests/` — clean.
+- `uv run mypy src/minimal_agora/ --ignore-missing-imports` — no errors.
 - All eight example scenarios previously completed 50-step provider validation.
 - A fresh one-step intelligence simulation completed through authenticated Claude CLI with all actor, critic, resolver, checkpoint, and report artifacts.
 
 ## Changed This Session
 
+- Fixed review issues #68–#71 in PR #72: particle lineage, duplicate critic
+  calls, checkpoint validation, and the CI type-check gate.
 - Replaced the README hero reference with a generated, text-free agora image at
   `assets/minima-agora-hero-v2.png`; retained the original JPEG.
 - Fixed resampling copy order by staging parents that would be overwritten.
@@ -45,14 +48,8 @@
 
 ## Risks And Tradeoffs
 
-- Particle step histories are not remapped when a particle workspace is copied;
-  see [issue #68](https://github.com/georgosgeorgos/minimal-agora/issues/68).
-- Resampling currently invokes critics twice, and resume detection assumes
-  contiguous checkpoint files; see issues
-  [#69](https://github.com/georgosgeorgos/minimal-agora/issues/69) and
-  [#70](https://github.com/georgosgeorgos/minimal-agora/issues/70).
-- CI type checking is non-blocking; see
-  [#71](https://github.com/georgosgeorgos/minimal-agora/issues/71).
+- Mypy uses its existing default scope; it notes that untyped function bodies
+  are not checked unless `--check-untyped-defs` is enabled.
 - Numeric extrapolation is intentionally opt-in because discontinuous systems
   may need shorter reasoning intervals or lower drift thresholds.
 - Existing scenarios omit `adaptive_steps`, so their behavior is unchanged.
@@ -69,8 +66,7 @@
 
 ## Next Best Step
 
-- Fix particle history lineage after resampling in issue #68 and add an
-  integration test. Then address #69 and #70. No roadmap features are unfinished.
+- Merge PR #72 after CI checks pass. No roadmap features are unfinished.
 
 ## Commands
 
