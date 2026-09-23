@@ -1,7 +1,7 @@
 # minimal-agora
 
 <p align="center">
-  <img src="assets/minima-agora-image.jpeg" alt="Minimal Agora — LLM agents debate in a Greek agora" width="800">
+  <img src="assets/minima-agora-hero-v2.png" alt="Scholars debate possible futures around a glowing table in a Greek agora" width="800">
 </p>
 
 <p align="center">

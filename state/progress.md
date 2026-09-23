@@ -138,6 +138,17 @@
 - Known risks: particle step history is not rebased after resampling; critics are invoked twice at resampling; checkpoint gap handling needs hardening. See the review note.
 - Next priority: fix particle history lineage with an integration test, then remove the duplicate critic round
 
+### Session 009
+
+- Date: 2026-09-23
+- Goal: Improve the README hero image with imagegen
+- Completed:
+  - Edited the existing Greek agora image into a simpler, text-free scene with five human participants and branching future paths
+  - Saved the selected version as `assets/minima-agora-hero-v2.png` and updated the README reference and alt text
+  - Preserved the previous JPEG asset for comparison and rollback
+- Verification: visually inspected the saved image; `./init.sh` passed lint and the full 416-test suite
+- Next priority: fix particle history lineage after resampling, as recorded in `docs/code-review-2026-09-23.md`
+
 ## Roadmap (priority order)
 
 | ID | Area | Title | Status |

@@ -10,6 +10,8 @@
 
 ## Changed This Session
 
+- Replaced the README hero reference with a generated, text-free agora image at
+  `assets/minima-agora-hero-v2.png`; retained the original JPEG.
 - Fixed resampling copy order by staging parents that would be overwritten.
 - Consolidated duplicate dev requirements and pytest configuration.
 - Updated the repo map and README diagram; added `docs/code-review-2026-09-23.md`.
